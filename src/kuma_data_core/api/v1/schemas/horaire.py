@@ -1,0 +1,136 @@
+"""Schémas Pydantic des endpoints `/api/v1/horaire/<localite>/<grandeur>`.
+
+Cinq schémas pour le passe-plat horaire :
+
+- :class:`ParametresHoraire` : paramètres communs (localité, grandeur,
+  plage temporelle, format de sortie).
+- :class:`ResultatHoraire` : un point horaire passe-plat (instant ISO,
+  valeur ou null, unité, statut éditorial).
+- :class:`PlageTemporelle` : helper structurel pour les plages
+  temporelles inclusives.
+- :class:`ReponseHoraire` : réponse complète d'un endpoint data.
+- :class:`ReponseDisponibilite` : réponse de l'endpoint
+  ``/disponibilite``.
+
+Principe « Kuma assume » : aucun champ ne mentionne la source amont
+(NASA POWER, SARAH-3, etc.). Le statut éditorial uniforme
+``passe_plat_non_valide`` signale au consommateur que les données
+horaires ne sont pas validées éditorialement par Kuma.
+"""
+
+from __future__ import annotations
+
+from datetime import date, datetime
+from typing import Literal
+
+from pydantic import BaseModel, Field, model_validator
+
+# === Constantes module ====================================================
+
+LOCALITES_AUTORISEES: tuple[str, ...] = (
+    "conakry_kaloum",
+    "kankan",
+    "kindia",
+    "labe",
+    "mamou",
+    "nzerekore",
+)
+"""6 villes Guinée pilotes.
+
+Liste canonique alignée avec l'ingestion historique. Cohérente avec
+les séries du catalogue ``series_metadonnees`` ingérées pour ces 6
+villes uniquement."""
+
+GRANDEURS_AUTORISEES: tuple[str, ...] = ("ghi", "dni", "dhi", "t2m", "rh2m", "kt")
+"""6 grandeurs horaires ingérables."""
+
+PLAGE_MAX_JOURS: int = 366
+"""Plage temporelle maximale par requête (année bissextile incluse)."""
+
+DATE_DEBUT_DISPONIBILITE: date = date(2001, 1, 1)
+"""Borne historique de début de la disponibilité passe-plat horaire."""
+
+
+# === Schémas paramètres ===================================================
+
+
+class ParametresHoraire(BaseModel):
+    """Paramètres communs aux endpoints du passe-plat horaire.
+
+    Le champ ``format_sortie`` est exposé en query string sous le nom
+    URL ``format`` via ``Query(alias="format")`` côté handler - alias
+    nécessaire pour éviter le shadow du built-in Python ``format``.
+    """
+
+    localite: Literal["conakry_kaloum", "kankan", "kindia", "labe", "mamou", "nzerekore"]
+    grandeur: Literal["ghi", "dni", "dhi", "t2m", "rh2m", "kt"]
+    periode_debut: date = Field(..., ge=DATE_DEBUT_DISPONIBILITE)
+    periode_fin: date
+    format_sortie: Literal["json", "csv"] = Field(
+        default="json",
+        alias="format",
+        description="Format de reponse : 'json' (defaut) ou 'csv'.",
+    )
+
+    @model_validator(mode="after")
+    def _valider_plage_temporelle(self) -> ParametresHoraire:
+        if self.periode_fin < self.periode_debut:
+            raise ValueError("periode_fin doit etre superieure ou egale a periode_debut")
+        if (self.periode_fin - self.periode_debut).days > PLAGE_MAX_JOURS:
+            raise ValueError(f"plage maximale {PLAGE_MAX_JOURS} jours par requete")
+        return self
+
+
+# === Schémas résultats ====================================================
+
+
+class PlageTemporelle(BaseModel):
+    """Plage temporelle inclusive [début, fin]."""
+
+    debut: date
+    fin: date
+
+
+class ResultatHoraire(BaseModel):
+    """Un point horaire (24 par jour, fuseau UTC).
+
+    ``statut_editorial`` distingue les deux régimes de service :
+
+    - ``valide_auto`` : donnée horaire **stockée et validée** par le
+      contrôle qualité algorithmique Kuma (confiance B).
+    - ``passe_plat_non_valide`` : donnée relayée à la volée (passe-plat),
+      non validée éditorialement - servie en repli là où aucune donnée
+      validée ne couvre la plage demandée.
+    """
+
+    instant: datetime
+    valeur: float | None = Field(
+        default=None,
+        description=(
+            "Valeur numerique ou null si donnee manquante (sentinelle "
+            "amont ou indice physique non defini selon la grandeur)."
+        ),
+    )
+    unite: str
+    statut_editorial: Literal["valide_auto", "passe_plat_non_valide"] = "passe_plat_non_valide"
+
+
+# === Schémas réponses =====================================================
+
+
+class ReponseHoraire(BaseModel):
+    """Réponse complète d'un endpoint passe-plat horaire data."""
+
+    localite: str
+    grandeur: str
+    periode_demandee: PlageTemporelle
+    resultats: list[ResultatHoraire]
+
+
+class ReponseDisponibilite(BaseModel):
+    """Réponse de l'endpoint `/disponibilite`."""
+
+    localite: str
+    grandeur: str
+    plage_disponible: PlageTemporelle
+    statut_editorial: Literal["passe_plat_non_valide"] = "passe_plat_non_valide"

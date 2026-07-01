@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "Si vous utilisez ce logiciel, merci de le citer comme ci-dessous."
+title: "Kuma Data Core"
+abstract: >-
+  Moteur de données à confiance tracée (niveaux A/B/C), versionnement
+  temporel non destructif et audit applicatif. Base PostgreSQL et API
+  FastAPI. Domaine pilote : ressource solaire en Guinée.
+type: software
+authors:
+  - family-names: "Kalivogui"
+    given-names: "Siba"
+    affiliation: "Kuma Science"
+license: AGPL-3.0-or-later
+repository-code: "https://github.com/siba-IEE/kuma-data-core"
+url: "https://kumascience.com"
+version: "1.0.0"
+date-released: "2026-07-01"
+keywords:
+  - solar energy
+  - Guinea
+  - West Africa
+  - open data
+  - renewable energy
+  - data infrastructure

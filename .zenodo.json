@@ -1,0 +1,18 @@
+{
+  "title": "Kuma Data Core",
+  "description": "Moteur de données à confiance tracée (niveaux A/B/C), versionnement temporel non destructif et audit applicatif. Base PostgreSQL et API FastAPI. Domaine pilote : ressource solaire en Guinée.",
+  "upload_type": "software",
+  "access_right": "open",
+  "license": "AGPL-3.0-or-later",
+  "creators": [
+    { "name": "Kalivogui, Siba", "affiliation": "Kuma Science" }
+  ],
+  "keywords": [
+    "solar energy",
+    "Guinea",
+    "West Africa",
+    "open data",
+    "renewable energy",
+    "data infrastructure"
+  ]
+}

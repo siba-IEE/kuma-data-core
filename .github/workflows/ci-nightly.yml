@@ -1,0 +1,226 @@
+name: CI nocturne (regression)
+
+# Workflow nocturne dedie aux tests marques `regression` (typiquement
+# le roundtrip Alembic 023 a head qui re-frappe les APIs externes
+# JRC + NASA POWER, ~5 min par cycle). Extrait de la suite integration
+# standard pour stabilite.
+#
+# Schedule cron `0 3 * * *` UTC = 3h UTC chaque nuit, hors heures de
+# pointe API JRC (l'API PVGIS MRcalc est typiquement moins sollicitee
+# de nuit cote Europe).
+#
+# Possibilite de declenchement manuel via workflow_dispatch (utile pour
+# valider une PR feature qui touche les migrations sans attendre la
+# nuit).
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: "3.12"
+
+jobs:
+  tests-regression:
+    name: Tests regression (TI-24 roundtrip Alembic)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    # Timeout large : le roundtrip fait downgrade(022) + upgrade(head) qui
+    # re-joue 23 migrations dont 5 a appels reseau (027 HEP ingestion,
+    # 029 kt, 030-034 grandeurs Kuma, 041 SARAH-3 + NASA POWER monthly,
+    # 043 calcul). Coût empirique observe ~5-7 min.
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: kuma_admin
+          POSTGRES_PASSWORD: ci_password_uniquement
+          POSTGRES_DB: kuma_data_core
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kuma_admin -d kuma_data_core"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      POSTGRES_USER: kuma_admin
+      POSTGRES_PASSWORD: ci_password_uniquement
+      POSTGRES_DB: kuma_data_core
+      POSTGRES_HOST: 127.0.0.1
+      POSTGRES_PORT: "5432"
+      KUMA_INITIAL_EDITOR_EMAIL: ci.editeur@kuma-science.test
+      API_ENVIRONNEMENT: dev
+      API_DOCS_ACTIVES: "false"
+      API_CLE_SOLAR_BRIDGE: ci_cle_solar_factice
+      API_CLE_ADMIN: ci_cle_admin_factice
+      LOG_FORMAT: json
+      LOG_NIVEAU: WARNING
+      # Court-circuite l'ingestion horaire de MASSE aussi dans le nightly :
+      # le roundtrip (downgrade 022 + upgrade head) rejouerait sinon les 138
+      # appels NASA / ville une seconde fois. Le nightly verifie la mecanique
+      # apply/rollback des migrations 056/057, pas le re-fetch de la donnee
+      # deterministe.
+      KUMA_SKIP_INGESTION_MASSE_HORAIRE: "1"
+      # PVGIS-SARAH3 ET NASA daily servis offline (seed) aussi dans la chaine
+      # nightly, y compris le roundtrip -> stabilite. Les canaris dedies
+      # (canari-sarah3-derive, canari-nasa-daily-derive ; independants) gardent
+      # PVGIS et NASA daily LIVE pour detecter une derive amont.
+      KUMA_INGESTION_MODE: offline
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Installer Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Synchroniser les dependances
+        run: uv sync --group dev --frozen
+
+      - name: Appliquer les migrations Alembic (retry réseau transitoire)
+        # Idem ci.yml : retry sur indisponibilité transitoire JRC/NASA.
+        # Le retry reprend à la dernière migration appliquée
+        # (transactionnel). NB : l'upgrade interne du test regression
+        # (downgrade 022 + upgrade head dans pytest) n'est pas couvert par ce
+        # retry de step - flakiness résiduelle côté regression.
+        run: |
+          for tentative in 1 2 3; do
+            if uv run alembic upgrade head; then exit 0; fi
+            if [ "$tentative" -lt 3 ]; then
+              echo "::warning::alembic upgrade head tentative $tentative en echec (API externe transitoire ?) — retry dans 30s"
+              sleep 30
+            fi
+          done
+          echo "::error::alembic upgrade head en echec apres 3 tentatives"
+          exit 1
+
+      - name: Verifier la coherence Alembic / modeles SQLAlchemy
+        run: uv run alembic check
+
+      - name: Executer les tests regression (TI-24 + futurs)
+        run: uv run pytest -m regression -v
+
+  # === Job dedie : canari de derive PVGIS-SARAH3 ========
+  # INDEPENDANT (aucun needs) : tourne a CHAQUE nightly quel que soit l'etat de
+  # la regression pre-existante. Son rouge = derive SARAH-3 reelle
+  # (reprocessing JRC), isole du rouge regression. Pas de service postgres : le
+  # canari fetch PVGIS live et lit le seed committe, sans toucher la base.
+  canari-sarah3-derive:
+    name: Canari derive PVGIS-SARAH3 (complement d D-40)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      # Seul POSTGRES_PASSWORD n'a pas de default dans Settings (factice : le
+      # canari ne se connecte jamais a la DB). Mode live : fetch PVGIS reel.
+      POSTGRES_PASSWORD: factice_canari_jamais_utilise
+      KUMA_INGESTION_MODE: live
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Installer Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Synchroniser les dependances
+        run: uv sync --group dev --frozen
+
+      - name: Canari de derive PVGIS-SARAH3 (live vs seed)
+        # Logique d'exit portee par le script :
+        #   - blip reseau (fetch indisponible) -> exit 0 (warning, job vert) :
+        #     un alea reseau ne doit pas rougir le nightly ;
+        #   - derive reelle (fetch OK + ecart > seuil 1e-3 = reprocessing JRC) ->
+        #     exit 1 -> rouge + re-seed humain (scripts/preparer_seed_sarah3.py).
+        # PAS de continue-on-error : une derive reelle DOIT rougir. L'offline ne
+        # doit pas masquer une derive amont JRC.
+        run: uv run python scripts/canari_sarah3.py
+
+  # === Job dedie : canari de derive NASA POWER daily ===
+  # INDEPENDANT (aucun needs) : tourne a CHAQUE nightly. Son rouge = derive NASA
+  # daily reelle dans l'historique muri (reprocessing / version POWER), isolee du
+  # reste. Pas de service postgres : le canari fetch NASA live et lit le seed
+  # committe, sans toucher la base. Maturation-aware : ne compare que la fenetre
+  # stable (queue NRT recente exclue, cf. ingestion/canari_nasa_daily.py).
+  canari-nasa-daily-derive:
+    name: Canari derive NASA daily (complement d D-40/D-74)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      # POSTGRES_PASSWORD factice (le canari ne se connecte pas a la DB).
+      # Mode live : fetch NASA reel (compare au seed).
+      POSTGRES_PASSWORD: factice_canari_jamais_utilise
+      KUMA_INGESTION_MODE: live
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Installer Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Synchroniser les dependances
+        run: uv sync --group dev --frozen
+
+      - name: Canari de derive NASA daily (live vs seed, fenetre stable)
+        # Exit 1 uniquement sur derive reelle dans l'historique muri (reprocessing) ;
+        # blip reseau -> exit 0 (nightly verte). PAS de continue-on-error : une
+        # derive reelle DOIT rougir. L'offline ne doit pas masquer une derive NASA.
+        run: uv run python scripts/canari_nasa_daily.py
+
+  # === Job dedie : canari de derive NASA POWER monthly ==========
+  # INDEPENDANT (aucun needs) : tourne a CHAQUE nightly. Son rouge = derive NASA
+  # monthly reelle (reprocessing / version POWER), isolee du reste. Pas de service
+  # postgres : le canari fetch NASA live et lit le seed committe. Climato FIGEE :
+  # comparaison complete, pas de fenetre maturation (cf. ingestion/canari_nasa_monthly.py).
+  canari-nasa-monthly-derive:
+    name: Canari derive NASA monthly (D-40 lot 3)
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    env:
+      # POSTGRES_PASSWORD factice (le canari ne se connecte pas a la DB).
+      # Mode live : fetch NASA reel (compare au seed).
+      POSTGRES_PASSWORD: factice_canari_jamais_utilise
+      KUMA_INGESTION_MODE: live
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@v4
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: Installer Python
+        run: uv python install ${{ env.PYTHON_VERSION }}
+
+      - name: Synchroniser les dependances
+        run: uv sync --group dev --frozen
+
+      - name: Canari de derive NASA monthly (live vs seed, climato figee)
+        # Exit 1 sur derive reelle (reprocessing -> re-seed) ; blip reseau -> exit 0.
+        # PAS de continue-on-error : une derive reelle DOIT rougir.
+        run: uv run python scripts/canari_nasa_monthly.py
