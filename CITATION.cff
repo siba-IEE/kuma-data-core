@@ -11,6 +11,7 @@ authors:
     given-names: "Siba"
     affiliation: "Kuma Science"
 license: AGPL-3.0-or-later
+doi: 10.5281/zenodo.21117158
 repository-code: "https://github.com/siba-IEE/kuma-data-core"
 url: "https://kumascience.com"
 version: "1.0.0"

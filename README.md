@@ -2,6 +2,7 @@
 
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![CI](https://github.com/siba-IEE/kuma-data-core/actions/workflows/ci.yml/badge.svg)](https://github.com/siba-IEE/kuma-data-core/actions/workflows/ci.yml)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21117158.svg)](https://doi.org/10.5281/zenodo.21117158)
 
 Moteur de données à confiance tracée : chaque valeur porte sa source, sa
 méthode, son niveau de confiance (A/B/C), ses dates de validité et son
