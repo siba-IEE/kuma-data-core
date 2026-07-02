@@ -10,6 +10,30 @@ statut éditorial. Versionnement temporel non destructif, audit applicatif
 par triggers. Base PostgreSQL, API FastAPI. Domaine pilote : la ressource
 solaire en Guinée.
 
+## Interroger l'API publique
+
+Une instance publique sert les données guinéennes en ligne :
+**`https://api.kumascience.com`**. Inscription libre (clé gratuite), puis
+requêtes HTTP.
+
+```bash
+# 1. Vérifier (sans clé)
+curl https://api.kumascience.com/v1/health
+
+# 2. Obtenir une clé (une seule fois)
+curl -X POST https://api.kumascience.com/v1/cles \
+  -H "Content-Type: application/json" \
+  -d '{"email":"vous@exemple.org","usage_prevu":"..."}'
+
+# 3. Interroger
+curl "https://api.kumascience.com/v1/series?localite=gin_boffa&grandeur=ghi" \
+  -H "Authorization: Bearer kuma_..."
+```
+
+Guide complet (exemples Python/JS/CSV, endpoints, passeport des mesures) :
+**[docs/api/demarrage-rapide.md](docs/api/demarrage-rapide.md)**. Référence
+technique : [docs/architecture/06-api-reference-publique.md](docs/architecture/06-api-reference-publique.md).
+
 ## Le problème
 
 Dans une grande partie de l'Afrique francophone, dimensionner un projet
