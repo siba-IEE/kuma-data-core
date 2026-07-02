@@ -77,10 +77,27 @@ class Settings(BaseSettings):
     # de service : l'émission self-service de clés est désactivée et
     # l'authentification reste env-only (régime local historique).
     meta_db: str | None = Field(default=None)
+    # Identifiants dédiés de la base de service (ADR-0003 D2, revue de
+    # sécurité 2026-07-02). Sur le VPS, le moteur d'édition tourne en
+    # ``kuma_api_ro`` (lecture seule) et le moteur méta en
+    # ``kuma_api_service`` (écriture) : ces deux rôles sont mutuellement
+    # exclusifs, un seul couple d'identifiants ne peut pas servir les
+    # deux. À ``None``, on retombe sur ``postgres_user``/``postgres_password``
+    # (régime local, mono-rôle) - la garantie de moindre privilège n'est
+    # tenue que si ces deux valeurs sont fournies en production.
+    meta_user: str | None = Field(default=None)
+    meta_password: SecretStr | None = Field(default=None)
     # ``rate_limiting_actif`` : applique le quota journalier des clés
     # self-service via Redis (D3/WP7). Profil serveur public uniquement ;
     # les clés d'environnement (admin, Bridge) ne sont jamais limitées.
     rate_limiting_actif: bool = Field(default=False)
+    # ``derriere_proxy_confiance`` : quand vrai, l'adresse cliente pour la
+    # limite d'émission par IP est lue depuis ``X-Forwarded-For`` posé par
+    # le reverse proxy (Caddy, WP8). À laisser FAUX si l'API est exposée
+    # en direct : sinon un client forgerait cet en-tête pour contourner la
+    # limite. C'est le reverse proxy, et lui seul, qui doit écraser un
+    # éventuel en-tête client - garanti par la config Caddy de WP8.
+    derriere_proxy_confiance: bool = Field(default=False)
 
     # === Redis (compteurs de rate limiting, WP7) ===
     redis_host: str = Field(default="127.0.0.1")
@@ -109,11 +126,21 @@ class Settings(BaseSettings):
 
     @property
     def database_url_meta(self) -> str | None:
-        """DSN de la base de service (``cles_api``), ``None`` si désactivée."""
+        """DSN de la base de service (``cles_api``), ``None`` si désactivée.
+
+        Utilise les identifiants dédiés ``meta_user``/``meta_password``
+        (rôle ``kuma_api_service``) quand ils sont fournis, sinon le
+        couple principal (régime local mono-rôle). Cette séparation est
+        ce qui permet au moteur d'édition de tourner en lecture seule
+        (ADR-0003 D2).
+        """
         if self.meta_db is None:
             return None
+        utilisateur = self.meta_user if self.meta_user is not None else self.postgres_user
+        secret = self.meta_password if self.meta_password is not None else self.postgres_password
+        mot_de_passe = secret.get_secret_value() if isinstance(secret, SecretStr) else secret
         return (
-            f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
+            f"postgresql+psycopg://{utilisateur}:{mot_de_passe}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.meta_db}"
         )
 

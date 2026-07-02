@@ -74,3 +74,29 @@ def test_prod_accepte_cle_admin_non_vide() -> None:
         api_cle_admin="cle_admin_reelle",
     )
     assert s.api_environnement == "prod"
+
+
+def test_meta_url_retombe_sur_le_couple_principal_sans_identifiants_dedies() -> None:
+    """Régime local mono-rôle : pas de meta_user -> couple principal."""
+    s = Settings(postgres_password="mdp", postgres_user="kuma_admin", meta_db="kuma_api_meta")
+    url = s.database_url_meta
+    assert url is not None
+    assert "kuma_admin:mdp@" in url
+    assert url.endswith("/kuma_api_meta")
+
+
+def test_meta_url_utilise_les_identifiants_dedies_quand_fournis() -> None:
+    """Profil serveur (ADR-0003 D2) : moteur méta = rôle kuma_api_service."""
+    s = Settings(
+        postgres_password="mdp_ro",
+        postgres_user="kuma_api_ro",
+        meta_db="kuma_api_meta",
+        meta_user="kuma_api_service",
+        meta_password="mdp_service",
+    )
+    url = s.database_url_meta
+    assert url is not None
+    assert "kuma_api_service:mdp_service@" in url
+    # Le couple lecture seule ne fuit pas dans le DSN de la base de service.
+    assert "kuma_api_ro" not in url
+    assert "mdp_ro" not in url

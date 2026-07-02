@@ -13,6 +13,7 @@ env/
 .env
 .env.*
 !.env.example
+!.env.prod.example
 docker/.env
 
 # Outils de qualité
