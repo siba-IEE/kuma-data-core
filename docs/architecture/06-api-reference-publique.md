@@ -12,10 +12,12 @@
 
 ## 1. Vue d'ensemble de l'API
 
-Kuma Data Core expose une API HTTP privée qui sert de source de vérité
-aux outils Kuma (média éditorial, scripts de synchronisation, Solar
-Bridge, autres outils dérivés). Elle n'est pas destinée à un accès
-anonyme : tous les endpoints métier exigent une clé API administrative.
+Kuma Data Core expose une API HTTP qui sert de source de vérité aux
+outils Kuma (média éditorial, scripts de synchronisation, Solar Bridge,
+autres outils dérivés) et, sur le profil serveur public (édition
+publiée, ADR-0003), aux consommateurs tiers munis d'une clé
+self-service. Elle n'est pas destinée à un accès anonyme : tous les
+endpoints métier exigent une clé API (administrative ou self-service).
 
 | Aspect | Choix |
 |---|---|
@@ -34,8 +36,11 @@ Toutes les routes métier vivent sous `/v1/...`.
 Structure des routes :
 
 ```
-/v1/health                                        santé publique (seul endpoint non authentifié)
+/v1/health                                        santé publique (non authentifié)
 /v1/health/db                                     santé infrastructure (authentifié)
+/v1/edition                                       édition publiée servie (non authentifié)
+/v1/cles                POST                      émission self-service d'une clé (non authentifié)
+/v1/cles/{prefixe}      DELETE                    révocation d'une clé (administrateur)
 /v1/series                                        catalogue des séries
 /v1/series/{code_serie}                           détail d'une série + ses mesures
 /v1/localites                                     référentiel géographique
@@ -45,31 +50,48 @@ Structure des routes :
 /v1/horaire/{localite}/{grandeur}/disponibilite   plage temporelle disponible
 ```
 
-19 endpoints en tout : santé (2), séries (2), localités (2), horaire
-(2), grandeurs (11). Le préfixe `/v1/grandeurs/` n'agrège pas
-dynamiquement, il expose 11 routes distinctes (détail en 3.7).
+22 endpoints en tout : santé (2), édition (1), clés (2), séries (2),
+localités (2), horaire (2), grandeurs (11). Le préfixe `/v1/grandeurs/`
+n'agrège pas dynamiquement, il expose 11 routes distinctes (détail
+en 3.7).
 
 ## 2. Authentification et accès
 
 ### 2.1 Mécanisme
 
-Toute requête autre que `GET /v1/health` doit présenter le header HTTP :
+Toute requête autre que les endpoints publics (`GET /v1/health`,
+`GET /v1/edition`, `POST /v1/cles`) doit présenter le header HTTP :
 
 ```
 Authorization: Bearer <cle>
 ```
 
-La validation se fait en 3 étapes (`api/dependencies.py:verifier_cle_api`) :
+La validation se fait en 4 étapes (`api/dependencies.py:verifier_cle_api`) :
 
 1. Présence du header, sinon `401 AUTH_HEADER_MANQUANT`
 2. Préfixe `Bearer `, sinon `401 AUTH_FORMAT_INVALIDE`
-3. Appartenance de la clé à l'ensemble des clés valides, sinon `401 AUTH_CLE_INVALIDE`
+3. Comparaison aux clés d'environnement (administrative, Bridge)
+4. À défaut, et si une base de service est configurée : recherche de
+   l'empreinte SHA-256 de la clé parmi les clés self-service actives ;
+   sinon `401 AUTH_CLE_INVALIDE`
+
+Les clés self-service actives sont soumises à un quota journalier
+(section 3.11) quand le rate limiting est activé ; les clés
+d'environnement ne sont jamais limitées.
 
 ### 2.2 Modèle d'accès
 
-L'API est privée : aucun compte utilisateur, aucun flux d'inscription,
-aucune clé publique. Les clés sont attribuées par l'éditeur de Kuma
-Data Core aux consommateurs autorisés.
+Deux régimes coexistent :
+
+- **Régime local / interne** (historique) : aucun compte, aucun flux
+  d'inscription. Les clés sont attribuées par l'éditeur de Kuma Data
+  Core aux consommateurs autorisés, en variables d'environnement.
+- **Régime serveur public** (édition publiée, ADR-0003) : inscription
+  self-service légère via `POST /v1/cles` (une adresse de contact
+  suffit). La clé est gratuite, montrée une seule fois, révocable, et
+  porte un quota journalier. Les données servies restent publiques : la
+  clé n'est pas une barrière mais une signature (traçabilité, limitation
+  par consommateur, révocation ciblée).
 
 ### 2.3 Garanties techniques sans exposition de secret
 
@@ -95,11 +117,15 @@ Data Core aux consommateurs autorisés.
 {
   "statut": "operationnel",
   "version": "<x.y.z>",
-  "environnement": "<dev|integration|prod>"
+  "environnement": "<dev|integration|prod>",
+  "edition": "edition_20260702"
 }
 ```
 
-- Indique que l'API répond. Ne touche aucune dépendance externe.
+- Indique que l'API répond. `edition` est lu en best-effort (identifiant
+  de l'édition publiée servie, `null` hors régime édition ou si la
+  lecture échoue) : le health ne dépend de rien et ne renvoie jamais de
+  5xx. Le détail de l'édition vit sur `GET /v1/edition` (3.10).
 
 ### 3.2 `GET /v1/health/db` : santé détaillée
 
@@ -117,9 +143,10 @@ Data Core aux consommateurs autorisés.
 
 - Erreurs : `503 INFRASTRUCTURE_BASE_INDISPONIBLE` si la base ne répond
   pas (avec détail `composants`).
-- La vérification Redis n'est pas branchée tant qu'un endpoint métier ne
-  consomme pas Redis (la forme de réponse est déjà prête à recevoir un
-  second composant).
+- La vérification Redis n'est pas branchée dans cet endpoint (la forme
+  de réponse est prête à recevoir un second composant). Redis est
+  consommé par les compteurs de quota (3.11) en mode fail-open : son
+  indisponibilité n'affecte pas la santé de l'API.
 
 ### 3.3 `GET /v1/series` : listing des séries
 
@@ -577,7 +604,76 @@ Retourne la plage temporelle utilisable pour cette grandeur.
 - `fin` est dynamique : `aujourd'hui − 5 mois − 1 jour` (reflète la
   latence temps-réel du service amont).
 
-### 3.10 Codes d'erreur exposés par l'API
+### 3.10 `GET /v1/edition` : édition publiée servie
+
+Fraîcheur affichée (ADR-0003, D7) : chaque déploiement public sert une
+édition datée de la base de référence, et l'API dit laquelle.
+
+- Auth : non requise (même statut public que `/v1/health`)
+- Réponse 200 :
+
+```json
+{
+  "edition_id": "edition_20260702",
+  "date_publication": "2026-07-02",
+  "revision_source": "<hash git court>",
+  "couverture_resumee": {
+    "localites": 81,
+    "series": 1388
+  }
+}
+```
+
+- `revision_source` désigne la révision du dépôt public au moment de
+  l'export de l'édition. Les métadonnées sont injectées par le script
+  d'export dans l'édition elle-même, jamais devinées côté serveur.
+- Erreurs : `404 RESSOURCE_INTROUVABLE` si le déploiement ne sert pas
+  une édition publiée (base de développement) - c'est l'état normal du
+  régime local.
+
+### 3.11 `POST /v1/cles` et `DELETE /v1/cles/{prefixe}` : clés self-service
+
+Cycle de vie des clés self-service (ADR-0003, D3). Disponible sur le
+profil serveur public uniquement : sans base de service configurée,
+l'émission renvoie `404 CLES_EMISSION_NON_ACTIVEE`.
+
+**Émission** - `POST /v1/cles`, non authentifié (c'est l'inscription) :
+
+```json
+{"email": "dev@exemple.org", "usage_prevu": "outil de dimensionnement"}
+```
+
+- Réponse 201 :
+
+```json
+{
+  "cle": "kuma_<43 caractères URL-safe>",
+  "prefixe": "kuma_xxxxxxxx",
+  "quota_journalier": 5000
+}
+```
+
+- La clé est montrée **une seule fois** : le serveur n'en conserve que
+  l'empreinte SHA-256. Le `prefixe` est l'identifiant public de la clé
+  (support, révocation).
+- L'émission est bornée par adresse IP (3 par 24 h glissantes) :
+  `429 CLES_LIMITE_EMISSION_ATTEINTE` au-delà. C'est la seule surface
+  d'écriture publique du serveur.
+
+**Quota journalier** : chaque requête authentifiée par une clé
+self-service consomme son quota du jour (fenêtre calendaire UTC,
+compteur Redis indexé sur l'empreinte). Dépassement :
+`429 CLES_QUOTA_JOURNALIER_DEPASSE`. Le compteur est fail-open : une
+panne du cache ne rend pas les données indisponibles. Les clés
+d'environnement ne sont jamais limitées.
+
+**Révocation** - `DELETE /v1/cles/{prefixe}`, réservé à la clé
+administrateur. Révoque (soft delete) toutes les clés actives du
+préfixe ; `404 RESSOURCE_INTROUVABLE` si aucune. Une clé valide mais
+non administrative reçoit le même `401 AUTH_CLE_INVALIDE` qu'une clé
+inconnue.
+
+### 3.12 Codes d'erreur exposés par l'API
 
 | Code | Statut HTTP type | Sens |
 |---|---|---|
@@ -594,10 +690,13 @@ Retourne la plage temporelle utilisable pour cette grandeur.
 | `RESSOURCE_LOCALITE_INCONNUE` | 404 | localité introuvable |
 | `GRANDEUR_F2_INCONNUE` | 404 | grandeur F2 hors catalogue |
 | `INCOMPATIBILITE_SOURCE_GRANDEUR` | 400 | série incompatible ou compagne manquante |
-| `PLAGE_TEMPORELLE_NON_DISPONIBLE` | 400 | requête horaire hors plage utilisable |
+| `PLAGE_TEMPORELLE_NON_DISPONIBLE` | 400 | requête horaire hors plage utilisable (ou hors stocké en profil édition figée) |
 | `PASSE_PLAT_INDISPONIBLE` | 503 | service amont temporairement indisponible |
+| `CLES_EMISSION_NON_ACTIVEE` | 404 | self-service de clés non disponible sur ce déploiement |
+| `CLES_LIMITE_EMISSION_ATTEINTE` | 429 | limite d'émission de clés par IP atteinte |
+| `CLES_QUOTA_JOURNALIER_DEPASSE` | 429 | quota journalier de la clé self-service dépassé |
 | `INFRASTRUCTURE_BASE_INDISPONIBLE` | 503 | PostgreSQL injoignable |
-| `INFRASTRUCTURE_CACHE_INDISPONIBLE` | 503 | cache (Redis) indisponible (déclaré, pas encore branché) |
+| `INFRASTRUCTURE_CACHE_INDISPONIBLE` | 503 | cache (Redis) indisponible (déclaré, non levé : les compteurs sont fail-open) |
 | `SERVEUR_ERREUR_INTERNE` | 500 | filet de sécurité, aucune fuite technique |
 
 Le contrat des codes est stable : un code publié ne change pas de sens,
