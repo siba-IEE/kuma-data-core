@@ -47,3 +47,30 @@ def test_api_environnement_refuse_staging() -> None:
     """QO-3 : l'ancienne valeur ``staging`` (jamais documentée) est rejetée."""
     with pytest.raises(ValidationError):
         Settings(postgres_password="mdp", api_environnement="staging")  # type: ignore[arg-type]
+
+
+def test_prod_refuse_cle_admin_vide() -> None:
+    """Durcissement sécurité : une clé admin vide en prod bloque le démarrage.
+
+    Sans cette garde, ``API_CLE_ADMIN=""`` passe ``is None`` mais rendrait
+    un Bearer vide administrateur.
+    """
+    with pytest.raises(ValidationError):
+        Settings(
+            postgres_password="mdp",
+            api_environnement="prod",
+            api_docs_actives=False,
+            log_format="json",
+            api_cle_admin="",
+        )
+
+
+def test_prod_accepte_cle_admin_non_vide() -> None:
+    s = Settings(
+        postgres_password="mdp",
+        api_environnement="prod",
+        api_docs_actives=False,
+        log_format="json",
+        api_cle_admin="cle_admin_reelle",
+    )
+    assert s.api_environnement == "prod"

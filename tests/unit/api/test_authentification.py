@@ -43,3 +43,17 @@ def test_authentification_cle_inconnue_leve_auth_cle_invalide() -> None:
 def test_authentification_cle_valide_retourne_cle(cle_solar_valide: str) -> None:
     cle_retournee = verifier_cle_api(authorization=f"Bearer {cle_solar_valide}")
     assert cle_retournee == cle_solar_valide
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("entete", ["Bearer ", "Bearer    ", "Bearer \t"])
+def test_authentification_bearer_vide_refuse(entete: str) -> None:
+    """Durcissement : un Bearer vide ne matche jamais (garde clé vide).
+
+    Défense contre une clé d'environnement vide qui, sans ce refus,
+    rendrait ``compare_digest("", "")`` vrai et authentifierait un anonyme.
+    """
+    with pytest.raises(ExceptionKuma) as info:
+        verifier_cle_api(authorization=entete)
+    assert info.value.code is CodeErreur.AUTH_CLE_INVALIDE
+    assert info.value.statut_http == 401

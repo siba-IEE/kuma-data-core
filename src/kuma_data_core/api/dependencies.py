@@ -31,10 +31,12 @@ def _cles_valides() -> set[str]:
     """
     settings = get_settings()
     cles: set[str] = set()
-    if settings.api_cle_solar_bridge is not None:
-        cles.add(settings.api_cle_solar_bridge.get_secret_value())
-    if settings.api_cle_admin is not None:
-        cles.add(settings.api_cle_admin.get_secret_value())
+    # Une clé vide (variable d'environnement présente mais vide) n'est
+    # jamais une clé valide : sans ce filtre, un Bearer vide matcherait
+    # via compare_digest("", "") et authentifierait un anonyme.
+    for secret in (settings.api_cle_solar_bridge, settings.api_cle_admin):
+        if secret is not None and secret.get_secret_value():
+            cles.add(secret.get_secret_value())
     return cles
 
 
@@ -67,6 +69,15 @@ def verifier_cle_api(
         )
 
     cle_fournie = authorization.removeprefix("Bearer ").strip()
+
+    # Une clé vide ne peut jamais être valide : refus avant toute
+    # comparaison (défense redondante avec le filtrage de _cles_valides).
+    if not cle_fournie:
+        raise ExceptionKuma(
+            code=CodeErreur.AUTH_CLE_INVALIDE,
+            message="Clé API invalide ou révoquée.",
+            statut_http=status.HTTP_401_UNAUTHORIZED,
+        )
 
     if any(secrets.compare_digest(cle_fournie, cle) for cle in _cles_valides()):
         return cle_fournie

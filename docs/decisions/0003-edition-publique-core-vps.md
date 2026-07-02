@@ -75,6 +75,22 @@ confinée à la base de service*. L'émission self-service de clés est la seule
 surface d'écriture exposée au public : elle reçoit sa propre protection dès WP6
 (limite d'émission par IP, vérification d'e-mail à évaluer).
 
+**Contrainte de déploiement à honorer en WP8 (revue de sécurité 2026-07-02)** : les
+deux rôles `kuma_api_ro` (lecture seule sur l'édition) et `kuma_api_service`
+(écriture sur `kuma_api_meta`) sont **mutuellement exclusifs** par construction du
+provisioning — `kuma_api_ro` n'a pas `CONNECT` sur `kuma_api_meta`, et
+`kuma_api_service` n'a pas de `SELECT` sur les éditions. Or les deux DSN
+(`database_url`, `database_url_meta`) sont aujourd'hui construits depuis un **seul**
+couple `postgres_user`/`postgres_password`. WP8 doit donc introduire un second
+couple d'identifiants (`meta_user`/`meta_password`) pour que le moteur d'édition
+tourne réellement en `kuma_api_ro` et le moteur méta en `kuma_api_service`. À défaut,
+l'opérateur serait tenté de tout faire tourner sous un rôle sur-privilégié (voire
+`postgres`), ce qui annulerait silencieusement la garantie de lecture seule de ce
+même D2. Ce n'est pas une vulnérabilité exploitable (aucune entrée attaquable ; tous
+les modes de panne échouent en 401), mais la garantie de moindre privilège n'est
+tenue que si les deux identifiants existent. Le code applicatif ne doit jamais
+tourner sous un rôle superutilisateur.
+
 ### D3 · Régime d'accès public : clé gratuite obligatoire
 
 **Décision** : accès public sous **clé gratuite obligatoire** (et non anonyme façon
@@ -210,7 +226,7 @@ Ordre dicté par ce qui bloque le reste. Chaque lot est un changement cohérent 
 | **WP5** | Métadonnées de fraîcheur : `GET /v1/edition` + champ `edition` sur `/v1/health` (D7) | `api/v1/health.py`, schéma, table d'édition | WP1 |
 | **WP6** | Table `cles_api` + émission self-service + révocation/rotation + protection de l'émission (D2, D3) | schéma `kuma_api_meta` hors lignée Alembic (`Base` distincte), modèle, endpoint, `dependencies.py` | WP3 |
 | **WP7** | Rate limiting par clé via Redis (D3) | dépendance/middleware FastAPI | WP6 |
-| **WP8** | Déploiement VPS : `docker-compose` prod, reverse proxy TLS, gestion des secrets | `docker/`, provisioning | WP3, WP4 |
+| **WP8** | Déploiement VPS : `docker-compose` prod, reverse proxy TLS, gestion des secrets, **second couple d'identifiants `meta_user`/`meta_password` (D2)**, **`X-Forwarded-For` de confiance pour la limite d'émission par IP**, pare-feu (Postgres/Redis jamais exposés) | `docker/`, provisioning, `config.py` | WP3, WP4 |
 | **WP9** | Vérification : smoke post-bascule, **test de non-fuite** (asserter l'absence des objets exclus dans l'édition restaurée), exercice de rollback | tests, CI | transversal |
 
 ## Questions ouvertes

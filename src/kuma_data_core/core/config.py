@@ -131,8 +131,10 @@ class Settings(BaseSettings):
                 raise ValueError("api_docs_actives ne peut pas être True en production")
             if self.log_format != "json":
                 raise ValueError("log_format doit être 'json' en production")
-            if self.api_cle_admin is None:
-                raise ValueError("api_cle_admin obligatoire en production")
+            # Clé admin présente ET non vide : une valeur vide passerait
+            # `is None` mais rendrait un Bearer vide administrateur.
+            if self.api_cle_admin is None or not self.api_cle_admin.get_secret_value():
+                raise ValueError("api_cle_admin obligatoire et non vide en production")
         return self
 
 
