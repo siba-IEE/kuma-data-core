@@ -45,8 +45,15 @@ _RE_DATE_PUBLICATION = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _RE_REVISION_SOURCE = re.compile(r"^[0-9a-f]{7,40}$")
 
 
-def sql_construction() -> str:
-    """SQL de purge + assainissement de la base d'édition intermédiaire."""
+def instructions_construction() -> list[str]:
+    """Instructions de purge + assainissement, une par élément.
+
+    Exposées individuellement pour les exécuteurs qui ne savent pas
+    découper un script multi-instructions (psycopg n'accepte qu'une
+    instruction par ``execute``, et le bloc ``DO`` contient des ``;``
+    internes) : le test de non-fuite (WP9) les rejoue une à une dans
+    une transaction annulée.
+    """
     morceaux: list[str] = []
 
     # 1. Fonction d'audit : le CASCADE emporte tous les triggers qui la
@@ -84,7 +91,12 @@ $purge_triggers$;"""
         )
         morceaux.append(f"UPDATE {table} SET\n    {affectations};")
 
-    return "\n\n".join(morceaux) + "\n"
+    return morceaux
+
+
+def sql_construction() -> str:
+    """Script complet de construction (pour ``psql``, qui sait le découper)."""
+    return "\n\n".join(instructions_construction()) + "\n"
 
 
 def sql_controles() -> str:
