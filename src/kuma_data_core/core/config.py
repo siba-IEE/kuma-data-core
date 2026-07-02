@@ -55,12 +55,23 @@ class Settings(BaseSettings):
     # Configuration de l'application FastAPI privée.
     api_titre: str = Field(default="Kuma Data Core API")
     api_version: str = Field(default="0.1.0")
-    api_environnement: Literal["dev", "staging", "prod"] = Field(default="dev")
+    api_environnement: Literal["dev", "integration", "prod"] = Field(default="dev")
     api_docs_actives: bool = Field(default=True)
     # Clés API valides (stockage en variables d'environnement).
     # Migration vers une table ``cles_api`` prévue ultérieurement.
     api_cle_solar_bridge: SecretStr | None = Field(default=None)
     api_cle_admin: SecretStr | None = Field(default=None)
+
+    # === Édition publique (ADR-0003) ===
+    # ``edition_db`` : nom de la base d'édition active côté serveur, écrit
+    # par ``publier-edition.sh`` dans le fichier pointeur (bascule par
+    # repointage, D1). Prime sur ``postgres_db`` quand défini. En local,
+    # rester à ``None`` : la base de référence est servie directement.
+    edition_db: str | None = Field(default=None)
+    # ``edition_figee`` : profil public sans relais temps réel (D6). Le
+    # repli passe-plat horaire renvoie PLAGE_TEMPORELLE_NON_DISPONIBLE au
+    # lieu d'appeler la source amont ; seul le stocké est servi.
+    edition_figee: bool = Field(default=False)
 
     # === Settings Logging ===
     # ``texte`` en dev (lisible humainement, couleurs), ``json`` en prod
@@ -71,10 +82,15 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """DSN SQLAlchemy pour psycopg3 (driver synchrone moderne)."""
+        """DSN SQLAlchemy pour psycopg3 (driver synchrone moderne).
+
+        La base d'édition (``edition_db``, serveur public) prime sur la
+        base de référence (``postgres_db``, locale) quand elle est définie.
+        """
+        base = self.edition_db if self.edition_db is not None else self.postgres_db
         return (
             f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
+            f"@{self.postgres_host}:{self.postgres_port}/{base}"
         )
 
     @model_validator(mode="after")

@@ -58,6 +58,7 @@ from kuma_data_core.api.v1.schemas.horaire import (
     ReponseHoraire,
     ResultatHoraire,
 )
+from kuma_data_core.core.config import get_settings
 from kuma_data_core.db.session import obtenir_session
 from kuma_data_core.exceptions import (
     NasaPowerHttpError,
@@ -263,7 +264,8 @@ def grandeur_horaire(
     - 401 ``AUTH_HEADER_MANQUANT`` / ``AUTH_CLE_INVALIDE`` (auth Bearer).
     - 422 ``VALIDATION_VALEUR_INVALIDE`` (paramètre Pydantic hors plage).
     - 400 ``PLAGE_TEMPORELLE_NON_DISPONIBLE`` (plage demandée hors
-      disponibilité).
+      disponibilité ; ou, en profil édition figée ADR-0003 D6, plage
+      non couverte par le stocké - aucun relais amont n'est tenté).
     - 503 ``PASSE_PLAT_INDISPONIBLE`` (service amont indisponible
       après retry).
     """
@@ -292,6 +294,22 @@ def grandeur_horaire(
                 session, serie_id, params.grandeur, params.periode_debut, params.periode_fin
             )
             return _repondre_horaire(params, resultats_stockes)
+
+    # Profil édition figée (ADR-0003, D6) : jamais de relais amont. Une
+    # plage non couverte par le stocké est indisponible, point - zéro
+    # dépendance sortante sur le serveur public.
+    if get_settings().edition_figee:
+        raise ExceptionKuma(
+            code=CodeErreur.PLAGE_TEMPORELLE_NON_DISPONIBLE,
+            message=(
+                "La plage demandee n'est pas couverte par les donnees stockees de cette edition."
+            ),
+            statut_http=status.HTTP_400_BAD_REQUEST,
+            details={
+                "plage_demandee": f"{params.periode_debut} / {params.periode_fin}",
+                "raison": "edition_figee_sans_relais_temps_reel",
+            },
+        )
 
     # Repli passe-plat (relais NASA POWER, non validé éditorialement).
     latitude, longitude = coordonnees_localite(localite_complet)
