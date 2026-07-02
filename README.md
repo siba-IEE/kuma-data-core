@@ -136,6 +136,12 @@ Le SQL et les identifiants métier sont en français. Toute évolution du
 schéma passe par une migration Alembic. Détails dans
 [docs/conventions/](docs/conventions/) et [CONTRIBUTING.md](CONTRIBUTING.md).
 
+La [feuille de route](ROADMAP.md) donne la direction ; les
+[issues](https://github.com/siba-IEE/kuma-data-core/issues) ouvertes sont la
+tranche actionnable, classées par profil : `pour:dev` (le moteur),
+`pour:chercheur` (la méthode), `pour:institution` (la donnée et le terrain).
+Pour une première contribution, cherchez le label `good first issue`.
+
 ## Licence
 
 Kuma Data Core est distribué sous licence **AGPL-3.0-or-later** (voir

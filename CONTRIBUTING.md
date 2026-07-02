@@ -13,6 +13,13 @@ sont la tranche actionnable, classées par profil de contributeur :
   confiance, calage terrain).
 - `pour:institution` : la donnée et le terrain (RDS national, validation au sol).
 
+Pour comprendre le modèle avant de contribuer, voir les guides dans
+[docs/contribution/](docs/contribution/) : le [modèle de
+données](docs/contribution/donnees.md), la [confiance et le statut
+éditorial](docs/contribution/confiance-et-statuts.md), la [généricité
+pays](docs/contribution/genericite-pays.md), et [amener son pays ou sa
+station](docs/contribution/pays-et-terrain.md).
+
 Pour une première contribution, cherchez le label `good first issue` : ces
 issues précisent les fichiers concernés, le critère d'acceptation et le piège
 connu.
