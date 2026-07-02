@@ -72,6 +72,11 @@ class Settings(BaseSettings):
     # repli passe-plat horaire renvoie PLAGE_TEMPORELLE_NON_DISPONIBLE au
     # lieu d'appeler la source amont ; seul le stocké est servi.
     edition_figee: bool = Field(default=False)
+    # ``meta_db`` : nom de la base de service (``kuma_api_meta`` sur le
+    # serveur public, D3) qui porte ``cles_api``. ``None`` = pas de base
+    # de service : l'émission self-service de clés est désactivée et
+    # l'authentification reste env-only (régime local historique).
+    meta_db: str | None = Field(default=None)
 
     # === Settings Logging ===
     # ``texte`` en dev (lisible humainement, couleurs), ``json`` en prod
@@ -91,6 +96,16 @@ class Settings(BaseSettings):
         return (
             f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{base}"
+        )
+
+    @property
+    def database_url_meta(self) -> str | None:
+        """DSN de la base de service (``cles_api``), ``None`` si désactivée."""
+        if self.meta_db is None:
+            return None
+        return (
+            f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
+            f"@{self.postgres_host}:{self.postgres_port}/{self.meta_db}"
         )
 
     @model_validator(mode="after")

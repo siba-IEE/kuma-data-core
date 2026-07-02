@@ -99,3 +99,6 @@ SQL
 
 echo "Provisioning serveur terminé (kuma_api_ro, kuma_api_service, kuma_api_meta)."
 echo "Grants d'édition : posés par publier-edition.sh à chaque publication."
+echo "Schéma de la base de service (table cles_api) : exécuter ensuite, avec"
+echo "les identifiants administrateur et META_DB=kuma_api_meta :"
+echo "  uv run python -m kuma_data_core.db.meta"

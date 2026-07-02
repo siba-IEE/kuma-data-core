@@ -35,6 +35,26 @@ def get_engine() -> Engine:
     )
 
 
+@lru_cache(maxsize=4)
+def _engine_pour_url(url: str) -> Engine:
+    """Moteur memoizé par DSN (base de service, tests)."""
+    return create_engine(url, echo=False, future=True, pool_pre_ping=True)
+
+
+def get_engine_meta() -> Engine:
+    """Moteur de la base de service ``kuma_api_meta`` (ADR-0003, D3).
+
+    Distinct du moteur principal : la base de service persiste à
+    travers les bascules d'édition et porte ``cles_api``. Lève si la
+    configuration ne désigne pas de base de service (``META_DB``
+    absente = régime local, self-service désactivé).
+    """
+    url = get_settings().database_url_meta
+    if url is None:
+        raise RuntimeError("META_DB non configurée : pas de base de service sur ce déploiement.")
+    return _engine_pour_url(url)
+
+
 @lru_cache(maxsize=1)
 def get_session_factory() -> sessionmaker[Session]:
     """Retourne la fabrique de sessions associée au moteur unique."""

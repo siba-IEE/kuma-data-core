@@ -68,14 +68,65 @@ def verifier_cle_api(
 
     cle_fournie = authorization.removeprefix("Bearer ").strip()
 
-    if not any(secrets.compare_digest(cle_fournie, cle) for cle in _cles_valides()):
-        raise ExceptionKuma(
-            code=CodeErreur.AUTH_CLE_INVALIDE,
-            message="Clé API invalide ou révoquée.",
-            statut_http=status.HTTP_401_UNAUTHORIZED,
-        )
+    if any(secrets.compare_digest(cle_fournie, cle) for cle in _cles_valides()):
+        return cle_fournie
 
-    return cle_fournie
+    # Clés self-service (WP6) : sur un déploiement avec base de service,
+    # l'empreinte de la clé est cherchée dans ``cles_api``. La comparaison
+    # se fait sur le hash SHA-256 (index unique) : pas de canal temporel
+    # exploitable, la valeur comparée n'est pas le secret.
+    if get_settings().meta_db is not None and _cle_self_service_valide(cle_fournie):
+        return cle_fournie
+
+    raise ExceptionKuma(
+        code=CodeErreur.AUTH_CLE_INVALIDE,
+        message="Clé API invalide ou révoquée.",
+        statut_http=status.HTTP_401_UNAUTHORIZED,
+    )
+
+
+def _cle_self_service_valide(cle: str) -> bool:
+    """Vraie si la clé correspond à une clé self-service active.
+
+    Ouverture paresseuse d'une session sur la base de service : ce
+    chemin n'est atteint que si les clés d'environnement n'ont pas
+    reconnu le Bearer, et seulement quand ``META_DB`` est configurée.
+    Toute erreur d'infrastructure vaut refus (401), pas 500 : une base
+    de service injoignable ne doit pas transformer l'auth en oracle.
+    """
+    from sqlalchemy.orm import Session
+
+    from kuma_data_core.db.session import get_engine_meta
+    from kuma_data_core.services.cles import cle_active_existe
+
+    try:
+        with Session(get_engine_meta()) as session:
+            return cle_active_existe(session, cle)
+    except Exception:
+        return False
+
+
+def verifier_cle_admin(
+    authorization: Annotated[str | None, Header()] = None,
+) -> str:
+    """Valide que le Bearer est **la clé administrateur** (et elle seule).
+
+    Réservé aux opérations d'administration (révocation de clés, WP6).
+    Une clé valide mais non-admin reçoit le même 401
+    ``AUTH_CLE_INVALIDE`` qu'une clé inconnue : pas d'oracle sur le
+    statut d'une clé.
+    """
+    cle = verifier_cle_api(authorization)
+    settings = get_settings()
+    if settings.api_cle_admin is not None and secrets.compare_digest(
+        cle, settings.api_cle_admin.get_secret_value()
+    ):
+        return cle
+    raise ExceptionKuma(
+        code=CodeErreur.AUTH_CLE_INVALIDE,
+        message="Clé API invalide ou révoquée.",
+        statut_http=status.HTTP_401_UNAUTHORIZED,
+    )
 
 
 CleApiValidee = Annotated[str, Depends(verifier_cle_api)]
@@ -89,3 +140,6 @@ Exemple :
     def endpoint_protege(_cle: CleApiValidee) -> dict[str, str]:
         return {"ok": "ok"}
 """
+
+CleAdminValidee = Annotated[str, Depends(verifier_cle_admin)]
+"""Type-alias pour les endpoints réservés à la clé administrateur."""
