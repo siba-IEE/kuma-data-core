@@ -3,6 +3,26 @@
 Merci de votre intérêt. Ce dépôt est le moteur ; les données guinéennes
 vivent dans [rds-guinee](https://github.com/siba-IEE/rds-guinee).
 
+## Par où commencer
+
+La [feuille de route](ROADMAP.md) décrit la direction. Les issues ouvertes
+sont la tranche actionnable, classées par profil de contributeur :
+
+- `pour:dev` : le moteur (API, schéma, ingestion, connecteurs).
+- `pour:chercheur` : la méthode (contrôle qualité, incertitude, grille de
+  confiance, calage terrain).
+- `pour:institution` : la donnée et le terrain (RDS national, validation au sol).
+
+Pour une première contribution, cherchez le label `good first issue` : ces
+issues précisent les fichiers concernés, le critère d'acceptation et le piège
+connu.
+
+Les labels et les issues sont en français, par cohérence avec le code et l'API
+(le SQL et le domaine métier sont en français ; voir
+[docs/conventions/01-naming.md](docs/conventions/01-naming.md)). Seuls les
+labels d'accueil `good first issue` et `help wanted` gardent leur nom anglais,
+que la plateforme reconnaît.
+
 ## Mise en place
 
 Voir le démarrage rapide du [README](README.md). En résumé :
