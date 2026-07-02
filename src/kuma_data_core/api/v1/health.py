@@ -41,7 +41,7 @@ class ReponseSantePublique(BaseModel):
 
 
 class StatutComposant(BaseModel):
-    """État d'un composant d'infrastructure (base, cache…)."""
+    """État d'un composant d'infrastructure (base, cache...)."""
 
     nom: str
     statut: Literal["operationnel", "degrade", "indisponible"]

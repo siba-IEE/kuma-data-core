@@ -745,7 +745,7 @@ Calculées à partir des grandeurs brutes, persistées dans
 
 | Code | Libellé | Unité | Calcul | Source amont |
 |---|---|---|---|---|
-| `hep` | Heures équivalentes pleines | h_eq | Convention `1 kWh/m²/j ↔ 1 h_eq/j à 1 kW/m² STC` ; agrégation mensuelle/annuelle de GHI | GHI NASA POWER |
+| `hep` | Heures équivalentes pleines | h_eq | Convention `1 kWh/m²/j <-> 1 h_eq/j à 1 kW/m² STC` ; agrégation mensuelle/annuelle de GHI | GHI NASA POWER |
 | `fraction_diffuse` | Fraction diffuse | sans dimension | `Σ DHI / Σ GHI` sur la période | `dhi` + `ghi` NASA POWER |
 | `humidex` | Indice de confort Humidex | °C apparents | Masterton & Richardson 1979, constantes Magnus | `t2m` + `rh2m` NASA POWER |
 | `productible_specifique_theorique` | Productible spécifique théorique | kWh/kWc | `hep × pr_theorique`, `pr_theorique = 0.8` | `hep` calculée Kuma |

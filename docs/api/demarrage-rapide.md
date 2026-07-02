@@ -1,8 +1,8 @@
-# Démarrage rapide — API publique Kuma Data Core
+# Démarrage rapide - API publique Kuma Data Core
 
 Interroger les données climatiques et solaires de la Guinée en quelques
 minutes. L'API sert des **séries situées** : chaque valeur arrive avec sa
-source, son unité, son niveau de confiance et ses caveats — jamais un
+source, son unité, son niveau de confiance et ses caveats - jamais un
 nombre nu.
 
 - **Base URL** : `https://api.kumascience.com`
@@ -103,7 +103,7 @@ curl "https://api.kumascience.com/v1/series/gin_boffa_ghi_era5_land_2001_2020?fo
 | `GET /v1/localites` | Référentiel géographique | oui |
 | `GET /v1/localites/{code}` | Détail d'une localité | oui |
 | `GET /v1/grandeurs/incertitude_inter_source/{localite}` | Écart inter-sources + dégénérescence de pixel | oui |
-| `GET /v1/grandeurs/<code>` | Grandeurs calculées et paramétrables (POA, productible…) | oui |
+| `GET /v1/grandeurs/<code>` | Grandeurs calculées et paramétrables (POA, productible...) | oui |
 | `GET /v1/horaire/{localite}/{grandeur}` | Données horaires stockées | oui |
 
 Référence complète des paramètres et des réponses :
@@ -113,10 +113,10 @@ Référence complète des paramètres et des réponses :
 
 Chaque mesure d'une série brute porte :
 
-- `valeur` — la valeur numérique,
-- `annee`/`mois` (mensuel) ou `instant_mesure` (journalier) — le repère temporel,
-- `niveau_effectif` — le niveau de confiance (A terrain / B modélisé / C…),
-- `statut` — le statut éditorial (`brut`, `valide_auto`, `publie`…).
+- `valeur` - la valeur numérique,
+- `annee`/`mois` (mensuel) ou `instant_mesure` (journalier) - le repère temporel,
+- `niveau_effectif` - le niveau de confiance (A terrain / B modélisé / C...),
+- `statut` - le statut éditorial (`brut`, `valide_auto`, `publie`...).
 
 Au niveau de la série : `source_label`, `source_url`, `grandeur_unit`,
 `methode_collecte`, `periode_debut`/`periode_fin`, et un champ `notes_fr`

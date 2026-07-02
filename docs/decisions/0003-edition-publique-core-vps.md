@@ -21,7 +21,7 @@ la synchronisation en un mécanisme continu fragile ».
 
 Le modèle retenu transforme un problème technique (synchronisation) en acte
 éditorial (publication) : le VPS ne reçoit pas un flux, il reçoit des **éditions**
-datées, citables et reproductibles — cohérent avec le versioning des données, les
+datées, citables et reproductibles - cohérent avec le versioning des données, les
 dépôts figés à DOI (`.zenodo.json`, `CITATION.cff`) et la logique de référence
 datée déjà en place.
 
@@ -38,10 +38,10 @@ une vague d'ingestion mergée, ou mensuel), pas un mécanisme automatique.
 
 Mécanisme, vu la taille de la base (centaines de Mo au plus) :
 
-1. **Local** — construction d'une **base d'édition intermédiaire** (D5), puis
+1. **Local** - construction d'une **base d'édition intermédiaire** (D5), puis
    `pg_dump` de cette base.
-2. **Transfert** — `scp`/`rsync` vers le VPS.
-3. **VPS** — restauration dans une base neuve `kuma_edition_<AAAAMMJJ>`, contrôles
+2. **Transfert** - `scp`/`rsync` vers le VPS.
+3. **VPS** - restauration dans une base neuve `kuma_edition_<AAAAMMJJ>`, contrôles
    de fumée (smoke checks), puis **bascule par repointage** : l'API lit la variable
    `EDITION_DB` qui désigne la base active (sans préfixe `KUMA_`, conformément
    à la convention sur les variables d'environnement) ; publier = pointer vers
@@ -49,7 +49,7 @@ Mécanisme, vu la taille de la base (centaines de Mo au plus) :
    génération en réserve (retour arrière = repointer, instantané).
 
 **Repointage plutôt que `ALTER DATABASE ... RENAME`** : le repointage laisse
-intactes les bases de service du VPS (clés, état de rate limiting — cf. D3), qui ne
+intactes les bases de service du VPS (clés, état de rate limiting - cf. D3), qui ne
 doivent pas être écrasées par une édition. Le renommage, lui, remplacerait la base
 entière et emporterait ces états.
 
@@ -78,7 +78,7 @@ surface d'écriture exposée au public : elle reçoit sa propre protection dès 
 **Contrainte de déploiement à honorer en WP8 (revue de sécurité 2026-07-02)** : les
 deux rôles `kuma_api_ro` (lecture seule sur l'édition) et `kuma_api_service`
 (écriture sur `kuma_api_meta`) sont **mutuellement exclusifs** par construction du
-provisioning — `kuma_api_ro` n'a pas `CONNECT` sur `kuma_api_meta`, et
+provisioning - `kuma_api_ro` n'a pas `CONNECT` sur `kuma_api_meta`, et
 `kuma_api_service` n'a pas de `SELECT` sur les éditions. Or les deux DSN
 (`database_url`, `database_url_meta`) sont aujourd'hui construits depuis un **seul**
 couple `postgres_user`/`postgres_password`. WP8 doit donc introduire un second
@@ -104,7 +104,7 @@ X, édition Y »), et permet un rate limiting **par consommateur** plutôt que p
 
 Implications structurelles :
 
-- Matérialiser la table `cles_api` (révocation, rotation, quotas) — déjà anticipée
+- Matérialiser la table `cles_api` (révocation, rotation, quotas) - déjà anticipée
   dans le code (`dependencies.py`, `config.py`).
 - **La table `cles_api` ne fait pas partie de l'édition.** Les clés sont un état du
   VPS, pas une donnée éditoriale locale. Elles vivent dans une base de service
@@ -112,7 +112,7 @@ Implications structurelles :
   que protège le repointage de D1). Le dump de l'édition n'emporte jamais de clé.
 - **`kuma_api_meta` vit hors de la lignée Alembic.** Les migrations Alembic
   versionnent la base de référence, et `alembic check` garantit l'alignement
-  modèles ↔ référence ; une table qui n'existe que sur le VPS casserait cet
+  modèles <-> référence ; une table qui n'existe que sur le VPS casserait cet
   invariant. Le schéma de `kuma_api_meta` est provisionné par un script SQL
   versionné (`scripts/publication/`), et son futur modèle SQLAlchemy (WP6)
   utilisera une `Base` déclarative distincte, hors `Base.metadata` de référence.
@@ -141,7 +141,7 @@ Le dump ne doit embarquer que ce qui est public. Le filtre est écrit **une fois
 clair**, comme un manifeste versionné et **testé** :
 `src/kuma_data_core/publication/manifeste.py` (module du package, donc couvert par
 mypy strict), avec un test de complétude (`tests/unit/publication/`) qui échoue si
-une table de `Base.metadata` n'est pas explicitement classée — une table ajoutée
+une table de `Base.metadata` n'est pas explicitement classée - une table ajoutée
 demain ne peut pas fuiter silencieusement, la CI casse.
 
 **Mécanique : l'assainissement se fait en local, jamais sur le VPS.** `pg_dump` ne
@@ -158,7 +158,7 @@ Règles :
 |---|---|---|
 | `audit_log` | **Exclu** | Audit interne, jamais exposé par l'API. Volumineux et sensible. |
 | `cles_api` | **Hors édition par construction** | État de service du VPS (D3), hors schéma de référence. |
-| `contributeurs` | **Inclus mais assaini** | FK `cree_par`/`modifie_par` doivent résoudre. On conserve les lignes, on neutralise les colonnes PII. `email_principal` est `NOT NULL UNIQUE` : valeur neutre **par ligne** (`contributeur-<id>@retire.invalid`), pas `NULL` ni constante. `biographie`, `notes_internes` (nullables) → `NULL`. L'API n'expose aucun endpoint `contributeurs`. |
+| `contributeurs` | **Inclus mais assaini** | FK `cree_par`/`modifie_par` doivent résoudre. On conserve les lignes, on neutralise les colonnes PII. `email_principal` est `NOT NULL UNIQUE` : valeur neutre **par ligne** (`contributeur-<id>@retire.invalid`), pas `NULL` ni constante. `biographie`, `notes_internes` (nullables) -> `NULL`. L'API n'expose aucun endpoint `contributeurs`. |
 | Statuts éditoriaux des mesures | **Aucun filtrage par ligne au dump** | Cf. D6 : le versioning non destructif fait partie de la donnée publiée. |
 | Fonction `kuma_log_audit()` + triggers `trg_audit_*` | **Supprimés de la base d'édition** avant dump | L'écriture n'a pas lieu sur le VPS ; des triggers pointant vers une table exclue seraient de toute façon cassés. |
 | `alembic_version` | **Incluse** | Traçabilité de la révision de schéma de l'édition. |
@@ -182,7 +182,7 @@ relayer).
 ne filtre pas par *statut éditorial*. Les deux questions sont indépendantes, et la
 seconde est tranchée ainsi (ex-QO-1) : **l'édition embarque toutes les lignes hors
 exclusions D5, tous statuts compris**, et l'API publique conserve son comportement
-actuel — servir le courant `statut <> 'deprecie'` (cf. `api/v1/series.py`), le
+actuel - servir le courant `statut <> 'deprecie'` (cf. `api/v1/series.py`), le
 champ `statut` restant exposé dans les réponses. Justification : l'acte éditorial,
 c'est la publication de l'édition elle-même ; exiger `publie` viderait l'édition
 (rien ne porte ce statut), exiger `valide_auto` amputerait le brut assumé (séries
@@ -208,7 +208,7 @@ courante :
 
 Les métadonnées d'édition sont produites au moment de la publication (date,
 révision git) et injectées dans l'édition, pas devinées côté serveur.
-`revision_source` désigne le hash du **dépôt public** `siba-IEE/kuma-data-core` —
+`revision_source` désigne le hash du **dépôt public** `siba-IEE/kuma-data-core` -
 c'est lui que les utilisateurs peuvent consulter.
 
 ## Plan de construction séquencé
@@ -218,11 +218,11 @@ Ordre dicté par ce qui bloque le reste. Chaque lot est un changement cohérent 
 
 | Lot | Objet | Touche | Dépend de |
 |---|---|---|---|
-| **WP0** | Manifeste du filtre de publication (D5) + test de complétude | `src/kuma_data_core/publication/manifeste.py`, `tests/unit/publication/` | — |
-| **WP1** | Script d'export local (PowerShell) : base d'édition intermédiaire → `pg_dump` + métadonnées d'édition (D1, D5, D7) | `scripts/publication/exporter-edition.ps1` (esprit `services-*.ps1`) | WP0 |
+| **WP0** | Manifeste du filtre de publication (D5) + test de complétude | `src/kuma_data_core/publication/manifeste.py`, `tests/unit/publication/` | - |
+| **WP1** | Script d'export local (PowerShell) : base d'édition intermédiaire -> `pg_dump` + métadonnées d'édition (D1, D5, D7) | `scripts/publication/exporter-edition.ps1` (esprit `services-*.ps1`) | WP0 |
 | **WP2** | Script VPS (bash) : restauration en base neuve, smoke checks, bascule par repointage, réserve N-1 (D1) | `scripts/publication/publier-edition.sh` | WP1 |
 | **WP3** | Rôle lecture seule `kuma_api_ro` + provisioning SQL de `kuma_api_meta` (D2, D3) | `scripts/publication/`, grants | WP2 |
-| **WP4** | Profil « édition figée » : désactiver le repli passe-plat, désactiver `/docs` (déjà géré par le validateur prod), CORS clos (D6) + trancher QO-3 | `core/config.py`, `api/v1/horaire.py`, `api/main.py` | — |
+| **WP4** | Profil « édition figée » : désactiver le repli passe-plat, désactiver `/docs` (déjà géré par le validateur prod), CORS clos (D6) + trancher QO-3 | `core/config.py`, `api/v1/horaire.py`, `api/main.py` | - |
 | **WP5** | Métadonnées de fraîcheur : `GET /v1/edition` + champ `edition` sur `/v1/health` (D7) | `api/v1/health.py`, schéma, table d'édition | WP1 |
 | **WP6** | Table `cles_api` + émission self-service + révocation/rotation + protection de l'émission (D2, D3) | schéma `kuma_api_meta` hors lignée Alembic (`Base` distincte), modèle, endpoint, `dependencies.py` | WP3 |
 | **WP7** | Rate limiting par clé via Redis (D3) | dépendance/middleware FastAPI | WP6 |
@@ -231,11 +231,11 @@ Ordre dicté par ce qui bloque le reste. Chaque lot est un changement cohérent 
 
 ## Questions ouvertes
 
-- **QO-2** — Cadence de publication : après chaque vague mergée, ou mensuelle fixe ?
+- **QO-2** - Cadence de publication : après chaque vague mergée, ou mensuelle fixe ?
   Décision éditoriale, sans impact bloquant sur le mécanisme.
 (QO-1, statuts publiés, est tranchée dans D6. QO-3, `api_environnement`, est
 tranchée en WP4 dans le sens de la doc de référence : le `Literal` de
-`config.py` passe de `staging` à `integration` — la valeur `staging` n'avait
+`config.py` passe de `staging` à `integration` - la valeur `staging` n'avait
 jamais été documentée ni utilisée hors du `Literal` lui-même.)
 
 ## Conséquences

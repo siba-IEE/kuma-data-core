@@ -3,7 +3,7 @@
 La table ``cles_api`` est un **état du serveur**, pas une donnée
 éditoriale : elle vit dans la base de service ``kuma_api_meta``,
 persistante à travers les bascules d'édition (D1), et **hors lignée
-Alembic** (D3) - ``alembic check`` garantit l'alignement modèles ↔ base
+Alembic** (D3) - ``alembic check`` garantit l'alignement modèles <-> base
 de référence, une table absente de la référence casserait cet invariant.
 D'où la ``BaseMeta`` déclarative distincte : ``Base.metadata`` de
 référence ne voit jamais ``cles_api``, et le manifeste de publication

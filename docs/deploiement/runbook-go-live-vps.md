@@ -1,4 +1,4 @@
-# Runbook go-live — première édition publique sur VPS
+# Runbook go-live - première édition publique sur VPS
 
 > Séquence complète pour déployer l'API publique Kuma Data Core sur un VPS
 > nu (Ubuntu 24.04) jusqu'à `https://<domaine>/v1/edition` en ligne.
@@ -15,7 +15,7 @@
       un domaine, pas une IP nue. Sans domaine, l'API tourne mais sans HTTPS.
 - [ ] **Base locale de référence** à jour (c'est elle qu'on publie).
 
-## Phase 1 — Durcissement du serveur nu
+## Phase 1 - Durcissement du serveur nu
 
 Objectif : réduire la surface d'attaque avant tout déploiement. **Ne jamais
 couper l'accès root/mot de passe sans avoir vérifié qu'une connexion par clé
@@ -47,7 +47,7 @@ fonctionne**, sous peine de se verrouiller.
 5. **Vérifier la reconnexion** par clé sur le nouveau port dans un second
    terminal AVANT de fermer la session courante.
 
-## Phase 2 — Base de données et provisioning
+## Phase 2 - Base de données et provisioning
 
 Ordre important : la base et ses rôles doivent exister avant l'API.
 
@@ -82,7 +82,7 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
      api python -m kuma_data_core.db.meta
    ```
 
-## Phase 3 — Publier la première édition
+## Phase 3 - Publier la première édition
 
 10. **En local** (machine de référence) : exporter une édition.
     ```powershell
@@ -105,13 +105,13 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
 13. **Renseigner `EDITION_DB`** dans `.env.prod` avec le nom de base créé
     (affiché par le script, `kuma_edition_<date>_<rev>`).
 
-## Phase 4 — Démarrer l'API et le TLS
+## Phase 4 - Démarrer l'API et le TLS
 
 14. **Démarrer la pile complète** (API + Caddy) :
     ```bash
     docker compose -f docker/docker-compose.prod.yml --env-file .env.prod up -d
     ```
-15. **DNS** : vérifier que l'enregistrement A `<domaine>` → IP est propagé.
+15. **DNS** : vérifier que l'enregistrement A `<domaine>` -> IP est propagé.
     Caddy obtient et renouvelle le certificat Let's Encrypt automatiquement au
     premier accès HTTPS.
 16. **Vérifier** :
@@ -120,7 +120,7 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
     curl https://<domaine>/v1/edition      # métadonnées + couverture
     ```
 
-## Phase 5 — Vérification et supervision
+## Phase 5 - Vérification et supervision
 
 - [ ] **Émettre une clé self-service** et l'essayer sur un endpoint privé :
   ```bash
@@ -131,7 +131,7 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
   ```
 - [ ] **Ping externe** (UptimeRobot ou équivalent) sur
       `https://<domaine>/v1/health`.
-- [ ] **Confirmer le pare-feu** : `sudo ufw status` — seuls le port SSH, 80
+- [ ] **Confirmer le pare-feu** : `sudo ufw status` - seuls le port SSH, 80
       et 443 ouverts.
 - [ ] **Sauvegarde de la base LOCALE** (la référence) planifiée et poussée
       hors de la machine locale. Le VPS, lui, ne détient rien d'irremplaçable.
@@ -139,7 +139,7 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
 ## Republier une édition (routine ultérieure)
 
 Après chaque vague d'ingestion mergée, ou à la cadence retenue :
-`exporter-edition.ps1` (local) → `scp` → `publier-edition.sh` (VPS) →
-mettre à jour `EDITION_DB` si le nom change → recharger l'API. L'édition
+`exporter-edition.ps1` (local) -> `scp` -> `publier-edition.sh` (VPS) ->
+mettre à jour `EDITION_DB` si le nom change -> recharger l'API. L'édition
 précédente reste en réserve N-1 ; retour arrière = repointer le fichier
 pointeur vers elle et recharger.
