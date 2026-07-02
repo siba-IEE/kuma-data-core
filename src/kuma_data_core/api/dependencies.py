@@ -75,8 +75,25 @@ def verifier_cle_api(
     # l'empreinte de la clé est cherchée dans ``cles_api``. La comparaison
     # se fait sur le hash SHA-256 (index unique) : pas de canal temporel
     # exploitable, la valeur comparée n'est pas le secret.
-    if get_settings().meta_db is not None and _cle_self_service_valide(cle_fournie):
-        return cle_fournie
+    settings = get_settings()
+    if settings.meta_db is not None:
+        quota = _quota_cle_self_service(cle_fournie)
+        if quota is not None:
+            # Quota journalier (WP7) : appliqué aux seules clés
+            # self-service, en fenêtre fixe UTC, fail-open si Redis
+            # est injoignable (cf. services/quotas.py).
+            if settings.rate_limiting_actif:
+                from kuma_data_core.services.cles import hacher_cle
+                from kuma_data_core.services.quotas import consommer_quota
+
+                if not consommer_quota(hacher_cle(cle_fournie), quota):
+                    raise ExceptionKuma(
+                        code=CodeErreur.CLES_QUOTA_JOURNALIER_DEPASSE,
+                        message="Quota journalier de la clé dépassé.",
+                        statut_http=status.HTTP_429_TOO_MANY_REQUESTS,
+                        details={"quota_journalier": quota},
+                    )
+            return cle_fournie
 
     raise ExceptionKuma(
         code=CodeErreur.AUTH_CLE_INVALIDE,
@@ -85,8 +102,8 @@ def verifier_cle_api(
     )
 
 
-def _cle_self_service_valide(cle: str) -> bool:
-    """Vraie si la clé correspond à une clé self-service active.
+def _quota_cle_self_service(cle: str) -> int | None:
+    """Quota de la clé self-service active, ``None`` si inconnue/révoquée.
 
     Ouverture paresseuse d'une session sur la base de service : ce
     chemin n'est atteint que si les clés d'environnement n'ont pas
@@ -97,13 +114,13 @@ def _cle_self_service_valide(cle: str) -> bool:
     from sqlalchemy.orm import Session
 
     from kuma_data_core.db.session import get_engine_meta
-    from kuma_data_core.services.cles import cle_active_existe
+    from kuma_data_core.services.cles import quota_si_active
 
     try:
         with Session(get_engine_meta()) as session:
-            return cle_active_existe(session, cle)
+            return quota_si_active(session, cle)
     except Exception:
-        return False
+        return None
 
 
 def verifier_cle_admin(

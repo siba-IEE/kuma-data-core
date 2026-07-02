@@ -85,15 +85,19 @@ def creer_cle(
     return cle, enregistrement
 
 
-def cle_active_existe(session: Session, cle: str) -> bool:
-    """Vraie si l'empreinte de ``cle`` correspond à une clé active."""
+def quota_si_active(session: Session, cle: str) -> int | None:
+    """Quota journalier si l'empreinte de ``cle`` est une clé active.
+
+    ``None`` = clé inconnue ou révoquée (l'appelant refuse). Le quota
+    retourné alimente le rate limiting (WP7).
+    """
     resultat = session.execute(
-        select(CleApi.id).where(
+        select(CleApi.quota_journalier).where(
             CleApi.cle_hash == hacher_cle(cle),
             CleApi.actif.is_(True),
         )
-    ).first()
-    return resultat is not None
+    ).scalar()
+    return int(resultat) if resultat is not None else None
 
 
 def revoquer_par_prefixe(session: Session, prefixe: str) -> int:

@@ -117,3 +117,51 @@ def test_revocation_prefixe_inconnu_renvoie_404(
         "/v1/cles/kuma_inconnu1", headers={"Authorization": f"Bearer {cle_admin_valide}"}
     )
     assert r.status_code == 404
+
+
+class _FauxRedis:
+    """Compteur en mémoire, interface minimale incr/expire (WP7)."""
+
+    def __init__(self) -> None:
+        self.valeurs: dict[str, int] = {}
+
+    def incr(self, cle: str) -> int:
+        self.valeurs[cle] = self.valeurs.get(cle, 0) + 1
+        return self.valeurs[cle]
+
+    def expire(self, cle: str, secondes: int) -> None:  # pragma: no cover - trivial
+        pass
+
+
+def test_quota_journalier_applique_de_bout_en_bout(
+    client: TestClient,
+    base_service_active: None,
+    monkeypatch: pytest.MonkeyPatch,
+    headers_auth: dict[str, str],
+) -> None:
+    """WP7 : au-delà du quota de la clé, 429 CLES_QUOTA_JOURNALIER_DEPASSE.
+
+    Rate limiting activé + compteur Redis remplacé par un compteur en
+    mémoire (le chemin HTTP complet reste réel) ; quota réduit à 2 en
+    base. Les clés d'environnement ne sont jamais limitées.
+    """
+    from kuma_data_core.services import quotas
+
+    payload = _emettre(client)
+    cle = str(payload["cle"])
+
+    monkeypatch.setattr(get_settings(), "rate_limiting_actif", True)
+    faux = _FauxRedis()
+    monkeypatch.setattr(quotas, "obtenir_client", lambda: faux)
+    with get_engine_meta().begin() as connexion:
+        connexion.execute(text("UPDATE cles_api SET quota_journalier = 2"))
+
+    entetes = {"Authorization": f"Bearer {cle}"}
+    assert client.get("/v1/localites", headers=entetes).status_code == 200
+    assert client.get("/v1/localites", headers=entetes).status_code == 200
+    r = client.get("/v1/localites", headers=entetes)
+    assert r.status_code == 429
+    assert r.json()["erreur"]["code"] == CodeErreur.CLES_QUOTA_JOURNALIER_DEPASSE.value
+
+    # Clé d'environnement (Bridge) : jamais comptée ni limitée.
+    assert client.get("/v1/localites", headers=headers_auth).status_code == 200

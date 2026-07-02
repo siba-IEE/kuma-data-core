@@ -77,6 +77,15 @@ class Settings(BaseSettings):
     # de service : l'émission self-service de clés est désactivée et
     # l'authentification reste env-only (régime local historique).
     meta_db: str | None = Field(default=None)
+    # ``rate_limiting_actif`` : applique le quota journalier des clés
+    # self-service via Redis (D3/WP7). Profil serveur public uniquement ;
+    # les clés d'environnement (admin, Bridge) ne sont jamais limitées.
+    rate_limiting_actif: bool = Field(default=False)
+
+    # === Redis (compteurs de rate limiting, WP7) ===
+    redis_host: str = Field(default="127.0.0.1")
+    redis_port: int = Field(default=6379)
+    redis_password: SecretStr | None = Field(default=None)
 
     # === Settings Logging ===
     # ``texte`` en dev (lisible humainement, couleurs), ``json`` en prod
