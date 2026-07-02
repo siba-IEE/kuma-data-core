@@ -2,7 +2,7 @@
 
 > Note méthodologique **amont**, antérieure à toute mise en oeuvre.
 > Objet : poser la doctrine et la méthode du passage **régime API (confiance B) → régime terrain (confiance A)** pour le substrat physique solaire, à la lumière de la disponibilité de stations sol open-data (ESMAP/WAPP). Préciser ce que le terrain débloque, ce qu'il ne débloque pas, et le séquencement.
-> Périmètre : solaire / climat des 6 villes pilotes guinéennes, avec extension possible à l'Afrique de l'Ouest francophone. Hors périmètre : éolien, hydrologie, autres substrats.
+> Périmètre : solaire / climat des 6 villes pilotes guinéennes, avec extension possible à l'Afrique francophone. Hors périmètre : éolien, hydrologie, autres substrats.
 
 > **Données WAPP acquises localement.** Les fichiers bruts des deux stations
 > guinéennes sont en main. Consultation directe → résolutions et nuance sur le

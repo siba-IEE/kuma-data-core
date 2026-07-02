@@ -8,8 +8,8 @@
 ## 1. Contexte
 
 Kuma Data Core : noyau de données pour l'ingénierie énergétique.
-Pilote Guinée, marché cible Afrique
-de l'Ouest. Stack Python 3.12 + PostgreSQL 16 + SQLAlchemy 2.x +
+Pilote Guinée, marché cible Afrique francophone. Stack Python 3.12 +
+PostgreSQL 16 + SQLAlchemy 2.x +
 Alembic + FastAPI.
 
 Les 5 grandeurs F2

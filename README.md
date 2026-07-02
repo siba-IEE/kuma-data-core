@@ -12,7 +12,7 @@ solaire en Guinée.
 
 ## Le problème
 
-Dans une grande partie de l'Afrique de l'Ouest, dimensionner un projet
+Dans une grande partie de l'Afrique francophone, dimensionner un projet
 solaire revient à s'appuyer sur une moyenne nationale ou sur des produits
 satellitaires qui divergent, sans vérité de terrain ni incertitude
 documentée. Kuma Data Core traite la provenance, l'incertitude et le

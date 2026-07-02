@@ -1,6 +1,6 @@
 # Amener son pays ou sa station
 
-Ce guide s'adresse à un chercheur ou une institution d'un pays de la région qui
+Ce guide s'adresse à un chercheur ou une institution d'un pays d'Afrique francophone qui
 veut voir son pays représenté, ou apporter des mesures de terrain.
 
 ## Deux choses à apporter
@@ -18,9 +18,9 @@ pays](genericite-pays.md)). Vos données vivent dans le dépôt RDS de votre pay
 le pont les verse dans le Core. Vous n'avez pas à écrire de migration. Le modèle
 de données est décrit dans le [guide de contribution de données](donnees.md).
 
-## Contexte régional
+## Contexte francophone
 
-Plusieurs pays de la région disposent de stations sol ouvertes. Elles
+Plusieurs pays d'Afrique francophone disposent de stations sol ouvertes. Elles
 constituent une première ancre de confiance A par pays, et une raison concrète
 pour les chercheurs locaux de contribuer. Kuma amorce chaque pays à partir de
 ces sources ouvertes ; une contribution est un renfort, pas un prérequis.

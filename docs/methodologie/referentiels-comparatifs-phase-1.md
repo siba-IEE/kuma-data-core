@@ -52,7 +52,7 @@ ingérée, mais une seconde source de référence (PVGIS-SARAH3) et une
 fenêtre temporelle climatologique étendue (NASA POWER 1991-2020) sont
 mobilisées pour la comparaison.
 
-Le marché cible est l'Afrique de l'Ouest. La validation empirique
+Le marché cible est l'Afrique francophone. La validation empirique
 des atlas et la trajectoire de levée des limitations s'appuient sur les
 publications peer-reviewed du domaine ouest-africain ; les références
 US (NSRDB, SURFRAD) servent de cadre de référence quantitatif indicatif
