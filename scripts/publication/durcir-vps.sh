@@ -54,7 +54,12 @@ echo "== 3. Durcissement SSH =="
 # NE PAS exécuter cette partie sans avoir vérifié qu'un utilisateur non-root
 # avec clé SSH fonctionne déjà, sous peine de verrouillage.
 if [ -n "$ADMIN_USER" ] && id "$ADMIN_USER" >/dev/null 2>&1; then
-    CONF=/etc/ssh/sshd_config.d/99-kuma-durcissement.conf
+    # Préfixe 00- pour être lu AVANT le 50-cloud-init.conf des images cloud :
+    # sshd retient la PREMIÈRE valeur de chaque paramètre, donc notre
+    # PasswordAuthentication no doit primer sur le PasswordAuthentication yes
+    # que cloud-init pose (sinon le mot de passe reste activé, cf. go-live
+    # 2026-07-02 où un fichier 99- arrivait trop tard).
+    CONF=/etc/ssh/sshd_config.d/00-kuma-durcissement.conf
     cat > "$CONF" <<EOF
 Port ${PORT_SSH}
 PermitRootLogin no
