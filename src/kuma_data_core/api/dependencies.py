@@ -31,10 +31,12 @@ def _cles_valides() -> set[str]:
     """
     settings = get_settings()
     cles: set[str] = set()
-    if settings.api_cle_solar_bridge is not None:
-        cles.add(settings.api_cle_solar_bridge.get_secret_value())
-    if settings.api_cle_admin is not None:
-        cles.add(settings.api_cle_admin.get_secret_value())
+    # Une clé vide (variable d'environnement présente mais vide) n'est
+    # jamais une clé valide : sans ce filtre, un Bearer vide matcherait
+    # via compare_digest("", "") et authentifierait un anonyme.
+    for secret in (settings.api_cle_solar_bridge, settings.api_cle_admin):
+        if secret is not None and secret.get_secret_value():
+            cles.add(secret.get_secret_value())
     return cles
 
 
@@ -68,14 +70,91 @@ def verifier_cle_api(
 
     cle_fournie = authorization.removeprefix("Bearer ").strip()
 
-    if not any(secrets.compare_digest(cle_fournie, cle) for cle in _cles_valides()):
+    # Une clé vide ne peut jamais être valide : refus avant toute
+    # comparaison (défense redondante avec le filtrage de _cles_valides).
+    if not cle_fournie:
         raise ExceptionKuma(
             code=CodeErreur.AUTH_CLE_INVALIDE,
             message="Clé API invalide ou révoquée.",
             statut_http=status.HTTP_401_UNAUTHORIZED,
         )
 
-    return cle_fournie
+    if any(secrets.compare_digest(cle_fournie, cle) for cle in _cles_valides()):
+        return cle_fournie
+
+    # Clés self-service (WP6) : sur un déploiement avec base de service,
+    # l'empreinte de la clé est cherchée dans ``cles_api``. La comparaison
+    # se fait sur le hash SHA-256 (index unique) : pas de canal temporel
+    # exploitable, la valeur comparée n'est pas le secret.
+    settings = get_settings()
+    if settings.meta_db is not None:
+        quota = _quota_cle_self_service(cle_fournie)
+        if quota is not None:
+            # Quota journalier (WP7) : appliqué aux seules clés
+            # self-service, en fenêtre fixe UTC, fail-open si Redis
+            # est injoignable (cf. services/quotas.py).
+            if settings.rate_limiting_actif:
+                from kuma_data_core.services.cles import hacher_cle
+                from kuma_data_core.services.quotas import consommer_quota
+
+                if not consommer_quota(hacher_cle(cle_fournie), quota):
+                    raise ExceptionKuma(
+                        code=CodeErreur.CLES_QUOTA_JOURNALIER_DEPASSE,
+                        message="Quota journalier de la clé dépassé.",
+                        statut_http=status.HTTP_429_TOO_MANY_REQUESTS,
+                        details={"quota_journalier": quota},
+                    )
+            return cle_fournie
+
+    raise ExceptionKuma(
+        code=CodeErreur.AUTH_CLE_INVALIDE,
+        message="Clé API invalide ou révoquée.",
+        statut_http=status.HTTP_401_UNAUTHORIZED,
+    )
+
+
+def _quota_cle_self_service(cle: str) -> int | None:
+    """Quota de la clé self-service active, ``None`` si inconnue/révoquée.
+
+    Ouverture paresseuse d'une session sur la base de service : ce
+    chemin n'est atteint que si les clés d'environnement n'ont pas
+    reconnu le Bearer, et seulement quand ``META_DB`` est configurée.
+    Toute erreur d'infrastructure vaut refus (401), pas 500 : une base
+    de service injoignable ne doit pas transformer l'auth en oracle.
+    """
+    from sqlalchemy.orm import Session
+
+    from kuma_data_core.db.session import get_engine_meta
+    from kuma_data_core.services.cles import quota_si_active
+
+    try:
+        with Session(get_engine_meta()) as session:
+            return quota_si_active(session, cle)
+    except Exception:
+        return None
+
+
+def verifier_cle_admin(
+    authorization: Annotated[str | None, Header()] = None,
+) -> str:
+    """Valide que le Bearer est **la clé administrateur** (et elle seule).
+
+    Réservé aux opérations d'administration (révocation de clés, WP6).
+    Une clé valide mais non-admin reçoit le même 401
+    ``AUTH_CLE_INVALIDE`` qu'une clé inconnue : pas d'oracle sur le
+    statut d'une clé.
+    """
+    cle = verifier_cle_api(authorization)
+    settings = get_settings()
+    if settings.api_cle_admin is not None and secrets.compare_digest(
+        cle, settings.api_cle_admin.get_secret_value()
+    ):
+        return cle
+    raise ExceptionKuma(
+        code=CodeErreur.AUTH_CLE_INVALIDE,
+        message="Clé API invalide ou révoquée.",
+        statut_http=status.HTTP_401_UNAUTHORIZED,
+    )
 
 
 CleApiValidee = Annotated[str, Depends(verifier_cle_api)]
@@ -89,3 +168,6 @@ Exemple :
     def endpoint_protege(_cle: CleApiValidee) -> dict[str, str]:
         return {"ok": "ok"}
 """
+
+CleAdminValidee = Annotated[str, Depends(verifier_cle_admin)]
+"""Type-alias pour les endpoints réservés à la clé administrateur."""

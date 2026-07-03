@@ -297,6 +297,50 @@ def test_ti108_lever_stocke_ne_relaie_pas_amont(
     mock_fetch.assert_not_called()
 
 
+def test_ti109_edition_figee_refuse_le_repli_sans_appel_amont(
+    client: TestClient,
+    headers_auth: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Profil édition figée (ADR-0003 D6) -> repli passe-plat refusé.
+
+    Plage 2024 non couverte par le stocké : en profil figé, l'endpoint
+    renvoie 400 PLAGE_TEMPORELLE_NON_DISPONIBLE au lieu de relayer NASA
+    POWER, et fetch_hourly n'est jamais appelé (zéro dépendance
+    sortante).
+    """
+    from kuma_data_core.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "edition_figee", True)
+    with patch("kuma_data_core.api.v1.horaire.fetch_hourly") as mock_fetch:
+        r = client.get(
+            f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
+            params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-05"},
+            headers=headers_auth,
+        )
+    assert r.status_code == 400
+    assert r.json()["erreur"]["code"] == CodeErreur.PLAGE_TEMPORELLE_NON_DISPONIBLE.value
+    mock_fetch.assert_not_called()
+
+
+def test_ti110_edition_figee_sert_toujours_le_stocke(
+    client: TestClient,
+    headers_auth: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Le profil figé ne change rien au service du stocké."""
+    from kuma_data_core.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "edition_figee", True)
+    r = client.get(
+        f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
+        params={"periode_debut": "2022-06-01", "periode_fin": "2022-06-02"},
+        headers=headers_auth,
+    )
+    assert r.status_code == 200
+    assert all(res["statut_editorial"] == "valide_auto" for res in r.json()["resultats"])
+
+
 # === Endpoint disponibilite ===============================================
 
 
