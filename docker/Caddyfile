@@ -5,10 +5,13 @@
 # vers l'API sur le réseau Docker interne.
 #
 # Point de sécurité clé (ADR-0003 D2) : la directive reverse_proxy de Caddy
-# gère X-Forwarded-For de façon sûre - elle REMPLACE tout en-tête client
-# entrant par la chaîne réelle et AJOUTE l'IP du pair. L'API lit la dernière
-# entrée (DERRIERE_PROXY_CONFIANCE=true) : un client ne peut donc pas forger
-# son IP pour contourner la limite d'émission de clés.
+# AJOUTE l'IP réelle du pair en fin de chaîne X-Forwarded-For (elle ne strippe
+# pas un en-tête client entrant, elle l'append). L'API lit la DERNIERE entrée
+# (DERRIERE_PROXY_CONFIANCE=true) : c'est celle ajoutée par Caddy, non
+# falsifiable - un client qui préfixe des IP fictives ne peut pas insérer
+# après. Il ne peut donc pas forger son IP pour contourner la limite
+# d'émission de clés. Vaut pour une topologie à UN proxy de confiance (Caddy) :
+# si un CDN/proxy amont est intercalé un jour, revoir cette hypothèse.
 
 {$KUMA_DOMAINE} {
 	# TLS automatique (Let's Encrypt). Renseigner un e-mail pour les

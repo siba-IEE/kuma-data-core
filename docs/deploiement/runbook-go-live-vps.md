@@ -95,22 +95,26 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
       <utilisateur>@<IP>:~/kuma-data-core/out/publication/
     ```
 12. **Sur le VPS** : publier (restauration en base neuve, contrôles de
-    non-fuite, grants au rôle lecture seule, repointage) :
+    non-fuite, grants au rôle lecture seule, mise à jour de `EDITION_DB`).
+    Le second argument est le fichier d'environnement de l'API : le script
+    y met à jour la ligne `EDITION_DB` directement (les autres secrets sont
+    préservés), pas besoin de l'éditer à la main.
     ```bash
     export PGUSER=... PGPASSWORD=...   # superutilisateur
     KUMA_PG_CONTENEUR=kuma-postgres-prod \
       bash scripts/publication/publier-edition.sh \
-      out/publication/edition_<date>_<rev>.dump ~/kuma-pointeur-edition.env
+      out/publication/edition_<date>_<rev>.dump .env.prod
     ```
-13. **Renseigner `EDITION_DB`** dans `.env.prod` avec le nom de base créé
-    (affiché par le script, `kuma_edition_<date>_<rev>`).
 
 ## Phase 4 - Démarrer l'API et le TLS
 
-14. **Démarrer la pile complète** (API + Caddy) :
+14. **Démarrer (ou recréer) la pile** (API + Caddy) :
     ```bash
     docker compose -f docker/docker-compose.prod.yml --env-file .env.prod up -d
     ```
+    L'API lit `EDITION_DB` depuis son environnement au démarrage du conteneur ;
+    une bascule d'édition prend effet en **recréant le conteneur API**
+    (`... up -d api`), pas par un simple rechargement.
 15. **DNS** : vérifier que l'enregistrement A `<domaine>` -> IP est propagé.
     Caddy obtient et renouvelle le certificat Let's Encrypt automatiquement au
     premier accès HTTPS.
@@ -139,7 +143,11 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
 ## Republier une édition (routine ultérieure)
 
 Après chaque vague d'ingestion mergée, ou à la cadence retenue :
-`exporter-edition.ps1` (local) -> `scp` -> `publier-edition.sh` (VPS) ->
-mettre à jour `EDITION_DB` si le nom change -> recharger l'API. L'édition
-précédente reste en réserve N-1 ; retour arrière = repointer le fichier
-pointeur vers elle et recharger.
+`exporter-edition.ps1` (local) -> `scp` du dump + JSON -> `publier-edition.sh`
+(VPS, met à jour `EDITION_DB` dans `.env.prod`) -> `docker compose ... up -d api`
+(recrée le conteneur API). L'édition précédente reste en réserve N-1.
+
+Rollback : remettre l'ancien nom dans `EDITION_DB` (`.env.prod`) et recréer le
+conteneur API. La base de l'édition précédente est conservée, la bascule est
+donc quasi instantanée (recréer un conteneur applicatif sans état = quelques
+secondes).

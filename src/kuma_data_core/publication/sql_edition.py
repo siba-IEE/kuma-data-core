@@ -150,11 +150,14 @@ $controles_edition$;
 
 def sql_metadonnees(edition_id: str, date_publication: str, revision_source: str) -> str:
     """Table ``edition_metadonnees`` (une ligne), injectée dans l'édition."""
-    if not _RE_EDITION_ID.match(edition_id):
+    # fullmatch (et non match) : ancre la fin sans laisser passer un retour
+    # ligne final, que ``$`` autoriserait. Ceinture-bretelle même si ces
+    # valeurs viennent d'un contexte local de confiance (date, hash git).
+    if not _RE_EDITION_ID.fullmatch(edition_id):
         raise ValueError(f"edition_id invalide (attendu edition_AAAAMMJJ) : {edition_id!r}")
-    if not _RE_DATE_PUBLICATION.match(date_publication):
+    if not _RE_DATE_PUBLICATION.fullmatch(date_publication):
         raise ValueError(f"date_publication invalide (attendu AAAA-MM-JJ) : {date_publication!r}")
-    if not _RE_REVISION_SOURCE.match(revision_source):
+    if not _RE_REVISION_SOURCE.fullmatch(revision_source):
         raise ValueError(f"revision_source invalide (attendu hash git hex) : {revision_source!r}")
 
     return f"""\

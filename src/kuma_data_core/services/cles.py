@@ -54,6 +54,9 @@ def nombre_emissions_recentes(session: Session, adresse_ip: str) -> int:
         .select_from(CleApi)
         .where(
             CleApi.adresse_ip_creation == adresse_ip,
+            # make_interval positionnel (years, months, weeks, days, hours) :
+            # les 4 premiers à 0, hours=24. Les kwargs Python ne sont pas
+            # traduits en named args PostgreSQL par SQLAlchemy, d'où le positionnel.
             CleApi.cree_le > func.now() - func.make_interval(0, 0, 0, 0, 24),
         )
     ).scalar()

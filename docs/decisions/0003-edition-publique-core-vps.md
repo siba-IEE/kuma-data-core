@@ -43,15 +43,20 @@ Mécanisme, vu la taille de la base (centaines de Mo au plus) :
 2. **Transfert** - `scp`/`rsync` vers le VPS.
 3. **VPS** - restauration dans une base neuve `kuma_edition_<AAAAMMJJ>`, contrôles
    de fumée (smoke checks), puis **bascule par repointage** : l'API lit la variable
-   `EDITION_DB` qui désigne la base active (sans préfixe `KUMA_`, conformément
-   à la convention sur les variables d'environnement) ; publier = pointer vers
-   la nouvelle base et recharger l'API. L'édition précédente est conservée une
-   génération en réserve (retour arrière = repointer, instantané).
+   d'environnement `EDITION_DB` (sans préfixe `KUMA_`, conformément à la convention
+   sur les variables d'environnement) qui désigne la base active.
+   `publier-edition.sh` met à jour cette variable dans le fichier d'environnement
+   de l'API (`.env.prod`, le seul que le conteneur lise) ; la bascule prend effet
+   en **recréant le conteneur API** (`docker compose up -d api`), pas par un simple
+   rechargement (le DSN est figé au démarrage du process). L'édition précédente est
+   conservée une génération en réserve : rollback = remettre l'ancien nom dans
+   `EDITION_DB` et recréer le conteneur (quasi instantané, conteneur applicatif sans
+   état ; la base précédente est intacte).
 
-**Repointage plutôt que `ALTER DATABASE ... RENAME`** : le repointage laisse
-intactes les bases de service du VPS (clés, état de rate limiting - cf. D3), qui ne
-doivent pas être écrasées par une édition. Le renommage, lui, remplacerait la base
-entière et emporterait ces états.
+**Repointer une variable plutôt que `ALTER DATABASE ... RENAME`** : mettre à jour
+`EDITION_DB` laisse intactes les bases de service du VPS (clés, état de rate limiting
+- cf. D3), qui ne doivent pas être écrasées par une édition. Le renommage, lui,
+remplacerait la base entière et emporterait ces états.
 
 Conséquences : le VPS ne détient **aucune donnée non reconstructible**. S'il brûle,
 on remonte un VPS neuf et on rejoue la dernière édition. La sauvegarde sérieuse

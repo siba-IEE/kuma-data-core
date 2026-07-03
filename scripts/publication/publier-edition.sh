@@ -12,13 +12,16 @@
 #   3. Smoke checks : edition_metadonnees cohérente avec le JSON, table
 #      d'audit absente (non-fuite), tables coeur non vides.
 #   4. Si le rôle kuma_api_ro existe (WP3), lui accorde SELECT.
-#   5. Bascule par repointage : écrit EDITION_DB=<base> dans le
-#      fichier pointeur (l'API le lit à son rechargement, WP4/WP8).
-#   6. Réserve N-1 : conserve la base précédemment pointée, supprime les
-#      éditions plus anciennes. Retour arrière = repointer le fichier.
+#   5. Bascule : met à jour la ligne EDITION_DB=<base> dans le fichier
+#      d'environnement de l'API (.env.prod), le seul que le conteneur lise
+#      (docker-compose injecte EDITION_DB, config.py le lit). La bascule
+#      prend effet en recréant le conteneur API (docker compose up -d api).
+#   6. Réserve N-1 : conserve la base précédemment active, supprime les
+#      éditions plus anciennes. Retour arrière = remettre l'ancien nom dans
+#      EDITION_DB et recréer le conteneur API.
 #
 # Usage :
-#   ./publier-edition.sh <chemin/edition_AAAAMMJJ_rev.dump> <fichier_pointeur>
+#   ./publier-edition.sh <chemin/edition_AAAAMMJJ_rev.dump> <fichier_env_api>
 #
 # Environnement :
 #   KUMA_PG_CONTENEUR  conteneur PostgreSQL (défaut : kuma-postgres)
@@ -33,9 +36,9 @@ PG_USER="${PGUSER:-postgres}"
 
 erreur() { echo "ERREUR : $*" >&2; exit 1; }
 
-[ "$#" -eq 2 ] || erreur "usage : publier-edition.sh <dump> <fichier_pointeur>"
+[ "$#" -eq 2 ] || erreur "usage : publier-edition.sh <dump> <fichier_env_api>"
 DUMP="$1"
-POINTEUR="$2"
+FICHIER_ENV="$2"
 
 [ -f "$DUMP" ] || erreur "dump introuvable : $DUMP"
 JSON="${DUMP%.dump}.json"
@@ -90,7 +93,8 @@ FUITE="$(smoke "SELECT count(*) FROM pg_tables WHERE schemaname='public' AND tab
 
 for table in localites sources series_metadonnees mesures_ressource_mensuelles; do
     N="$(smoke "SELECT count(*) FROM $table;")"
-    [ "$N" -gt 0 ] || erreur "smoke : table coeur $table vide"
+    N="${N:-0}"
+    [ "$N" -gt 0 ] 2>/dev/null || erreur "smoke : table coeur $table vide ou illisible"
 done
 echo "Smoke checks : OK."
 
@@ -105,25 +109,41 @@ else
     echo "AVERTISSEMENT : rôle kuma_api_ro absent (WP3 non provisionné), aucun grant posé."
 fi
 
-# --- 5. Bascule par repointage -------------------------------------------------
-BASE_PRECEDENTE=""
-if [ -f "$POINTEUR" ]; then
-    BASE_PRECEDENTE="$(grep -E '^EDITION_DB=' "$POINTEUR" | cut -d= -f2 || true)"
+# --- 5. Bascule : mise à jour de EDITION_DB dans le fichier d'environnement ----
+[ -f "$FICHIER_ENV" ] || erreur "fichier d'environnement introuvable : $FICHIER_ENV"
+# Lire l'édition précédente AVANT de réécrire (réserve N-1).
+BASE_PRECEDENTE="$(grep -E '^EDITION_DB=' "$FICHIER_ENV" | head -1 | cut -d= -f2 || true)"
+# Mise à jour en place de la seule ligne EDITION_DB (les autres secrets du
+# fichier sont préservés). Ajout si la ligne n'existe pas encore.
+if grep -qE '^EDITION_DB=' "$FICHIER_ENV"; then
+    sed -i "s|^EDITION_DB=.*|EDITION_DB=$BASE_CIBLE|" "$FICHIER_ENV"
+else
+    printf 'EDITION_DB=%s\n' "$BASE_CIBLE" >> "$FICHIER_ENV"
 fi
-printf 'EDITION_DB=%s\n' "$BASE_CIBLE" > "$POINTEUR"
-echo "Pointeur bascule : $POINTEUR -> $BASE_CIBLE (recharger l'API pour prise en compte)."
+echo "EDITION_DB mis à jour dans $FICHIER_ENV -> $BASE_CIBLE."
+echo "Recréer le conteneur API pour prise en compte : docker compose -f docker/docker-compose.prod.yml --env-file $FICHIER_ENV up -d api"
 
 # --- 6. Réserve N-1 : garder la base précédente, purger le reste ---------------
-echo "SELECT datname FROM pg_database WHERE datname LIKE 'kuma_edition_%';" \
-    | psql_srv postgres | while read -r base; do
+# mapfile hors pipe : le corps de boucle s'exécute dans le shell courant (pas
+# un sous-shell), et chaque échec de DROP est collecté au lieu d'être avalé.
+mapfile -t BASES_EDITION < <(
+    echo "SELECT datname FROM pg_database WHERE datname LIKE 'kuma_edition_%';" | psql_srv postgres
+)
+ECHECS_PURGE=0
+for base in "${BASES_EDITION[@]}"; do
     [ -n "$base" ] || continue
     if [ "$base" != "$BASE_CIBLE" ] && [ "$base" != "$BASE_PRECEDENTE" ]; then
         echo "Purge de l'édition ancienne $base."
-        echo "DROP DATABASE $base;" | psql_srv postgres
+        if ! echo "DROP DATABASE $base;" | psql_srv postgres; then
+            echo "AVERTISSEMENT : échec du DROP de $base (connexions actives ?), base conservée." >&2
+            ECHECS_PURGE=$((ECHECS_PURGE + 1))
+        fi
     fi
 done
+[ "$ECHECS_PURGE" -eq 0 ] \
+    || echo "AVERTISSEMENT : $ECHECS_PURGE base(s) ancienne(s) non purgée(s), à nettoyer manuellement." >&2
 if [ -n "$BASE_PRECEDENTE" ] && [ "$BASE_PRECEDENTE" != "$BASE_CIBLE" ]; then
-    echo "Réserve N-1 conservée : $BASE_PRECEDENTE (retour arrière = repointer $POINTEUR)."
+    echo "Réserve N-1 : $BASE_PRECEDENTE (rollback = remettre EDITION_DB=$BASE_PRECEDENTE dans $FICHIER_ENV + recréer le conteneur API)."
 fi
 
 echo "Édition $EDITION_ID publiée (base active : $BASE_CIBLE)."
