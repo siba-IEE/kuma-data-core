@@ -42,7 +42,6 @@ TABLES_PUBLIEES: frozenset[str] = frozenset(
         "sources",
         "grandeurs_referentiel",
         "grandeurs_metier",
-        "series_metadonnees",
         "mesures_ressource",
         "mesures_ressource_mensuelles",
         "mesures_ressource_horaires",
@@ -50,7 +49,7 @@ TABLES_PUBLIEES: frozenset[str] = frozenset(
 )
 
 # Tables dumpées après assainissement (règles ci-dessous).
-TABLES_ASSAINIES: frozenset[str] = frozenset({"contributeurs"})
+TABLES_ASSAINIES: frozenset[str] = frozenset({"contributeurs", "series_metadonnees"})
 
 # Tables jamais dumpées.
 TABLES_EXCLUES: frozenset[str] = frozenset({"audit_log"})
@@ -65,6 +64,13 @@ ASSAINISSEMENTS: dict[str, dict[str, str]] = {
         "email_principal": "'contributeur-' || id::text || '@retire.invalid'",
         "biographie": "NULL",
         "notes_internes": "NULL",
+    },
+    # Le journal de chantier d'une série (références internes : étapes,
+    # cohortes, dettes D-n, PR du dépôt privé) ne sort pas de la base de
+    # référence. Le passeport public vit dans note_publique (migration
+    # 099), servi par l'API sous l'alias notes_fr.
+    "series_metadonnees": {
+        "commentaire_editorial": "NULL",
     },
 }
 

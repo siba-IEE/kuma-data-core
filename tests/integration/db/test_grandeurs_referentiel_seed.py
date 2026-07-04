@@ -234,8 +234,15 @@ def test_010_decompte_famille_strategie(db_session: Session) -> None:
 
 
 def test_010_fk_unite_id_resolue_correctement(db_session: Session) -> None:
-    """Pour chaque grandeur seedée, ``unite_id`` pointe bien vers le ``unite_code`` attendu."""
+    """Pour chaque grandeur seedée, ``unite_id`` pointe bien vers le ``unite_code`` attendu.
+
+    Écart assumé vs seed 010 : la migration corrective 100 (résorption
+    D-63, option a) repointe ``productible_specifique_theorique`` vers
+    ``kwh_par_kwc_periode`` (les valeurs stockées sont des totaux par
+    période, pas des moyennes journalières).
+    """
     attendus = {entry["code"]: entry["unite_code"] for entry in GRANDEURS_REFERENTIEL_SEED}
+    attendus["productible_specifique_theorique"] = "kwh_par_kwc_periode"
     rows = db_session.execute(
         select(GrandeurReferentiel.code, Unite.code.label("unite_code"))
         .join(Unite, GrandeurReferentiel.unite_id == Unite.id)

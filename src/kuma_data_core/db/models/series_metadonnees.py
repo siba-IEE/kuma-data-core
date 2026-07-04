@@ -126,6 +126,17 @@ class SerieMetadonnees(Base):
     )
     methode_collecte_doc: Mapped[str | None] = mapped_column(Text, nullable=True)
     commentaire_editorial: Mapped[str | None] = mapped_column(Text, nullable=True)
+    note_publique: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+        comment=(
+            "Passeport public de la série (servi par l'API sous l'alias "
+            "notes_fr, affiché sur les fiches du site). Auto-portant : "
+            "aucune référence de chantier interne. Toute nouvelle série "
+            "doit le renseigner à l'insertion ; commentaire_editorial "
+            "reste le journal interne, assaini à l'export d'édition."
+        ),
+    )
     url_documentation: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # === Soft delete ===
