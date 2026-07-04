@@ -101,7 +101,7 @@ class SerieListee(BaseModel):
       - ``source_label`` ← ``sources.titre``
       - ``grandeur_label`` ← ``grandeurs_referentiel.libelle``
       - ``grandeur_unit`` ← ``unites.symbole``
-      - ``notes_fr`` ← ``series_metadonnees.commentaire_editorial``
+      - ``notes_fr`` ← ``series_metadonnees.note_publique`` (passeport public)
       - ``created_at`` ← ``series_metadonnees.cree_le``
       - ``updated_at`` ← ``series_metadonnees.modifie_le``
 

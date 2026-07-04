@@ -200,7 +200,7 @@ def lister_series(
                 sm.periode_debut,
                 sm.periode_fin,
                 sm.methode_collecte,
-                sm.commentaire_editorial AS notes_fr,
+                sm.note_publique AS notes_fr,
                 sm.cree_le AS created_at,
                 sm.modifie_le AS updated_at,
                 sm.actif
@@ -537,7 +537,7 @@ def detailler_serie(
                 sm.periode_fin,
                 sm.granularite,
                 sm.methode_collecte,
-                sm.commentaire_editorial AS notes_fr,
+                sm.note_publique AS notes_fr,
                 sm.cree_le AS created_at,
                 sm.modifie_le AS updated_at,
                 sm.actif,
