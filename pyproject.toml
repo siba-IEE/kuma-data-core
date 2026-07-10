@@ -68,6 +68,11 @@ select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "RUF"]
 "src/kuma_data_core/db/seeds/*.py" = ["RUF001", "RUF002", "RUF003", "E501"]
 "migrations/versions/*.py" = ["RUF001", "RUF002", "RUF003", "E501"]
 "src/kuma_data_core/db/models/unites.py" = ["RUF001", "RUF002", "RUF003"]
+# Grandeurs métier F1/F2 avec formules NREL/OMM utilisant × (multiplication),
+# − (moins), °C, kWh/m², etc. — mêmes conventions que les seeds et modèles.
+"src/kuma_data_core/services/grandeurs/*.py" = ["RUF001", "RUF002", "RUF003"]
+"scripts/*.py" = ["RUF001", "RUF002", "RUF003", "E501"]
+"tests/unit/services/grandeurs/*.py" = ["RUF001", "RUF002", "RUF003"]
 # Le code API et les tests utilisent des identifiants en français pour
 # refléter le domaine métier (cf. docs/conventions/01-naming.md). La
 # règle pep8-naming (N) impose snake_case anglais ; on la désactive
