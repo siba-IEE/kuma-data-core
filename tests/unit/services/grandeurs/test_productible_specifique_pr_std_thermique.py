@@ -20,9 +20,7 @@ COEFF_TEMP = -0.4  # % / °C
 NB_JOURS_MOIS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 
-def _serie_annee(
-    annee: int, ghi: float = 5.5, t_amb: float = 28.0
-) -> list[MesureJourGhiTamb]:
+def _serie_annee(annee: int, ghi: float = 5.5, t_amb: float = 28.0) -> list[MesureJourGhiTamb]:
     """Fabrique une année de mesures constantes (365 jours simplifiés)."""
     mesures: list[MesureJourGhiTamb] = []
     for m in range(1, NB_MOIS + 1):
@@ -47,9 +45,7 @@ def test_liste_de_12() -> None:
 
 def test_mois_sans_mesure_donne_zero() -> None:
     """Un mois absent des mesures doit produire 0.0 (pas NaN, pas erreur)."""
-    mesures = [
-        MesureJourGhiTamb(annee=1991, mois=1, ghi_kwh_par_m2_jour=5.0, t_amb_degc=25.0)
-    ]
+    mesures = [MesureJourGhiTamb(annee=1991, mois=1, ghi_kwh_par_m2_jour=5.0, t_amb_degc=25.0)]
     res = calculer_productible_specifique_pr_std_thermique_mensuel(
         mesures, PR_STD, NOCT, COEFF_TEMP
     )
@@ -129,10 +125,6 @@ def test_toutes_valeurs_positives_pour_ghi_positif() -> None:
 def test_puret_deterministe() -> None:
     """Appels répétés = même résultat (idempotence)."""
     m = _serie_annee(2000, ghi=5.2, t_amb=27.0)
-    r1 = calculer_productible_specifique_pr_std_thermique_mensuel(
-        m, PR_STD, NOCT, COEFF_TEMP
-    )
-    r2 = calculer_productible_specifique_pr_std_thermique_mensuel(
-        m, PR_STD, NOCT, COEFF_TEMP
-    )
+    r1 = calculer_productible_specifique_pr_std_thermique_mensuel(m, PR_STD, NOCT, COEFF_TEMP)
+    r2 = calculer_productible_specifique_pr_std_thermique_mensuel(m, PR_STD, NOCT, COEFF_TEMP)
     assert r1 == r2

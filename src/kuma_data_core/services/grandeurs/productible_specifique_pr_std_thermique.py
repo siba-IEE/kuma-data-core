@@ -120,9 +120,7 @@ def calculer_productible_specifique_pr_std_thermique_mensuel(
             irradiance_w_par_m2=irradiance_w_par_m2,
             noct_degc=noct_degc,
         )
-        ratio_thermique = 1.0 + coeff_temp_pct_par_degc / 100.0 * (
-            t_cell - TEMPERATURE_STC_DEGC
-        )
+        ratio_thermique = 1.0 + coeff_temp_pct_par_degc / 100.0 * (t_cell - TEMPERATURE_STC_DEGC)
         # Productible journalier pour 1 kWc, en kWh :
         #   P_STC (1 kWc) × GHI (kWh/m²/j) / G_STC (1 kW/m²) × PR × ratio
         productible_jour = ghi * pr_std * ratio_thermique

@@ -53,13 +53,40 @@ COEFFICIENTS_VERSION: str = "methode-v1.1"
 # === Unités du pack (34 codes exposés à l'app) ============================
 
 CODES_UNITES_PACK: tuple[str, ...] = (
-    "gin_beyla", "gin_boffa", "gin_boke", "gin_conakry", "gin_coyah",
-    "gin_dabola", "gin_dalaba", "gin_dinguiraye", "gin_dubreka", "gin_faranah",
-    "gin_forecariah", "gin_fria", "gin_gaoual", "gin_gueckedou", "gin_kankan",
-    "gin_kerouane", "gin_kindia", "gin_kissidougou", "gin_koubia", "gin_koundara",
-    "gin_kouroussa", "gin_labe", "gin_lelouma", "gin_lola", "gin_macenta",
-    "gin_mali", "gin_mamou", "gin_mandiana", "gin_nzerekore", "gin_pita",
-    "gin_siguiri", "gin_telimele", "gin_tougue", "gin_yomou",
+    "gin_beyla",
+    "gin_boffa",
+    "gin_boke",
+    "gin_conakry",
+    "gin_coyah",
+    "gin_dabola",
+    "gin_dalaba",
+    "gin_dinguiraye",
+    "gin_dubreka",
+    "gin_faranah",
+    "gin_forecariah",
+    "gin_fria",
+    "gin_gaoual",
+    "gin_gueckedou",
+    "gin_kankan",
+    "gin_kerouane",
+    "gin_kindia",
+    "gin_kissidougou",
+    "gin_koubia",
+    "gin_koundara",
+    "gin_kouroussa",
+    "gin_labe",
+    "gin_lelouma",
+    "gin_lola",
+    "gin_macenta",
+    "gin_mali",
+    "gin_mamou",
+    "gin_mandiana",
+    "gin_nzerekore",
+    "gin_pita",
+    "gin_siguiri",
+    "gin_telimele",
+    "gin_tougue",
+    "gin_yomou",
 )
 
 # Le pack expose `gin_boke` et `gin_faranah`, mais côté KDC les communes chef-lieu
@@ -149,9 +176,7 @@ def apparier_ghi_t2m(
 # === Extraction par unité =================================================
 
 
-def calculer_pour_unite(
-    session: Session, code_pack: str, debut: date, fin: date
-) -> dict[str, Any]:
+def calculer_pour_unite(session: Session, code_pack: str, debut: date, fin: date) -> dict[str, Any]:
     """Assemble les 12 valeurs pspNormales pour une unité, ou lève RuntimeError.
 
     Retourne un dict {psp_normales, jours_couverts, fenetre_effective, ...}.
