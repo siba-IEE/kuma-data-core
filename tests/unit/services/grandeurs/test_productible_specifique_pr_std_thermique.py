@@ -6,11 +6,9 @@ from __future__ import annotations
 
 import math
 
-import pytest
-
 from kuma_data_core.services.grandeurs.productible_specifique_pr_std_thermique import (
-    MesureJourGhiTamb,
     NB_MOIS,
+    MesureJourGhiTamb,
     calculer_productible_specifique_pr_std_thermique_mensuel,
 )
 

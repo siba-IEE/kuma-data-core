@@ -32,13 +32,22 @@ def test_alias_boke_faranah() -> None:
 
 def test_resolution_code_sans_alias_retourne_lui_meme() -> None:
     assert _codes_kdc_pour_unite("gin_kankan") == ("gin_kankan",)
-    assert _codes_kdc_pour_unite("gin_conakry") == ("gin_conakry",)
 
 
-def test_resolution_code_avec_alias() -> None:
+def test_resolution_code_avec_alias_boke() -> None:
     codes = _codes_kdc_pour_unite("gin_boke")
     assert "gin_boke" in codes
     assert "gin_boke_centre" in codes
+
+
+def test_resolution_code_avec_alias_conakry() -> None:
+    """Conakry est modelisée comme region_administrative dans le KDC :
+    la commune de Kaloum porte les series NASA POWER daily et sert de
+    proxy pour l'agglomeration (5 communes a moins de 15 km).
+    """
+    codes = _codes_kdc_pour_unite("gin_conakry")
+    assert "gin_conakry" in codes
+    assert "gin_conakry_kaloum" in codes
 
 
 def test_apparier_ghi_t2m_intersecte_dates() -> None:
@@ -62,7 +71,7 @@ def test_apparier_ghi_t2m_intersecte_dates() -> None:
 
 def test_apparier_ghi_t2m_ordre_chronologique() -> None:
     ghi = {date(2021, 3, 15): 5.0, date(2021, 1, 1): 4.0, date(2021, 2, 1): 4.5}
-    t2m = {d: 25.0 for d in ghi}
+    t2m = dict.fromkeys(ghi, 25.0)
     mesures = apparier_ghi_t2m(ghi, t2m)
     assert [m["mois"] for m in mesures] == [1, 2, 3]
 

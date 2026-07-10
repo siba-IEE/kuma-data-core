@@ -30,7 +30,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
-from datetime import date, datetime, timezone
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -229,7 +229,7 @@ def executer(sortie: Path, debut: date, fin: date) -> None:
         )
 
     provenance = {
-        "genere_le": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "genere_le": datetime.now(UTC).isoformat(timespec="seconds"),
         "grandeur": "productible_specifique_pr_std_thermique_mensuel",
         "methode": {
             "coefficients_version": COEFFICIENTS_VERSION,
