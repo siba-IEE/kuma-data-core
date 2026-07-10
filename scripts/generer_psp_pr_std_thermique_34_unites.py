@@ -68,6 +68,12 @@ CODES_UNITES_PACK: tuple[str, ...] = (
 ALIAS_CODE_PACK_VERS_KDC: dict[str, tuple[str, ...]] = {
     "gin_boke": ("gin_boke", "gin_boke_centre"),
     "gin_faranah": ("gin_faranah", "gin_faranah_centre"),
+    # Conakry est modélisée comme region_administrative dans le KDC : elle n'a
+    # pas de série NASA POWER daily rattachée. La commune de Kaloum (centre
+    # historique) porte les séries et est un proxy géographique raisonnable
+    # pour l'agglomération de Conakry (5 communes à moins de 15 km les unes des
+    # autres). Alias documenté dans la provenance de sortie.
+    "gin_conakry": ("gin_conakry", "gin_conakry_kaloum"),
 }
 
 
