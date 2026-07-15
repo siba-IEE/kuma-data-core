@@ -29,11 +29,16 @@ routeur = APIRouter(prefix="/health", tags=["sante"])
 
 
 class ReponseSantePublique(BaseModel):
-    """Réponse de l'endpoint public ``/v1/health``."""
+    """Réponse de l'endpoint public ``/v1/health``.
+
+    Ne divulgue ni la version logicielle ni l'environnement : sur un
+    endpoint non authentifié, ces informations aident un attaquant à
+    cibler des vulnérabilités connues sans bénéfice pour un client
+    légitime (finding F-05 pentest). Elles restent disponibles sur
+    ``/v1/health/db`` (authentifié).
+    """
 
     statut: Literal["operationnel"]
-    version: str
-    environnement: str
     # Identifiant de l'édition publiée servie par ce déploiement
     # (ADR-0003, D7). ``None`` hors régime édition (base de dev) ou si
     # la lecture échoue : le health ne dépend de rien, jamais de 5xx.
@@ -89,11 +94,8 @@ def _edition_courante_silencieuse() -> str | None:
 )
 def sante() -> ReponseSantePublique:
     """Réponse minimale ; l'édition est lue en best-effort (jamais de 5xx)."""
-    settings = get_settings()
     return ReponseSantePublique(
         statut="operationnel",
-        version=settings.api_version,
-        environnement=settings.api_environnement,
         edition=_edition_courante_silencieuse(),
     )
 
