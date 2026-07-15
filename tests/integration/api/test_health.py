@@ -33,8 +33,10 @@ def test_health_public_repond_200(client: TestClient) -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["statut"] == "operationnel"
-    assert payload["environnement"] == "dev"
-    assert "version" in payload
+    # Le health public ne divulgue ni version ni environnement (F-05) :
+    # ces champs restent reserves au /v1/health/db authentifie.
+    assert "version" not in payload
+    assert "environnement" not in payload
 
 
 @pytest.mark.integration
