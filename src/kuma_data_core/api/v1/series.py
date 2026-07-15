@@ -555,7 +555,7 @@ def detailler_serie(
     if row is None:
         raise ExceptionKuma(
             code=CodeErreur.RESSOURCE_SERIE_INCONNUE,
-            message=f"Serie {code_serie!r} introuvable dans series_metadonnees.",
+            message=f"Serie {code_serie!r} introuvable.",
             statut_http=status.HTTP_404_NOT_FOUND,
         )
 

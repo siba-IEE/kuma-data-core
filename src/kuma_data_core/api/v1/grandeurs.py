@@ -195,7 +195,7 @@ def _resoudre_serie_source(session: Session, code_serie: str) -> SerieSourceReso
     if row is None:
         raise ExceptionKuma(
             code=CodeErreur.RESSOURCE_SERIE_INCONNUE,
-            message=f"Serie source {code_serie!r} introuvable dans series_metadonnees.",
+            message=f"Serie source {code_serie!r} introuvable.",
             statut_http=status.HTTP_404_NOT_FOUND,
         )
     return SerieSourceResolue(
