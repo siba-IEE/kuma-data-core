@@ -266,7 +266,7 @@ def detailler_localite(
     if row is None:
         raise ExceptionKuma(
             code=CodeErreur.RESSOURCE_LOCALITE_INCONNUE,
-            message=f"Localite {code!r} introuvable dans la table localites.",
+            message=f"Localite {code!r} introuvable.",
             statut_http=status.HTTP_404_NOT_FOUND,
         )
 

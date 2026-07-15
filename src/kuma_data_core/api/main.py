@@ -85,7 +85,10 @@ def creer_application() -> FastAPI:
             "tauri://localhost",
             "https://tauri.localhost",
         ],
-        allow_credentials=True,
+        # Auth par jeton Bearer, aucun cookie de session : les credentials
+        # cross-origin sont inutiles. On retire l'en-tete Allow-Credentials
+        # orphelin (finding F-06 pentest).
+        allow_credentials=False,
         allow_methods=["GET"],
         allow_headers=["Authorization", "Content-Type"],
     )
