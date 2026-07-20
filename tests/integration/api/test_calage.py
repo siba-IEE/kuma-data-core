@@ -58,6 +58,30 @@ def test_ti114_calage_kankan_ghi_sert_le_referentiel(
     assert tous_mois == list(range(1, 13))
 
 
+def test_ti121_calage_porte_le_domaine_de_couverture(
+    client: TestClient, headers_auth: dict[str, str]
+) -> None:
+    """Le referentiel sert son domaine de couverture (migration 102).
+
+    Domaine initial arrete par le fondateur le 2026-07-20 : les 5
+    communes points d'ingestion de la region administrative de Kankan.
+    C'est la donnee qui pilote la couverture geographique des
+    consommateurs (couverture progressive, ADR-0004).
+    """
+    r = client.get("/v1/calage/gin_kankan/ghi", headers=headers_auth)
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["localites_couvertes"] == [
+        "gin_kankan",
+        "gin_kerouane",
+        "gin_kouroussa",
+        "gin_mandiana",
+        "gin_siguiri",
+    ]
+    assert payload["justification_couverture"]
+    assert "2026-07-20" in payload["justification_couverture"]
+
+
 def test_ti115_calage_absent_erreur_honnete(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:

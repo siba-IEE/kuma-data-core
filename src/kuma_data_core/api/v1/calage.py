@@ -71,6 +71,20 @@ def referentiel_calage(
         )
 
     premiere = rows[0]
+    couverture = session.execute(
+        text(
+            """
+            SELECT l.code, cc.justification
+            FROM calage_couverture cc
+            JOIN localites l ON l.id = cc.localite_id
+            WHERE cc.referentiel_code = :code
+              AND cc.actif = TRUE
+            ORDER BY l.code
+            """
+        ),
+        {"code": str(premiere.code)},
+    ).all()
+
     return ReponseCalage(
         localite=localite,
         grandeur=grandeur,
@@ -87,4 +101,6 @@ def referentiel_calage(
         ],
         provenance=str(premiere.provenance),
         portee=str(premiere.portee),
+        localites_couvertes=[str(c.code) for c in couverture],
+        justification_couverture=str(couverture[0].justification) if couverture else None,
     )

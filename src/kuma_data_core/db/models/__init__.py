@@ -6,6 +6,7 @@ qu'Alembic dispose de la cible complète des comparaisons.
 """
 
 from kuma_data_core.db.models.audit_log import AuditLog
+from kuma_data_core.db.models.calage_couverture import CalageCouverture
 from kuma_data_core.db.models.contributeurs import Contributeur
 from kuma_data_core.db.models.grandeurs_metier import GrandeurMetier
 from kuma_data_core.db.models.grandeurs_referentiel import GrandeurReferentiel
@@ -20,6 +21,7 @@ from kuma_data_core.db.models.unites import Unite
 
 __all__ = [
     "AuditLog",
+    "CalageCouverture",
     "Contributeur",
     "GrandeurMetier",
     "GrandeurReferentiel",

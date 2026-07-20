@@ -75,3 +75,27 @@ redondant, le deja-la couvre le besoin.
 - Les 5 tests d'intégration de la résolution (ti116-ti120) et les 3
   du calage (ti113-ti115) contractualisent le comportement, dont le
   cas Tokounou vers Kérouané.
+
+## Complément du 2026-07-20 au soir : couverture progressive
+
+Décision du fondateur : les logiciels consommateurs ne couvrent
+d'abord que la zone où le transport du calage est défendable, puis
+grandissent ville par ville au rythme de la recherche. Le domaine de
+couverture est une donnée servie, jamais une liste codée chez les
+consommateurs :
+
+- table ``calage_couverture`` (migration 102, TABLES_PUBLIEES) : une
+  ligne par localité qualifiée d'un référentiel, justification
+  obligatoire ; servie par le champ ``localites_couvertes`` de
+  ``GET /v1/calage/{localite}/{grandeur}`` ;
+- domaine initial du référentiel GHI Kankan : les 5 communes points
+  d'ingestion de la région administrative de Kankan (Kankan,
+  Kérouané, Kouroussa, Mandiana, Siguiri) - même régime soudanien,
+  précédent de transport déclaré de l'étude Tokounou ;
+- extension : qualification par la recherche (cohérence
+  inter-source par cellule, campagnes de mesure, leave-one-out
+  quand une deuxième station sol existera), une édition à la fois ;
+- côté consommateur : site hors domaine = refus honnête (décision
+  produit Solar Bridge, consignée au brief de chantier).
+
+Test ti121.
