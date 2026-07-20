@@ -1,9 +1,10 @@
 """Tests d'integration des endpoints `/api/v1/horaire/<localite>/<grandeur>`.
 
-Passe-plat horaire, 13 tests :
+Passe-plat horaire, 15 tests :
 
 - endpoint data (succes, erreurs auth/validation/plage).
 - format CSV + sentinelles + format Kt nocturne.
+- lever du stocke valide (dont regression series coquilles, ti111-112).
 - endpoint disponibilite (succes + format coherent).
 
 Plus 1 pre-test empirique `empirique_nasa_power` (exclu de la suite
@@ -339,6 +340,64 @@ def test_ti110_edition_figee_sert_toujours_le_stocke(
     )
     assert r.status_code == 200
     assert all(res["statut_editorial"] == "valide_auto" for res in r.json()["resultats"])
+
+
+def test_ti111_serie_coquille_ignoree_le_stocke_terrain_est_servi(
+    client: TestClient,
+    headers_auth: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """(kankan, ghi) : la coquille est écartée, le sol ESMAP est servi.
+
+    Régression production 2026-07-20 : deux séries horaires actives
+    coexistent pour ce couple - la série substrat 2001-2023 sans
+    aucune mesure stockée (coquille) et la série sol terrain
+    2021-2023 (17 520 mesures valide_auto). La sélection sans garde
+    prenait la coquille et l'endpoint répondait 200 avec zéro
+    résultat. Attendu : les mesures terrain sont servies, sans appel
+    amont.
+    """
+    from kuma_data_core.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "edition_figee", True)
+    with patch("kuma_data_core.api.v1.horaire.fetch_hourly") as mock_fetch:
+        r = client.get(
+            "/v1/horaire/kankan/ghi",
+            params={"periode_debut": "2022-06-01", "periode_fin": "2022-06-02"},
+            headers=headers_auth,
+        )
+    assert r.status_code == 200
+    resultats = r.json()["resultats"]
+    assert len(resultats) == 48
+    assert all(res["statut_editorial"] == "valide_auto" for res in resultats)
+    mock_fetch.assert_not_called()
+
+
+def test_ti112_coquille_seule_en_figee_erreur_honnete(
+    client: TestClient,
+    headers_auth: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """(kindia, ghi) : coquille seule -> 400 honnête, pas 200 vide.
+
+    Kindia ne possède qu'une série horaire GHI sans mesures stockées
+    (métadonnées 2001-2023). En profil figé, l'endpoint doit renvoyer
+    PLAGE_TEMPORELLE_NON_DISPONIBLE plutôt que de laisser croire à
+    une donnée servie en répondant 200 avec zéro résultat. Aucun
+    appel amont.
+    """
+    from kuma_data_core.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "edition_figee", True)
+    with patch("kuma_data_core.api.v1.horaire.fetch_hourly") as mock_fetch:
+        r = client.get(
+            "/v1/horaire/kindia/ghi",
+            params={"periode_debut": "2022-06-01", "periode_fin": "2022-06-02"},
+            headers=headers_auth,
+        )
+    assert r.status_code == 400
+    assert r.json()["erreur"]["code"] == CodeErreur.PLAGE_TEMPORELLE_NON_DISPONIBLE.value
+    mock_fetch.assert_not_called()
 
 
 # === Endpoint disponibilite ===============================================
