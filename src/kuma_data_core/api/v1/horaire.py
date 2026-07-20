@@ -157,9 +157,21 @@ def _chercher_serie_horaire_stockee(
     """Cherche la série horaire stockée au catalogue pour (localité, grandeur).
 
     Renvoie ``(serie_id, periode_debut, periode_fin)`` si une série horaire
-    active existe pour ce couple, ``None`` sinon. La jointure sur
-    ``localites.code`` résout le couple indépendamment du naming de
-    la série (exception ``gin_conakry`` vs ``gin_conakry_kaloum``).
+    active **portant des mesures stockées** existe pour ce couple, ``None``
+    sinon. La jointure sur ``localites.code`` résout le couple
+    indépendamment du naming de la série (exception ``gin_conakry`` vs
+    ``gin_conakry_kaloum``).
+
+    La clause ``EXISTS`` écarte les séries « coquilles » (métadonnées
+    actives sans aucune ligne dans ``mesures_ressource_horaires``).
+    Régression observée en production (2026-07-20) : pour (kankan, ghi),
+    deux séries horaires actives coexistent - la série substrat
+    2001-2023 (métadonnées seules) et la série sol terrain 2021-2023
+    (17 520 mesures validées). Le ``LIMIT 1`` sans garde sélectionnait
+    la coquille, dont la période couvre toute fenêtre demandée, et
+    l'endpoint servait 200 avec zéro résultat au lieu de la mesure
+    terrain. Le ``ORDER BY sm.id`` rend la sélection déterministe si
+    plusieurs séries portent des mesures.
     """
     row = session.execute(
         text(
@@ -171,6 +183,11 @@ def _chercher_serie_horaire_stockee(
               AND sm.grandeur_code = :grandeur
               AND sm.granularite = 'horaire'
               AND sm.actif = TRUE
+              AND EXISTS (
+                  SELECT 1 FROM mesures_ressource_horaires m
+                  WHERE m.serie_id = sm.id
+              )
+            ORDER BY sm.id
             LIMIT 1
             """
         ),
