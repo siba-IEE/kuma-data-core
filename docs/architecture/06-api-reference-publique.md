@@ -717,6 +717,15 @@ Première entrée du référentiel : le GHI de la station ESMAP/WAPP de
 Kankan (harmattan +4,4 %, mousson +1,5 %, intersaison +1,9 %). 404
 `RESSOURCE_INTROUVABLE` pour un couple sans référentiel publié.
 
+La réponse porte aussi le **domaine de couverture** du transport
+(`localites_couvertes`, `justification_couverture`) : les codes des
+localités qualifiées pour appliquer ce calage (couverture
+progressive, ADR-0004). Domaine initial : les 5 communes points
+d'ingestion de la région administrative de Kankan. Un consommateur
+d'étude calée doit vérifier que la localité résolue de son site en
+fait partie ; l'extension du domaine passe par la recherche et les
+éditions, jamais par les consommateurs.
+
 ### 3.12 Codes d'erreur exposés par l'API
 
 | Code | Statut HTTP type | Sens |

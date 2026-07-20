@@ -21,7 +21,15 @@ class SaisonCalage(BaseModel):
 
 
 class ReponseCalage(BaseModel):
-    """Référentiel de calage d'un couple (station, grandeur)."""
+    """Référentiel de calage d'un couple (station, grandeur).
+
+    ``localites_couvertes`` porte le domaine de couverture du
+    transport (ADR-0004, couverture progressive) : les codes des
+    localités qualifiées, triés. C'est la donnée qui pilote la
+    couverture géographique des consommateurs - une étude calée
+    n'est permise que si la localité résolue du site en fait partie.
+    ``justification_couverture`` en donne la provenance.
+    """
 
     localite: str
     grandeur: str
@@ -30,3 +38,5 @@ class ReponseCalage(BaseModel):
     saisons: list[SaisonCalage]
     provenance: str
     portee: str
+    localites_couvertes: list[str] = Field(default_factory=list)
+    justification_couverture: str | None = None
