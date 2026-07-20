@@ -13,6 +13,7 @@ from kuma_data_core.db.models.localites import Localite
 from kuma_data_core.db.models.mesures_ressource import MesureRessource
 from kuma_data_core.db.models.mesures_ressource_horaires import MesureRessourceHoraire
 from kuma_data_core.db.models.mesures_ressource_mensuelles import MesureRessourceMensuelle
+from kuma_data_core.db.models.referentiels_calage import ReferentielCalage
 from kuma_data_core.db.models.series_metadonnees import SerieMetadonnees
 from kuma_data_core.db.models.sources import Source
 from kuma_data_core.db.models.unites import Unite
@@ -26,6 +27,7 @@ __all__ = [
     "MesureRessource",
     "MesureRessourceHoraire",
     "MesureRessourceMensuelle",
+    "ReferentielCalage",
     "SerieMetadonnees",
     "Source",
     "Unite",

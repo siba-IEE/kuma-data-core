@@ -10,7 +10,16 @@ from __future__ import annotations
 
 from fastapi import APIRouter
 
-from kuma_data_core.api.v1 import cles, edition, grandeurs, health, horaire, localites, series
+from kuma_data_core.api.v1 import (
+    calage,
+    cles,
+    edition,
+    grandeurs,
+    health,
+    horaire,
+    localites,
+    series,
+)
 
 routeur_v1 = APIRouter(prefix="/v1")
 routeur_v1.include_router(health.routeur)
@@ -20,3 +29,4 @@ routeur_v1.include_router(series.routeur)
 routeur_v1.include_router(localites.routeur)
 routeur_v1.include_router(grandeurs.routeur)
 routeur_v1.include_router(horaire.routeur)
+routeur_v1.include_router(calage.routeur)
