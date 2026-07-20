@@ -673,6 +673,50 @@ préfixe ; `404 RESSOURCE_INTROUVABLE` si aucune. Une clé valide mais
 non administrative reçoit le même `401 AUTH_CLE_INVALIDE` qu'une clé
 inconnue.
 
+### 3.11 bis `GET /v1/localites/resolution` : résolution d'un point quelconque
+
+Authentifié. Paramètres : `lat` (`[-90, 90]`), `lon` (`[-180, 180]`),
+`grandeur` (optionnel, `ghi` seul admis à ce stade).
+
+Pour un point WGS84 quelconque, retourne la localité du référentiel
+dont la climatologie mensuelle (période de référence 1991-2020)
+échantillonne la **cellule de grille** contenant le point. La grille
+de la source de climatologie est de 1 degré x 1 degré, frontières aux
+degrés entiers (vérification empirique du 2026-07-20 : la moyenne
+1991-2020 de la série de Kérouané reproduit le relevé au point de
+Tokounou, même cellule, écart nul sur les 12 mois).
+
+Le plus-proche-voisin naïf est faux et c'est la raison d'être de
+l'endpoint : la localité la plus proche d'un point peut appartenir à
+une autre cellule (Tokounou est à ~74 km de Kankan mais dans la
+cellule échantillonnée par Kérouané, ~99 km). La résolution est un
+savoir éditorial du Core, pas des consommateurs (ADR-0004).
+
+Réponse : `point`, `grandeur`, `cellule` (bornes de la cellule),
+`localite` (`code`, `nom`, coordonnées), `distance_km`,
+`meme_cellule`. Quand aucune candidate ne partage la cellule,
+`meme_cellule` vaut `false` et la candidate la plus proche est
+renvoyée : le consommateur affiche alors l'hypothèse de transport.
+404 `RESSOURCE_INTROUVABLE` si le référentiel ne porte aucun point
+d'ingestion pour la grandeur.
+
+### 3.11 ter `GET /v1/calage/{localite}/{grandeur}` : référentiel de calage satellite/sol
+
+Authentifié. Codes localité complets (`gin_kankan`), alignés sur
+`/v1/series` et `/v1/localites`.
+
+Sert les biais saisonniers satellite moins sol mesurés aux stations
+de référence, publiés comme donnée éditoriale de l'édition (table
+`referentiels_calage`, ADR-0004) : pour chaque saison, le nom, les
+mois couverts, le biais relatif mesuré et le facteur dérivé
+`k = 1 / (1 + biais)`. La réponse porte la provenance (note de
+calage, script reproductible, série sol de référence) et la portée
+de transport : jamais un nombre nu.
+
+Première entrée du référentiel : le GHI de la station ESMAP/WAPP de
+Kankan (harmattan +4,4 %, mousson +1,5 %, intersaison +1,9 %). 404
+`RESSOURCE_INTROUVABLE` pour un couple sans référentiel publié.
+
 ### 3.12 Codes d'erreur exposés par l'API
 
 | Code | Statut HTTP type | Sens |

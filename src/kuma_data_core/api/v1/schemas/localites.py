@@ -103,3 +103,55 @@ class LocaliteListeePaginee(BaseModel):
 # ``LocaliteDetail(LocaliteListee)`` ajoutant les champs additionnels -
 # pattern :class:`SerieDetail`.
 LocaliteDetail = LocaliteListee
+
+
+# === Schemas resolution au point (ADR-0004) ===============================
+
+
+class PointGeographique(BaseModel):
+    """Point WGS84 en degres decimaux."""
+
+    latitude_deg: float
+    longitude_deg: float
+
+
+class CelluleResolution(BaseModel):
+    """Cellule de la grille de climatologie contenant le point.
+
+    Grille de la source de climatologie mensuelle : 1 degre x 1 degre,
+    frontieres aux degres entiers (verification empirique 2026-07-20 :
+    serie de Kerouane vs releve au point de Tokounou, meme cellule,
+    ecart nul sur les 12 moyennes mensuelles 1991-2020).
+    """
+
+    lat_min: float
+    lat_max: float
+    lon_min: float
+    lon_max: float
+
+
+class LocaliteResolue(BaseModel):
+    """Localite du referentiel retenue par la resolution."""
+
+    code: str
+    nom: str
+    latitude_deg: float
+    longitude_deg: float
+
+
+class ReponseResolution(BaseModel):
+    """Reponse de ``GET /v1/localites/resolution``.
+
+    ``meme_cellule`` : vrai si la localite retenue echantillonne la
+    cellule du point (sa climatologie est celle du point) ; faux si
+    aucune candidate ne partage la cellule - la plus proche est alors
+    renvoyee avec sa distance, et le consommateur doit afficher
+    l'hypothese de transport.
+    """
+
+    point: PointGeographique
+    grandeur: str
+    cellule: CelluleResolution
+    localite: LocaliteResolue
+    distance_km: float
+    meme_cellule: bool

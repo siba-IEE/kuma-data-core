@@ -45,6 +45,7 @@ TABLES_PUBLIEES: frozenset[str] = frozenset(
         "mesures_ressource",
         "mesures_ressource_mensuelles",
         "mesures_ressource_horaires",
+        "referentiels_calage",
     }
 )
 

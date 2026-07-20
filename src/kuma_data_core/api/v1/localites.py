@@ -26,6 +26,7 @@ Cf. ADR-0002 Data Core.
 
 from __future__ import annotations
 
+import math
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
@@ -36,9 +37,13 @@ from kuma_data_core.api.codes_erreur import CodeErreur
 from kuma_data_core.api.dependencies import CleApiValidee
 from kuma_data_core.api.erreurs import ExceptionKuma
 from kuma_data_core.api.v1.schemas.localites import (
+    CelluleResolution,
     LocaliteDetail,
     LocaliteListee,
     LocaliteListeePaginee,
+    LocaliteResolue,
+    PointGeographique,
+    ReponseResolution,
 )
 from kuma_data_core.db.session import obtenir_session
 
@@ -67,6 +72,23 @@ def _to_float_optional(valeur: object) -> float | None:
     if valeur is None:
         return None
     return float(valeur)  # type: ignore[arg-type]
+
+
+_RAYON_TERRE_KM = 6371.0
+
+
+def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Distance grand cercle entre deux points WGS84 (formule haversine).
+
+    Precision suffisante pour l'affichage d'une distance de transport
+    de calage (dizaines de km, arrondie au dixieme dans la reponse).
+    """
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    return 2 * _RAYON_TERRE_KM * math.asin(math.sqrt(a))
 
 
 # === Endpoint listing =====================================================
@@ -206,6 +228,116 @@ def lister_localites(
         for r in rows
     ]
     return LocaliteListeePaginee(items=items, total=int(total), limit=limit, offset=offset)
+
+
+# === Endpoint resolution au point (ADR-0004) ==============================
+# Declare AVANT ``/{code}`` : FastAPI matche les routes dans l'ordre de
+# declaration et ``resolution`` serait sinon capture comme un code.
+
+
+@routeur.get(
+    "/resolution",
+    response_model=ReponseResolution,
+    status_code=status.HTTP_200_OK,
+    summary="Resolution d'un point quelconque vers la localite qui l'echantillonne",
+    description=(
+        "Pour un point (lat, lon), retourne la localite du referentiel "
+        "dont la climatologie mensuelle echantillonne la cellule de "
+        "grille contenant le point. Le plus-proche-voisin naif est "
+        "faux : la localite la plus proche peut appartenir a une autre "
+        "cellule (cas demontre : Tokounou est plus proche de Kankan "
+        "mais dans la cellule de Kerouane)."
+    ),
+)
+def resoudre_point(
+    _cle: CleApiValidee,
+    session: Annotated[Session, Depends(obtenir_session)],
+    lat: Annotated[float, Query(ge=-90, le=90, description="Latitude WGS84 du point.")],
+    lon: Annotated[float, Query(ge=-180, le=180, description="Longitude WGS84 du point.")],
+    grandeur: Annotated[str, Query(pattern="^ghi$")] = "ghi",
+) -> ReponseResolution:
+    """Resout un point vers la localite echantillonnant sa cellule.
+
+    Candidates : les localites actives portant une serie climatologie
+    mensuelle active de la grandeur demandee sur la periode de
+    reference 1991-2020 (les points d'ingestion du referentiel). La
+    cellule est celle de la grille de la source de climatologie
+    (1 degre x 1 degre, frontieres aux degres entiers - verification
+    empirique du 2026-07-20 : la moyenne 1991-2020 de la serie de
+    Kerouane reproduit le releve au point de Tokounou, meme cellule,
+    ecart nul sur les 12 mois).
+
+    Si aucune candidate ne partage la cellule du point,
+    ``meme_cellule`` vaut ``false`` et la candidate la plus proche est
+    renvoyee avec sa distance : au consommateur d'afficher l'hypothese
+    de transport. 404 ``RESSOURCE_INTROUVABLE`` si le referentiel ne
+    porte aucune candidate (catalogue vide pour la grandeur).
+    """
+    rows = session.execute(
+        text(
+            """
+            SELECT DISTINCT l.code, l.nom, l.latitude, l.longitude
+            FROM localites l
+            JOIN series_metadonnees sm ON sm.localite_id = l.id
+            WHERE l.actif = TRUE
+              AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL
+              AND sm.actif = TRUE
+              AND sm.granularite = 'mensuel'
+              AND sm.grandeur_code = :grandeur
+              AND sm.periode_debut = '1991-01-01'
+              AND sm.periode_fin = '2020-12-31'
+            """
+        ),
+        {"grandeur": grandeur},
+    ).all()
+    if not rows:
+        raise ExceptionKuma(
+            code=CodeErreur.RESSOURCE_INTROUVABLE,
+            message="Aucun point d'ingestion de climatologie pour cette grandeur.",
+            statut_http=status.HTTP_404_NOT_FOUND,
+        )
+
+    cellule_lat = math.floor(lat)
+    cellule_lon = math.floor(lon)
+
+    candidates = [(str(r.code), str(r.nom), float(r.latitude), float(r.longitude)) for r in rows]
+    meilleure: tuple[float, int] | None = None
+    meilleure_meme_cellule: tuple[float, int] | None = None
+    for indice, (_code, _nom, r_lat, r_lon) in enumerate(candidates):
+        distance = _haversine_km(lat, lon, r_lat, r_lon)
+        if meilleure is None or distance < meilleure[0]:
+            meilleure = (distance, indice)
+        dans_cellule = math.floor(r_lat) == cellule_lat and math.floor(r_lon) == cellule_lon
+        if dans_cellule and (
+            meilleure_meme_cellule is None or distance < meilleure_meme_cellule[0]
+        ):
+            meilleure_meme_cellule = (distance, indice)
+
+    assert meilleure is not None  # rows non vide, verifie plus haut
+    meme_cellule = meilleure_meme_cellule is not None
+    distance_km, indice_retenu = (
+        meilleure_meme_cellule if meilleure_meme_cellule is not None else meilleure
+    )
+    code, nom, retenue_lat, retenue_lon = candidates[indice_retenu]
+
+    return ReponseResolution(
+        point=PointGeographique(latitude_deg=lat, longitude_deg=lon),
+        grandeur=grandeur,
+        cellule=CelluleResolution(
+            lat_min=float(cellule_lat),
+            lat_max=float(cellule_lat + 1),
+            lon_min=float(cellule_lon),
+            lon_max=float(cellule_lon + 1),
+        ),
+        localite=LocaliteResolue(
+            code=code,
+            nom=nom,
+            latitude_deg=retenue_lat,
+            longitude_deg=retenue_lon,
+        ),
+        distance_km=round(distance_km, 1),
+        meme_cellule=meme_cellule,
+    )
 
 
 # === Endpoint detail ======================================================
