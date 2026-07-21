@@ -27,19 +27,6 @@ from pydantic import BaseModel, Field, model_validator
 
 # === Constantes module ====================================================
 
-LOCALITES_AUTORISEES: tuple[str, ...] = (
-    "conakry_kaloum",
-    "kankan",
-    "kindia",
-    "labe",
-    "mamou",
-    "nzerekore",
-)
-"""6 villes Guinée pilotes.
-
-Liste canonique alignée avec l'ingestion historique. Cohérente avec
-les séries du catalogue ``series_metadonnees`` ingérées pour ces 6
-villes uniquement."""
 
 GRANDEURS_AUTORISEES: tuple[str, ...] = ("ghi", "dni", "dhi", "t2m", "rh2m", "kt")
 """6 grandeurs horaires ingérables."""
@@ -62,7 +49,11 @@ class ParametresHoraire(BaseModel):
     nécessaire pour éviter le shadow du built-in Python ``format``.
     """
 
-    localite: Literal["conakry_kaloum", "kankan", "kindia", "labe", "mamou", "nzerekore"]
+    # Toute localite du referentiel (code complet, ex. gin_kankan) ;
+    # les codes courts historiques des 6 villes pilotes restent des
+    # alias de compatibilite, resolus par le handler contre la table
+    # (genericite pays : plus de liste codee).
+    localite: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9_]+$")
     grandeur: Literal["ghi", "dni", "dhi", "t2m", "rh2m", "kt"]
     periode_debut: date = Field(..., ge=DATE_DEBUT_DISPONIBILITE)
     periode_fin: date
