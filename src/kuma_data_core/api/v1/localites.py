@@ -276,7 +276,8 @@ def resoudre_point(
     rows = session.execute(
         text(
             """
-            SELECT DISTINCT l.code, l.nom, l.latitude, l.longitude
+            SELECT l.code, l.nom, l.latitude, l.longitude,
+                   MIN(sm.code) AS serie_code
             FROM localites l
             JOIN series_metadonnees sm ON sm.localite_id = l.id
             WHERE l.actif = TRUE
@@ -286,6 +287,7 @@ def resoudre_point(
               AND sm.grandeur_code = :grandeur
               AND sm.periode_debut = '1991-01-01'
               AND sm.periode_fin = '2020-12-31'
+            GROUP BY l.code, l.nom, l.latitude, l.longitude
             """
         ),
         {"grandeur": grandeur},
@@ -300,10 +302,13 @@ def resoudre_point(
     cellule_lat = math.floor(lat)
     cellule_lon = math.floor(lon)
 
-    candidates = [(str(r.code), str(r.nom), float(r.latitude), float(r.longitude)) for r in rows]
+    candidates = [
+        (str(r.code), str(r.nom), float(r.latitude), float(r.longitude), str(r.serie_code))
+        for r in rows
+    ]
     meilleure: tuple[float, int] | None = None
     meilleure_meme_cellule: tuple[float, int] | None = None
-    for indice, (_code, _nom, r_lat, r_lon) in enumerate(candidates):
+    for indice, (_code, _nom, r_lat, r_lon, _serie) in enumerate(candidates):
         distance = _haversine_km(lat, lon, r_lat, r_lon)
         if meilleure is None or distance < meilleure[0]:
             meilleure = (distance, indice)
@@ -318,7 +323,7 @@ def resoudre_point(
     distance_km, indice_retenu = (
         meilleure_meme_cellule if meilleure_meme_cellule is not None else meilleure
     )
-    code, nom, retenue_lat, retenue_lon = candidates[indice_retenu]
+    code, nom, retenue_lat, retenue_lon, serie_climatologie = candidates[indice_retenu]
 
     return ReponseResolution(
         point=PointGeographique(latitude_deg=lat, longitude_deg=lon),
@@ -337,6 +342,7 @@ def resoudre_point(
         ),
         distance_km=round(distance_km, 1),
         meme_cellule=meme_cellule,
+        serie_climatologie=serie_climatologie,
     )
 
 

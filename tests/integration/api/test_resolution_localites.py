@@ -46,6 +46,8 @@ def test_ti117_resolution_tokounou_cellule_de_kerouane(
     # Kerouane est plus loin que Kankan : la distance prouve que la
     # resolution n'est pas un plus-proche-voisin.
     assert 90 <= payload["distance_km"] <= 110
+    # Le Core dit quelle serie consommer (genericite pays, residu 2).
+    assert payload["serie_climatologie"] == "gin_kerouane_ghi_power_1991_2020"
 
 
 def test_ti118_resolution_point_dans_la_cellule_de_kankan(
@@ -82,6 +84,7 @@ def test_ti119_resolution_cellule_non_echantillonnee(
     assert payload["meme_cellule"] is False
     assert payload["distance_km"] > 100
     assert payload["localite"]["code"].startswith("gin_")
+    assert payload["serie_climatologie"].endswith("_ghi_power_1991_2020")
 
 
 def test_ti120_resolution_parametres_hors_bornes(

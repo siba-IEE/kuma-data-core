@@ -155,3 +155,12 @@ class ReponseResolution(BaseModel):
     localite: LocaliteResolue
     distance_km: float
     meme_cellule: bool
+    serie_climatologie: str = Field(
+        description=(
+            "Code de la serie de climatologie mensuelle de la localite "
+            "retenue : la serie qui represente la cellule du point. Le "
+            "Core dit quelle serie consommer, les clients ne le "
+            "reconstruisent jamais par convention de nommage (genericite "
+            "pays, residu 2 du brief de chantier)."
+        )
+    )

@@ -694,7 +694,10 @@ savoir éditorial du Core, pas des consommateurs (ADR-0004).
 
 Réponse : `point`, `grandeur`, `cellule` (bornes de la cellule),
 `localite` (`code`, `nom`, coordonnées), `distance_km`,
-`meme_cellule`. Quand aucune candidate ne partage la cellule,
+`meme_cellule`, et `serie_climatologie` : le code de la série de
+climatologie mensuelle de la localité retenue - le Core dit quelle
+série consommer pour ce point, les clients ne le reconstruisent
+jamais par convention de nommage (généricité pays). Quand aucune candidate ne partage la cellule,
 `meme_cellule` vaut `false` et la candidate la plus proche est
 renvoyée : le consommateur affiche alors l'hypothèse de transport.
 404 `RESSOURCE_INTROUVABLE` si le référentiel ne porte aucun point
