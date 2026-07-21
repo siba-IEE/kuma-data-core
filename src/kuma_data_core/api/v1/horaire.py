@@ -11,8 +11,8 @@ Architecture :
 
 1. Validation Pydantic des paramètres (schéma
    :class:`api.v1.schemas.horaire.ParametresHoraire`).
-2. Résolution localité -> coordonnées (mapping interne hardcodé pour
-   les 6 villes pilotes, pas de DB).
+2. Résolution localité contre le référentiel (code complet nominal,
+   alias courts historiques des villes pilotes en compatibilité).
 3. Appel client externe via
    :func:`external.nasa_power.fetch_hourly` (retry transverse inclus).
 4. Conversion réponse amont -> format Kuma cohérent via
@@ -78,13 +78,35 @@ from kuma_data_core.services.localites import coordonnees_localite
 routeur = APIRouter(prefix="/horaire", tags=["horaire-passe-plat"])
 
 
-# === Préfixe pays pour mapping code API -> code localites table ===========
+# === Resolution de la localite contre le referentiel ======================
 
-_PREFIXE_PAYS: str = "gin_"
-"""Préfixe pays appliqué aux codes courts de l'API passe-plat horaire
-pour résoudre le code complet dans la table ``localites`` (référentiel
-canonique). Exemple : code path ``kindia`` -> code localites
-``gin_kindia``."""
+_PREFIXE_ALIAS_HISTORIQUE: str = "gin_"
+"""Prefixe applique aux codes courts HISTORIQUES des 6 villes pilotes
+(kankan, kindia...) pour retrouver le code complet. Compatibilite de
+contrat uniquement : le chemin nominal est le code complet de la
+table ``localites`` (genericite pays, residu 1 du brief de chantier)."""
+
+
+def _resoudre_localite(session: Session, localite: str) -> str:
+    """Resout le code de localite du path contre le referentiel.
+
+    Ordre : code complet tel quel dans la table ; sinon alias
+    historique (prefixe gin_). Localite inconnue : 404
+    ``RESSOURCE_LOCALITE_INCONNUE`` (honnete, au lieu du 422 de
+    l'ancienne enumeration fermee).
+    """
+    for candidat in (localite, f"{_PREFIXE_ALIAS_HISTORIQUE}{localite}"):
+        existe = session.execute(
+            text("SELECT 1 FROM localites WHERE code = :code AND actif = TRUE"),
+            {"code": candidat},
+        ).first()
+        if existe is not None:
+            return candidat
+    raise ExceptionKuma(
+        code=CodeErreur.RESSOURCE_LOCALITE_INCONNUE,
+        message=f"Localite '{localite}' introuvable dans le referentiel.",
+        statut_http=status.HTTP_404_NOT_FOUND,
+    )
 
 
 # === Mois de latence NRT (option B1 disponibilité) ========================
@@ -298,7 +320,7 @@ def grandeur_horaire(
             },
         )
 
-    localite_complet = f"{_PREFIXE_PAYS}{params.localite}"
+    localite_complet = _resoudre_localite(session, params.localite)
 
     # Lever passe_plat : si une série horaire stockée couvre la plage
     # demandée, servir la donnée validée (statut valide_auto) au lieu de

@@ -515,6 +515,13 @@ portant l'écart inter-source récent), robuste à une densification.
 
 ### 3.8 `GET /v1/horaire/{localite}/{grandeur}`
 
+Localités : toute localité du référentiel par son **code complet**
+(ex. `gin_kankan`) ; les codes courts historiques des 6 villes
+pilotes (`kankan`, `kindia`...) restent acceptés en alias de
+compatibilité. Un code inconnu répond 404
+`RESSOURCE_LOCALITE_INCONNUE` (et non plus 422 : l'énumération fermée
+a disparu avec la généricité pays).
+
 Cet endpoint sert d'abord l'horaire stocké et validé par contrôle
 qualité, avec repli passe-plat sur la source amont sinon. Il n'est plus
 un pur passe-plat.

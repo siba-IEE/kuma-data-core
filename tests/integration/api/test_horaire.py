@@ -1,6 +1,6 @@
 """Tests d'integration des endpoints `/api/v1/horaire/<localite>/<grandeur>`.
 
-Passe-plat horaire, 15 tests :
+Passe-plat horaire :
 
 - endpoint data (succes, erreurs auth/validation/plage).
 - format CSV + sentinelles + format Kt nocturne.
@@ -124,13 +124,19 @@ def test_ti96_data_sentinelles_converties_en_null(
 
 
 def test_ti97_data_localite_invalide(client: TestClient, headers_auth: dict[str, str]) -> None:
-    """localite hors enum -> 422."""
+    """Localite hors referentiel : 404 RESSOURCE_LOCALITE_INCONNUE.
+
+    Contrat generalise (genericite pays, residu 1) : l'enumeration
+    fermee des 6 villes (422) laisse place a la resolution contre la
+    table des localites, avec erreur honnete pour un code inconnu.
+    """
     r = client.get(
-        "/v1/horaire/paris/ghi",
+        "/v1/horaire/atlantide/ghi",
         params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-05"},
         headers=headers_auth,
     )
-    assert r.status_code == 422
+    assert r.status_code == 404
+    assert r.json()["erreur"]["code"] == CodeErreur.RESSOURCE_LOCALITE_INCONNUE.value
 
 
 def test_ti98_data_grandeur_invalide(client: TestClient, headers_auth: dict[str, str]) -> None:
@@ -371,6 +377,31 @@ def test_ti111_serie_coquille_ignoree_le_stocke_terrain_est_servi(
     assert len(resultats) == 48
     assert all(res["statut_editorial"] == "valide_auto" for res in resultats)
     mock_fetch.assert_not_called()
+
+
+def test_ti124_code_complet_sert_le_stocke(
+    client: TestClient,
+    headers_auth: dict[str, str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Le code complet du referentiel (gin_kankan) est le chemin nominal.
+
+    Genericite pays (residu 1) : toute localite du referentiel est
+    adressable par son code complet, sans liste codee. L'alias court
+    historique (kankan) reste couvert par ti111.
+    """
+    from kuma_data_core.core.config import get_settings
+
+    monkeypatch.setattr(get_settings(), "edition_figee", True)
+    r = client.get(
+        "/v1/horaire/gin_kankan/ghi",
+        params={"periode_debut": "2022-06-01", "periode_fin": "2022-06-02"},
+        headers=headers_auth,
+    )
+    assert r.status_code == 200
+    resultats = r.json()["resultats"]
+    assert len(resultats) == 48
+    assert all(res["statut_editorial"] == "valide_auto" for res in resultats)
 
 
 def test_ti112_coquille_seule_en_figee_erreur_honnete(
