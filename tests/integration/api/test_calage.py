@@ -80,6 +80,42 @@ def test_ti121_calage_porte_le_domaine_de_couverture(
     ]
     assert payload["justification_couverture"]
     assert "2026-07-20" in payload["justification_couverture"]
+    # Serie sol de fondation, machine-lisible (migration 103).
+    assert payload["serie_sol"] == "gin_kankan_ghi_esmap_wapp_2021_2023"
+
+
+def test_ti122_listing_des_referentiels_publies(
+    client: TestClient, headers_auth: dict[str, str]
+) -> None:
+    """GET /v1/calage : l'endpoint de decouverte des consommateurs.
+
+    Une entree par referentiel : station, grandeur, serie sol de
+    fondation, domaine de couverture. Ajouter une station = publier
+    son referentiel, aucun changement cote consommateurs (genericite
+    pays, residu 3).
+    """
+    r = client.get("/v1/calage", headers=headers_auth)
+    assert r.status_code == 200
+    payload = r.json()
+    assert payload["total"] == 1
+    referentiel = payload["items"][0]
+    assert referentiel["code"] == "gin_kankan_ghi_calage_saisonnier"
+    assert referentiel["localite"] == "gin_kankan"
+    assert referentiel["grandeur"] == "ghi"
+    assert referentiel["serie_sol"] == "gin_kankan_ghi_esmap_wapp_2021_2023"
+    assert referentiel["localites_couvertes"] == [
+        "gin_kankan",
+        "gin_kerouane",
+        "gin_kouroussa",
+        "gin_mandiana",
+        "gin_siguiri",
+    ]
+
+
+def test_ti123_listing_sans_auth_rejete(client: TestClient) -> None:
+    """GET /v1/calage sans auth : 401."""
+    r = client.get("/v1/calage")
+    assert r.status_code == 401
 
 
 def test_ti115_calage_absent_erreur_honnete(

@@ -720,6 +720,14 @@ Première entrée du référentiel : le GHI de la station ESMAP/WAPP de
 Kankan (harmattan +4,4 %, mousson +1,5 %, intersaison +1,9 %). 404
 `RESSOURCE_INTROUVABLE` pour un couple sans référentiel publié.
 
+`GET /v1/calage` (sans paramètre) liste les référentiels publiés :
+une entrée par référentiel avec station, grandeur, version, **série
+sol de fondation** (`serie_sol` : la séquence horaire de référence à
+utiliser avec ce calage) et localités couvertes. C'est l'endpoint de
+découverte des consommateurs d'étude : ajouter une station = publier
+son référentiel, aucun changement côté consommateurs. Le détail
+porte aussi `serie_sol`.
+
 La réponse porte aussi le **domaine de couverture** du transport
 (`localites_couvertes`, `justification_couverture`) : les codes des
 localités qualifiées pour appliquer ce calage (couverture
