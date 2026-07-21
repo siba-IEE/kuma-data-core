@@ -46,14 +46,30 @@ def test_t_hschema_1_parametres_cas_standard() -> None:
 
 
 def test_t_hschema_2_localite_invalide() -> None:
-    """T-HSCHEMA-2 : localite hors enum -> ValidationError."""
+    """T-HSCHEMA-2 : caracteres hors motif -> ValidationError.
+
+    Contrat generalise (genericite pays, residu 1) : l'enumeration
+    fermee a disparu, le schema n'impose plus qu'un motif de code
+    (minuscules, chiffres, underscores). Un code bien forme mais
+    inconnu passe le schema : c'est le handler qui repond 404
+    RESSOURCE_LOCALITE_INCONNUE apres resolution contre la table.
+    """
     with pytest.raises(ValidationError):
         ParametresHoraire(
-            localite="paris",  # hors enum 6 villes
+            localite="Paris!",  # majuscule et ponctuation hors motif
             grandeur="ghi",
             periode_debut=date(2024, 1, 1),
             periode_fin=date(2024, 1, 31),
         )
+
+    # Un code bien forme, meme inconnu du referentiel, passe le schema.
+    p = ParametresHoraire(
+        localite="sen_tambacounda",
+        grandeur="ghi",
+        periode_debut=date(2024, 1, 1),
+        periode_fin=date(2024, 1, 31),
+    )
+    assert p.localite == "sen_tambacounda"
 
 
 def test_t_hschema_3_grandeur_invalide() -> None:
