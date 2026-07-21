@@ -40,3 +40,28 @@ class ReponseCalage(BaseModel):
     portee: str
     localites_couvertes: list[str] = Field(default_factory=list)
     justification_couverture: str | None = None
+    serie_sol: str = Field(
+        description=(
+            "Code de la serie sol de fondation du referentiel : la "
+            "sequence horaire de reference a utiliser avec ce calage. "
+            "Decouverte par l'API, jamais une constante consommateur."
+        )
+    )
+
+
+class ReferentielListe(BaseModel):
+    """Un referentiel de calage au listing (une entree par code)."""
+
+    code: str
+    localite: str
+    grandeur: str
+    version: str
+    serie_sol: str
+    localites_couvertes: list[str] = Field(default_factory=list)
+
+
+class ReponseCalageListe(BaseModel):
+    """Reponse de ``GET /v1/calage`` : les referentiels publies."""
+
+    items: list[ReferentielListe]
+    total: int

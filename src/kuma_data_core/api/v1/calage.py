@@ -22,10 +22,75 @@ from sqlalchemy.orm import Session
 from kuma_data_core.api.codes_erreur import CodeErreur
 from kuma_data_core.api.dependencies import CleApiValidee
 from kuma_data_core.api.erreurs import ExceptionKuma
-from kuma_data_core.api.v1.schemas.calage import ReponseCalage, SaisonCalage
+from kuma_data_core.api.v1.schemas.calage import (
+    ReferentielListe,
+    ReponseCalage,
+    ReponseCalageListe,
+    SaisonCalage,
+)
 from kuma_data_core.db.session import obtenir_session
 
 routeur = APIRouter(prefix="/calage", tags=["calage"])
+
+
+@routeur.get(
+    "",
+    response_model=ReponseCalageListe,
+    status_code=status.HTTP_200_OK,
+    summary="Listing des referentiels de calage publies",
+)
+def lister_referentiels_calage(
+    _cle: CleApiValidee,
+    session: Annotated[Session, Depends(obtenir_session)],
+) -> ReponseCalageListe:
+    """Retourne les referentiels de calage publies, avec leur domaine.
+
+    Une entree par referentiel (code) : station, grandeur, version,
+    serie sol de fondation et localites couvertes. C'est l'endpoint de
+    DECOUVERTE des consommateurs d'etude (genericite pays, residu 3) :
+    ajouter une station = publier son referentiel, aucun changement
+    cote consommateurs.
+    """
+    rows = session.execute(
+        text(
+            """
+            SELECT rc.code, l.code AS localite, rc.grandeur_code,
+                   MIN(rc.version) AS version, MIN(rc.serie_sol) AS serie_sol
+            FROM referentiels_calage rc
+            JOIN localites l ON l.id = rc.localite_id
+            WHERE rc.actif = TRUE
+            GROUP BY rc.code, l.code, rc.grandeur_code
+            ORDER BY rc.code
+            """
+        )
+    ).all()
+    couvertures = session.execute(
+        text(
+            """
+            SELECT cc.referentiel_code, l.code
+            FROM calage_couverture cc
+            JOIN localites l ON l.id = cc.localite_id
+            WHERE cc.actif = TRUE
+            ORDER BY cc.referentiel_code, l.code
+            """
+        )
+    ).all()
+    par_referentiel: dict[str, list[str]] = {}
+    for c in couvertures:
+        par_referentiel.setdefault(str(c.referentiel_code), []).append(str(c.code))
+
+    items = [
+        ReferentielListe(
+            code=str(r.code),
+            localite=str(r.localite),
+            grandeur=str(r.grandeur_code),
+            version=str(r.version),
+            serie_sol=str(r.serie_sol),
+            localites_couvertes=par_referentiel.get(str(r.code), []),
+        )
+        for r in rows
+    ]
+    return ReponseCalageListe(items=items, total=len(items))
 
 
 @routeur.get(
@@ -52,7 +117,7 @@ def referentiel_calage(
         text(
             """
             SELECT rc.code, rc.saison, rc.mois, rc.biais, rc.provenance,
-                   rc.portee, rc.version
+                   rc.portee, rc.version, rc.serie_sol
             FROM referentiels_calage rc
             JOIN localites l ON l.id = rc.localite_id
             WHERE l.code = :localite
@@ -103,4 +168,5 @@ def referentiel_calage(
         portee=str(premiere.portee),
         localites_couvertes=[str(c.code) for c in couverture],
         justification_couverture=str(couverture[0].justification) if couverture else None,
+        serie_sol=str(premiere.serie_sol),
     )

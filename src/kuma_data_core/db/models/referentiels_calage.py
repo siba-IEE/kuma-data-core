@@ -66,6 +66,12 @@ class ReferentielCalage(Base):
     # Le facteur de calage k = 1/(1+biais) est derive, jamais stocke.
     biais: Mapped[Decimal] = mapped_column(Numeric(8, 6), nullable=False)
 
+    # Serie sol de fondation du referentiel (machine-lisible) : la
+    # sequence horaire de reference que les consommateurs d'etude
+    # doivent utiliser avec ce calage. Decouverte par l'API, jamais
+    # une constante cote consommateur (genericite pays, residu 3).
+    serie_sol: Mapped[str] = mapped_column(String(120), nullable=False)
+
     # === Provenance et portée (traçabilité, jamais un nombre nu) ===
     provenance: Mapped[str] = mapped_column(Text, nullable=False)
     portee: Mapped[str] = mapped_column(Text, nullable=False)
