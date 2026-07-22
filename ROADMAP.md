@@ -61,9 +61,24 @@ Le pilier dev.
   codes d'erreur en schéma typé.
 - Exposer un niveau de confiance A/B/C agrégé par série (aujourd'hui dérivé
   côté client).
+- Porter la couverture native de chaque source au référentiel, à côté de son
+  libellé. Une période servie ne dit pas si sa borne est une limite de source
+  ou un choix d'ingestion ; sans cette distinction, un consommateur lit une
+  contrainte physique là où il n'y a qu'une fenêtre recopiée d'une cohorte à
+  l'autre.
 - Découpler l'ingestion de masse des migrations Alembic (seed offline ou
   pipeline reproductible) ; c'est le chantier de fond qui simplifie aussi le
   pont du jalon 2.
+- Élargir à 2003 la fenêtre de la précipitation NASA POWER (`PRECTOTCORR`),
+  compagne pluie du proxy de salissure. Elle s'arrête à 2021 par alignement
+  sur la cohorte journalière existante, pas par limite de source ; la chaîne
+  et son canari existent, seule la fenêtre change.
+- Chaîne d'ingestion CAMS EAC4 alignée sur le patron NASA POWER et SARAH-3,
+  canari compris. Les particules du proxy de salissure entrent aujourd'hui par
+  seed committé sous la limite de taille du dépôt, seule source dans ce cas ;
+  élargir leur fenêtre de 2021 à 2003, ce que le produit permet, multiplie le
+  volume par plus de trois et ferait sortir de la discipline seed-offline par
+  le mauvais côté.
 - Endpoints F2 : renvoyer 422 (pas 500) sur paramètre invalide. Le validateur
   fautif est sur la classe de base commune, donc le correctif est transversal
   aux endpoints F2 (handler dédié ou validation en handler).
