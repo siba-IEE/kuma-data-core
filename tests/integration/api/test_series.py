@@ -79,9 +79,10 @@ def test_ti62_listing_avec_auth_retourne_series(
 
     # === Champs catalogue enrichi (18 champs) =================================
     # Serie temoin connue : recuperee par filtre localite (robuste a la pagination ;
-    # le catalogue depasse une page apres la densification).
+    # le catalogue depasse une page apres la densification, et Conakry porte
+    # aussi les series mensuelles longues du lot profondeur -> fenetre 60).
     temoin = client.get(
-        "/v1/series?localite=gin_conakry_kaloum&limit=20", headers=headers_auth
+        "/v1/series?localite=gin_conakry_kaloum&limit=60", headers=headers_auth
     ).json()
     assert any(s["code"] == "gin_conakry_ghi_nasa_power_2021_2025" for s in temoin["items"])
     premier = items[0]

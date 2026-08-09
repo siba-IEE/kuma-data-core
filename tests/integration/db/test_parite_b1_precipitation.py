@@ -45,7 +45,8 @@ def test_pilotes_inchanges(db_session: Session) -> None:
         text(
             f"""
             SELECT COUNT(*) FROM series_metadonnees sm JOIN localites l ON l.id = sm.localite_id
-            WHERE sm.grandeur_code = 'precipitation' AND l.code IN {_PILOTES_SQL}
+            WHERE sm.grandeur_code = 'precipitation' AND sm.granularite = 'journalier'
+              AND l.code IN {_PILOTES_SQL}
             """
         )
     ).scalar_one()
@@ -80,7 +81,8 @@ def test_volume_28_communes(db_session: Session) -> None:
         text(
             f"""
             SELECT COUNT(*) FROM series_metadonnees sm JOIN localites l ON l.id = sm.localite_id
-            WHERE sm.grandeur_code = 'precipitation' AND l.code NOT IN {_PILOTES_SQL}
+            WHERE sm.grandeur_code = 'precipitation' AND sm.granularite = 'journalier'
+              AND l.code NOT IN {_PILOTES_SQL}
             """
         )
     ).scalar_one()
@@ -171,7 +173,8 @@ def test_series_structure_communes(db_session: Session) -> None:
                    sm.periode_debut, sm.periode_fin
             FROM series_metadonnees sm JOIN sources s ON s.id = sm.source_id
             JOIN localites l ON l.id = sm.localite_id
-            WHERE sm.grandeur_code = 'precipitation' AND l.code NOT IN {_PILOTES_SQL}
+            WHERE sm.grandeur_code = 'precipitation' AND sm.granularite = 'journalier'
+              AND l.code NOT IN {_PILOTES_SQL}
             """
         )
     ).all()
