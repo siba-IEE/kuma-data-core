@@ -145,7 +145,7 @@ class MesureRessourceMensuelle(Base):
     # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
-            "annee BETWEEN 1991 AND 2099",
+            "annee BETWEEN 1981 AND 2099",
             name="ck_mesures_ressource_mensuelles_annee_valide",
         ),
         CheckConstraint(

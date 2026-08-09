@@ -74,7 +74,10 @@ def test_ti47_decompte_mesures_ressource_mensuelles(db_session: Session) -> None
     # 203 mois 2004-02..2020-12) = 107 510.
     # +20 160 densification ERA5-Land mensuel (migration 096, 28 communes x
     # 3 grandeurs ghi/t2m/vent_10m x 240 mois 2001-2020) = 127 670.
-    assert total == 127670
+    # +156 672 series mensuelles longues NASA POWER (profondeur, 34 points x
+    # 4 608 mois = 5 grandeurs x 540 [1981-2025] + 2 x 504 [1984-2025] + 3 x 300 [2001-2025])
+    # = 284 342.
+    assert total == 284342
 
     # Decompte par source via JOIN
     n_sarah3 = db_session.execute(
@@ -376,7 +379,9 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
     # commune ; brutes hors famille referentielle exclue) = 1274.
     # + 56 (migration 098 : PM EAC4 pm2_5/pm10 aux 28 communes, 2 grandeurs/
     # commune ; brutes hors famille referentielle exclue) = 1330.
-    assert n_series_hors_calculees_ref == 1330
+    # + 340 (profondeur mensuelle NASA POWER : 34 points x 10 grandeurs, series longues
+    # 1981/1984/2001-2025 ; brutes hors famille referentielle exclue) = 1670.
+    assert n_series_hors_calculees_ref == 1670
     # Exact : NASA daily offline (seed) -> deterministe.
     # Attendu derive du seed (cf. _mesures_ressource_attendu, = 162 876).
     assert n_ressource == _mesures_ressource_attendu()
@@ -384,4 +389,5 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
     # + 1 008 (densif CAMS DNI recent 089) + 5 684 (densif CAMS DNI climato 2004-2020,
     # migration 095, 28 x 203) = 107 510.
     # + 20 160 (densif ERA5-Land mensuel, migration 096, 28 x 3 x 240) = 127 670.
-    assert n_mens == 127670
+    # + 156 672 (profondeur mensuelle NASA POWER, 34 x 4 608) = 284 342.
+    assert n_mens == 284342

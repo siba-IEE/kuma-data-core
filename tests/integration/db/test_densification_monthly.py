@@ -72,6 +72,7 @@ def test_252_series_mensuelles(db_session: Session) -> None:
             JOIN localites l ON l.id = sm.localite_id
             WHERE l.code = ANY(:c) AND sm.granularite = 'mensuel'
             AND sm.source_id = (SELECT id FROM sources WHERE code = 'nasa_power')
+            AND sm.periode_fin = '2020-12-31'
             """
         ),
         {"c": list(_COMMUNES)},
@@ -89,6 +90,7 @@ def test_volume_mesures_derive_du_seed(db_session: Session) -> None:
             JOIN localites l ON l.id = sm.localite_id
             WHERE l.code = ANY(:c) AND sm.granularite = 'mensuel'
             AND sm.source_id = (SELECT id FROM sources WHERE code = 'nasa_power')
+            AND sm.periode_fin = '2020-12-31'
             """
         ),
         {"c": list(_COMMUNES)},
@@ -186,8 +188,11 @@ def test_6_pilotes_intacts(db_session: Session) -> None:
                              'gin_labe', 'gin_mamou', 'gin_nzerekore')
             AND sm.granularite = 'mensuel'
             AND sm.source_id = (SELECT id FROM sources WHERE code = 'nasa_power')
+            AND sm.periode_fin = '2020-12-31'
             """
         )
     ).scalar_one()
     # 6 villes x 9 grandeurs monthly NASA (ghi 041 + 8 grandeurs 050).
+    # Filtre periode_fin 2020-12-31 : perimetre normales climato (les series
+    # mensuelles longues 1981/1984/2001-2025 sont un lot distinct).
     assert n == 54
