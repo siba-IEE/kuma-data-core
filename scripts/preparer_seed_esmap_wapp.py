@@ -1,6 +1,6 @@
 """Préparation du seed offline ESMAP/WAPP - irradiance sol horaire (terrain-lite).
 
-Livrable **humain ponctuel** (dev deps), exécuté hors CI. Lit les fichiers QC
+Script ponctuel (dev deps), exécuté hors CI. Lit les fichiers QC
 1-minute d'une station WAPP (campagne ESMAP « Solar Development in Sub-Saharan
 Africa », licence **CC-BY-4.0**, en main dans ``data/guinee/01-physique/``),
 **agrège à l'horaire**, et écrit un **seed committé** déterministe. La migration

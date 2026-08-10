@@ -1,6 +1,6 @@
 """Préparation du seed offline NASA POWER daily profondeur (séries longues).
 
-Livrable **humain ponctuel** (hors CI). Capture en **live** le journalier NASA
+Script ponctuel (hors CI). Capture en **live** le journalier NASA
 POWER **pleine profondeur** (1981-01-01 -> 2020-12-31) des **34 points**
 (6 pilotes + 28 communes chef-lieu), le convertit en lignes finales
 ``(localite_code, grandeur_code, date, valeur)`` et écrit un seed committé

@@ -1,6 +1,6 @@
 """Préparation du seed offline CAMS Radiation DNI.
 
-Livrable **humain ponctuel** (dev deps), exécuté hors CI. Télécharge le DNI
+Script ponctuel (dev deps), exécuté hors CI. Télécharge le DNI
 all-sky aérosol-corrigé (`BNI`) de CAMS Radiation depuis l'ADS Copernicus,
 extrait par ville pilote, convertit, et écrit un **seed committé** déterministe.
 La migration d'insertion ne dépend QUE de ce seed (aucun ``cdsapi`` ni réseau au

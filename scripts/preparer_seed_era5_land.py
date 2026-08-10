@@ -1,6 +1,6 @@
 """Préparation du seed offline ERA5-Land.
 
-Livrable **humain ponctuel** (dev deps), exécuté hors CI. Télécharge
+Script ponctuel (dev deps), exécuté hors CI. Télécharge
 ERA5-Land depuis le CDS Copernicus, extrait par ville pilote, applique les
 conversions et écrit le fichier seed committé
 ``src/kuma_data_core/db/seeds/era5_land_seed_data.py``. La migration

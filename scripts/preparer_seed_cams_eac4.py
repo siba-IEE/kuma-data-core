@@ -1,6 +1,6 @@
 """Preparation du seed offline EAC4 PM2.5/PM10 (soiling).
 
-Livrable **humain ponctuel** (dev deps, hors CI). Telecharge la reanalyse EAC4
+Script ponctuel (dev deps, hors CI). Telecharge la reanalyse EAC4
 (``cams-global-reanalysis-eac4``, ADS Copernicus) sur les 6 villes pilotes, extrait
 le point de grille le plus proche, agrege en moyenne journaliere, convertit en
 ug/m3 et ecrit le seed committe ``src/kuma_data_core/db/seeds/cams_eac4_seed_data.py``

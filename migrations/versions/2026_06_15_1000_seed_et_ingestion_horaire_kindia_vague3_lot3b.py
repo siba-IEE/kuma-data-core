@@ -38,7 +38,7 @@ Garde-fou d'ingestion de masse : la variable
 ingestion** ; les 6 series restent seedees (structure verifiee en CI),
 0 mesure ingeree. Posee dans ``ci.yml`` et ``ci-nightly.yml`` : aucun
 des deux jobs ne fait les 138 appels live. L'ingestion reelle + la
-QC sur les 1,1 M lignes (migration 057) sont le **livrable humain**
+QC sur les 1,1 M lignes (migration 057) s'executent manuellement hors CI
 (``alembic upgrade head`` local sans la variable). Distincte du switch
 global ``KUMA_SKIP_NASA_POWER_INGESTION`` (qui skiperait aussi le pilote
 054 et casserait les tests d'integration correspondants) ;
@@ -76,7 +76,7 @@ _VARIABLE_ENV_SKIP_MASSE: str = "KUMA_SKIP_INGESTION_MASSE_HORAIRE"
 
 Truthy values : '1', 'true', 'yes' (case-insensitive). Posee dans les
 deux workflows CI (standard + nightly) pour eviter les 138 appels live
-a chaque run. L'ingestion reelle est le livrable humain (alembic upgrade
+a chaque run. L'ingestion reelle se fait manuellement (alembic upgrade
 head local sans cette variable). Distincte du switch global
 ``KUMA_SKIP_NASA_POWER_INGESTION`` (qui skiperait aussi le pilote 054)."""
 
@@ -247,7 +247,7 @@ def upgrade() -> None:
         op.execute(
             f"-- Migration 056 : ingestion de masse court-circuitee "
             f"({_VARIABLE_ENV_SKIP_MASSE}). 6 series Kindia seedees, 0 mesure "
-            f"ingeree. Ingestion reelle = livrable humain (cf. dette D-64)."
+            f"ingeree. Ingestion reelle a executer manuellement (cf. dette D-64)."
         )
         return
 

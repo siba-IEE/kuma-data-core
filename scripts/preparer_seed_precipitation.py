@@ -1,6 +1,6 @@
 """Preparation du seed offline precipitation NASA POWER (soiling).
 
-Livrable **humain ponctuel** (hors CI). Tire la precipitation journaliere
+Script ponctuel (hors CI). Tire la precipitation journaliere
 ``PRECTOTCORR`` de NASA POWER pour les 6 villes pilotes, filtre la sentinelle
 ``-999`` et ecrit le seed committe
 ``src/kuma_data_core/db/seeds/precipitation_seed_data.py`` (chargeur) + son

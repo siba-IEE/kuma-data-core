@@ -1,6 +1,6 @@
 """Tire l'artefact CAMS clear-sky DNI (BNIc) HORAIRE - Kankan - test du socle.
 
-Livrable **humain ponctuel** (dev deps), hors CI, **hors base, hors migration**.
+Script ponctuel (dev deps), hors CI, **hors base, hors migration**.
 Re-tire ``cams-solar-radiation-timeseries`` (ADS Copernicus) au pas **horaire**
 pour le pixel Kankan, recouvrement 2021-2023, et extrait les deux composantes du
 faisceau normal :

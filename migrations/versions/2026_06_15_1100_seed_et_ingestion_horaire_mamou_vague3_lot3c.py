@@ -19,7 +19,7 @@ series concernees (ghi/dni/dhi/kt).
 Garde-fou d'ingestion de masse :
 ``KUMA_SKIP_INGESTION_MASSE_HORAIRE`` (truthy) court-circuite la seule
 ingestion ; les 6 series restent seedees. Pose dans ci.yml et
-ci-nightly.yml. L'ingestion reelle + QC est un livrable humain.
+ci-nightly.yml. L'ingestion reelle + QC se fait manuellement hors CI.
 
 Volume : 6 grandeurs x 23 annees = 138 appels NASA POWER hourly (dont
 4 grandeurs radiatives redondantes avec Kindia, assumees) ; 1,1 M
@@ -220,7 +220,7 @@ def upgrade() -> None:
         op.execute(
             f"-- Migration 058 : ingestion de masse court-circuitee "
             f"({_VARIABLE_ENV_SKIP_MASSE}). 6 series Mamou seedees, 0 mesure "
-            f"ingeree. Ingestion reelle = livrable humain (cf. dette D-64)."
+            f"ingeree. Ingestion reelle a executer manuellement (cf. dette D-64)."
         )
         return
 

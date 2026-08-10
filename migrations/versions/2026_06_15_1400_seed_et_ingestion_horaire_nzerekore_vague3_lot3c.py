@@ -190,7 +190,7 @@ def upgrade() -> None:
         op.execute(
             f"-- Migration 064 : ingestion de masse court-circuitee "
             f"({_VARIABLE_ENV_SKIP_MASSE}). 6 series Nzerekore seedees, 0 mesure "
-            f"ingeree. Ingestion reelle = livrable humain (cf. dette D-64)."
+            f"ingeree. Ingestion reelle a executer manuellement (cf. dette D-64)."
         )
         return
 

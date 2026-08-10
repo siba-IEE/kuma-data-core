@@ -1,6 +1,6 @@
 """Préparation du seed offline NASA POWER mensuel profondeur (séries longues).
 
-Livrable **humain ponctuel** (hors CI). Capture en **live** les séries
+Script ponctuel (hors CI). Capture en **live** les séries
 mensuelles NASA POWER **pleine profondeur** (1981-2025) des **34 points**
 (6 villes pilotes + 28 communes chef-lieu), les convertit en lignes finales
 ``(localite_code, grandeur_code, annee, mois, valeur)`` et écrit un seed
