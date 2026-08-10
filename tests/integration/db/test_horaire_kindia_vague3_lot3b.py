@@ -30,11 +30,12 @@ _LOCALITE_CODE: str = "gin_kindia"
 
 
 def _code_serie(grandeur: str) -> str:
-    return f"{_LOCALITE_CODE}_{grandeur}_nasa_power_2001_2023"
+    return f"{_LOCALITE_CODE}_{grandeur}_nasa_power_2001_2025"
 
 
 def test_3b_six_series_kindia_seedees(db_session: Session) -> None:
-    """Les 6 series horaires Kindia 2001-2023 sont seedees."""
+    """Les 6 series horaires Kindia 2001-2025 sont seedees (fenetre etendue
+    in-place, extension pilote)."""
     codes = [_code_serie(g) for g in _GRANDEURS_HORAIRES]
     rows = db_session.execute(
         text("SELECT code FROM series_metadonnees WHERE code = ANY(:codes) ORDER BY code"),
@@ -47,7 +48,7 @@ def test_3b_six_series_kindia_seedees(db_session: Session) -> None:
 
 
 def test_3b_metadonnees_series_kindia(db_session: Session) -> None:
-    """Chaque serie Kindia : granularite horaire, fenetre 2001-2023, source/methode."""
+    """Chaque serie Kindia : granularite horaire, fenetre 2001-2025, source/methode."""
     rows = db_session.execute(
         text(
             """
@@ -68,7 +69,7 @@ def test_3b_metadonnees_series_kindia(db_session: Session) -> None:
         grandeurs_vues.add(r.grandeur_code)
         assert r.granularite == "horaire", f"{r.grandeur_code} : granularite={r.granularite!r}"
         assert r.periode_debut == dt.date(2001, 1, 1)
-        assert r.periode_fin == dt.date(2023, 12, 31)
+        assert r.periode_fin == dt.date(2025, 12, 31)
         assert r.source_code == "nasa_power"
         assert r.methode_collecte == "modele_satellitaire"
         assert r.localite_code == _LOCALITE_CODE

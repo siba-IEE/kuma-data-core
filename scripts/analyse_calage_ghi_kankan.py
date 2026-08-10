@@ -28,7 +28,7 @@ import sqlalchemy as sa
 from kuma_data_core.db.session import get_engine
 
 _WAPP = "gin_kankan_ghi_esmap_wapp_2021_2023"  # sol mesure (confiance A)
-_NASA = "gin_kankan_ghi_nasa_power_2001_2023"  # satellite (confiance B)
+_NASA = "gin_kankan_ghi_nasa_power_2001_2025"  # satellite (confiance B)
 _LAT, _LON = 10.38333333, -9.30000000  # gin_kankan (seed migration 011)
 _ELEV_MIN = 5.0  # heures de jour
 _BASCULE_AN2 = pd.Timestamp("2022-10-18", tz="UTC")  # an 1 / an 2

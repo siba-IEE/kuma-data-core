@@ -32,7 +32,7 @@ import sqlalchemy as sa
 from kuma_data_core.db.session import get_engine
 
 _SOL_H = "gin_kankan_dni_esmap_wapp_2021_2023"  # sol horaire W/m2 (A)
-_NASA_H = "gin_kankan_dni_nasa_power_2001_2023"  # NASA horaire W/m2 (B)
+_NASA_H = "gin_kankan_dni_nasa_power_2001_2025"  # NASA horaire W/m2 (B)
 _CAMS_M = "gin_kankan_dni_cams_2021_2023"  # CAMS mensuel kWh/m2/jour (B)
 _LAT, _LON = 10.38333333, -9.30000000  # gin_kankan
 _ELEV_MIN = 5.0

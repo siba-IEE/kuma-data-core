@@ -28,8 +28,19 @@ from pydantic import BaseModel, Field, model_validator
 # === Constantes module ====================================================
 
 
-GRANDEURS_AUTORISEES: tuple[str, ...] = ("ghi", "dni", "dhi", "t2m", "rh2m", "kt")
-"""6 grandeurs horaires ingérables."""
+GRANDEURS_AUTORISEES: tuple[str, ...] = (
+    "ghi",
+    "dni",
+    "dhi",
+    "t2m",
+    "rh2m",
+    "kt",
+    "vent_2m",
+    "vent_10m",
+    "precipitation",
+)
+"""9 grandeurs horaires ingérables (vents et précipitation ajoutés avec la
+densification horaire aux 28 communes)."""
 
 PLAGE_MAX_JOURS: int = 366
 """Plage temporelle maximale par requête (année bissextile incluse)."""
@@ -54,7 +65,9 @@ class ParametresHoraire(BaseModel):
     # alias de compatibilite, resolus par le handler contre la table
     # (genericite pays : plus de liste codee).
     localite: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9_]+$")
-    grandeur: Literal["ghi", "dni", "dhi", "t2m", "rh2m", "kt"]
+    grandeur: Literal[
+        "ghi", "dni", "dhi", "t2m", "rh2m", "kt", "vent_2m", "vent_10m", "precipitation"
+    ]
     periode_debut: date = Field(..., ge=DATE_DEBUT_DISPONIBILITE)
     periode_fin: date
     format_sortie: Literal["json", "csv"] = Field(

@@ -284,13 +284,13 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
           Conakry-Kaloum 2021-2023 (ghi/dni/dhi/t2m/rh2m/kt). Total hors
           calculees : 162 -> 168.
         - migration 056 : +6 series horaires Kindia
-          pleine profondeur 2001-2023 (ghi/dni/dhi/t2m/rh2m/kt). Le seed
+          pleine profondeur 2001-2025 (ghi/dni/dhi/t2m/rh2m/kt). Le seed
           des series est inconditionnel ; seule l'ingestion de masse est
           gardee par KUMA_SKIP_INGESTION_MASSE_HORAIRE,
           le decompte de series est donc invariant. Total hors calculees :
           168 -> 174.
         - migrations 058/060/062/064 : +24 series
-          horaires pleine profondeur 2001-2023 pour 4 villes neuves
+          horaires pleine profondeur 2001-2025 pour 4 villes neuves
           (Mamou, Labe, Kankan, Nzerekore x 6 grandeurs). Seed
           inconditionnel. Total hors calculees : 174 -> 198.
         - migrations 068/069 : +1 source (ecmwf_era5_land)
@@ -386,7 +386,9 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
     # 1981/1984/2001-2025 ; brutes hors famille referentielle exclue) = 1670.
     # + 340 (profondeur journaliere NASA POWER migration 106 : 34 points x 10 grandeurs,
     # backfill 1981/1984/2001-2020 ; brutes hors famille referentielle exclue) = 2010.
-    assert n_series_hors_calculees_ref == 2010
+    # + 270 (volet horaire : 252 series aux 28 communes + 18 nouvelles aux pilotes,
+    # vents/precipitation ; les 36 pilotes historiques sont renommees, pas creees) = 2280.
+    assert n_series_hors_calculees_ref == 2280
     # Exact : NASA daily offline (seed) -> deterministe.
     # Attendu derive du seed (cf. _mesures_ressource_attendu, = 162 876).
     assert n_ressource == _mesures_ressource_attendu()

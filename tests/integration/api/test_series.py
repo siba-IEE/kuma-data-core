@@ -160,7 +160,7 @@ def test_ti64_filtre_localite(client: TestClient, headers_auth: dict[str, str]) 
 
     Kindia a au moins : 5 brutes NASA POWER daily + 1 kt + 1 NASA POWER 1991-2020
     + 1 SARAH-3 + 5 grandeurs Kuma calculs + 3 grandeurs derivees + 6 horaires
-    pleine profondeur 2001-2023 = 22 series. L'assertion reste
+    pleine profondeur 2001-2025 + 3 horaires vents/precipitation = 25 series. L'assertion reste
     en >= (le seed horaire est inconditionnel, l'ingestion de masse est gardee).
     """
     response = client.get(

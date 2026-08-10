@@ -298,7 +298,7 @@ def _mesures_horaires_journee(
 
 def _params_horaire(inclinaison: float, orientation: float = 180.0) -> ParametresPOA:
     return ParametresPOA(
-        code_serie_source="gin_conakry_ghi_nasa_power_2001_2023",
+        code_serie_source="gin_conakry_ghi_nasa_power_2001_2025",
         periode_debut=date(2024, 6, 1),
         periode_fin=date(2024, 6, 30),
         inclinaison_deg=inclinaison,

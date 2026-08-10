@@ -159,7 +159,7 @@ def test_t_djc_8_agregation_mensuelle_coherente() -> None:
 def _parametres_horaire_base_26() -> ParametresDegreJourClimatisation:
     """Base T_b = 26°C, methode integration horaire."""
     return ParametresDegreJourClimatisation(
-        code_serie_source="gin_conakry_t2m_nasa_power_2001_2023",
+        code_serie_source="gin_conakry_t2m_nasa_power_2001_2025",
         periode_debut=date(2024, 1, 1),
         periode_fin=date(2024, 1, 31),
         base_temperature_degc=26.0,
