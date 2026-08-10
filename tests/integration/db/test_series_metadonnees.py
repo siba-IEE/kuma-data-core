@@ -228,6 +228,7 @@ def test_unique_composite_doublon_strict_rejete(
             grandeur_test.code,
             source_test.id,
             code="serie_composite_a",
+            granularite="journalier",
         )
     )
     db_session.flush()
@@ -238,7 +239,8 @@ def test_unique_composite_doublon_strict_rejete(
                 localite_test.id,
                 grandeur_test.code,
                 source_test.id,
-                code="serie_composite_b",  # code différent, triplet identique
+                code="serie_composite_b",  # code différent, identité métier identique
+                granularite="journalier",  # cle etendue (migration 106)
             )
         )
         db_session.flush()
