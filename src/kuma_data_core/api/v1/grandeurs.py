@@ -157,6 +157,7 @@ class SerieSourceResolue(NamedTuple):
     periode_debut: date
     source_code: str
     granularite: str | None
+    periode_fin: date | None
 
 
 def _resoudre_serie_source(session: Session, code_serie: str) -> SerieSourceResolue:
@@ -182,7 +183,7 @@ def _resoudre_serie_source(session: Session, code_serie: str) -> SerieSourceReso
             """
             SELECT sm.id, sm.localite_id, sm.source_id, sm.grandeur_code,
                    l.code AS localite_code, sm.periode_debut,
-                   s.code AS source_code, sm.granularite
+                   s.code AS source_code, sm.granularite, sm.periode_fin
             FROM series_metadonnees sm
             JOIN localites l ON l.id = sm.localite_id
             JOIN sources s ON s.id = sm.source_id
@@ -207,6 +208,7 @@ def _resoudre_serie_source(session: Session, code_serie: str) -> SerieSourceReso
         periode_debut=row.periode_debut,
         source_code=row.source_code,
         granularite=row.granularite,
+        periode_fin=row.periode_fin,
     )
 
 
@@ -1492,14 +1494,22 @@ _FENETRE_LARGE_DEBUT: date = date(2000, 1, 1)
 _FENETRE_LARGE_FIN: date = date(2100, 1, 1)
 
 
-def _chercher_serie_pluie_nasa(session: Session, localite_id: int) -> int | None:
+def _chercher_serie_pluie_nasa(
+    session: Session,
+    localite_id: int,
+    periode_debut: date,
+    periode_fin: date | None,
+) -> int | None:
     """Résout la série de précipitation journalière NASA POWER d'une localité.
 
     Résolveur **dédié** (la pluie est ``nasa_power``, source différente des PM
     ``cams_eac4`` ; ``_chercher_serie_compagne`` filtre sur ``source_id`` et la
     raterait). La source est **épinglée explicitement** : même si une autre source de
-    pluie arrive un jour, elle ne sera pas sélectionnée (pas de dépendance à un
-    LIMIT 1 arbitraire) ; ordre stable sur ``periode_debut, id``.
+    pluie arrive un jour, elle ne sera pas sélectionnée. Depuis le backfill
+    journalier profondeur (migration 107), une localité porte **deux** séries de
+    pluie NASA (1981-2020 et 2021-2025) : la série retenue est celle dont la plage
+    **recouvre la fenêtre de la série PM appelante** (le modèle HSU intègre la
+    pluie sur les dates des PM) ; ordre stable sur ``periode_debut, id``.
     """
     row = session.execute(
         text(
@@ -1511,11 +1521,17 @@ def _chercher_serie_pluie_nasa(session: Session, localite_id: int) -> int | None
               AND sm.grandeur_code = 'precipitation'
               AND sm.granularite = 'journalier'
               AND sm.actif = TRUE
+              AND (sm.periode_fin IS NULL OR sm.periode_fin >= :periode_debut)
+              AND (CAST(:periode_fin AS DATE) IS NULL OR sm.periode_debut <= :periode_fin)
             ORDER BY sm.periode_debut, sm.id
             LIMIT 1
             """
         ),
-        {"localite_id": localite_id},
+        {
+            "localite_id": localite_id,
+            "periode_debut": periode_debut,
+            "periode_fin": periode_fin,
+        },
     ).first()
     return int(row.id) if row else None
 
@@ -1572,7 +1588,9 @@ def grandeur_taux_salissure_proxy(
     pm10_serie_id = _chercher_serie_compagne(
         session, serie.localite_id, serie.source_id, "pm10", serie.periode_debut, serie.granularite
     )
-    pluie_serie_id = _chercher_serie_pluie_nasa(session, serie.localite_id)
+    pluie_serie_id = _chercher_serie_pluie_nasa(
+        session, serie.localite_id, serie.periode_debut, serie.periode_fin
+    )
     if pm10_serie_id is None or pluie_serie_id is None:
         raise ExceptionKuma(
             code=CodeErreur.INCOMPATIBILITE_SOURCE_GRANDEUR,

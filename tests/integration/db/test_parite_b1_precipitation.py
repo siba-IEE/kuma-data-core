@@ -46,6 +46,7 @@ def test_pilotes_inchanges(db_session: Session) -> None:
             f"""
             SELECT COUNT(*) FROM series_metadonnees sm JOIN localites l ON l.id = sm.localite_id
             WHERE sm.grandeur_code = 'precipitation' AND sm.granularite = 'journalier'
+              AND sm.periode_debut = '2021-01-01'
               AND l.code IN {_PILOTES_SQL}
             """
         )
@@ -57,7 +58,8 @@ def test_pilotes_inchanges(db_session: Session) -> None:
             SELECT COUNT(*) FROM mesures_ressource mr
             JOIN series_metadonnees sm ON sm.id = mr.serie_id
             JOIN localites l ON l.id = sm.localite_id
-            WHERE sm.grandeur_code = 'precipitation' AND l.code IN {_PILOTES_SQL}
+            WHERE sm.grandeur_code = 'precipitation'
+              AND sm.periode_debut = '2021-01-01' AND l.code IN {_PILOTES_SQL}
             """
         )
     ).scalar_one()
@@ -68,7 +70,8 @@ def test_pilotes_inchanges(db_session: Session) -> None:
             SELECT COALESCE(SUM(mr.valeur), 0) FROM mesures_ressource mr
             JOIN series_metadonnees sm ON sm.id = mr.serie_id
             JOIN localites l ON l.id = sm.localite_id
-            WHERE sm.grandeur_code = 'precipitation' AND l.code IN {_PILOTES_SQL}
+            WHERE sm.grandeur_code = 'precipitation'
+              AND sm.periode_debut = '2021-01-01' AND l.code IN {_PILOTES_SQL}
             """
         )
     ).scalar_one()
@@ -82,6 +85,7 @@ def test_volume_28_communes(db_session: Session) -> None:
             f"""
             SELECT COUNT(*) FROM series_metadonnees sm JOIN localites l ON l.id = sm.localite_id
             WHERE sm.grandeur_code = 'precipitation' AND sm.granularite = 'journalier'
+              AND sm.periode_debut = '2021-01-01'
               AND l.code NOT IN {_PILOTES_SQL}
             """
         )
@@ -93,7 +97,8 @@ def test_volume_28_communes(db_session: Session) -> None:
             SELECT COUNT(*) FROM mesures_ressource mr
             JOIN series_metadonnees sm ON sm.id = mr.serie_id
             JOIN localites l ON l.id = sm.localite_id
-            WHERE sm.grandeur_code = 'precipitation' AND l.code NOT IN {_PILOTES_SQL}
+            WHERE sm.grandeur_code = 'precipitation'
+              AND sm.periode_debut = '2021-01-01' AND l.code NOT IN {_PILOTES_SQL}
             """
         )
     ).scalar_one()
@@ -105,7 +110,8 @@ def test_volume_28_communes(db_session: Session) -> None:
             SELECT COALESCE(SUM(mr.valeur), 0) FROM mesures_ressource mr
             JOIN series_metadonnees sm ON sm.id = mr.serie_id
             JOIN localites l ON l.id = sm.localite_id
-            WHERE sm.grandeur_code = 'precipitation' AND l.code NOT IN {_PILOTES_SQL}
+            WHERE sm.grandeur_code = 'precipitation'
+              AND sm.periode_debut = '2021-01-01' AND l.code NOT IN {_PILOTES_SQL}
             """
         )
     ).scalar_one()
@@ -124,7 +130,8 @@ def test_couverture_par_commune(db_session: Session) -> None:
             FROM mesures_ressource mr
             JOIN series_metadonnees sm ON sm.id = mr.serie_id
             JOIN localites l ON l.id = sm.localite_id
-            WHERE sm.grandeur_code = 'precipitation' AND l.code NOT IN {_PILOTES_SQL}
+            WHERE sm.grandeur_code = 'precipitation'
+              AND sm.periode_debut = '2021-01-01' AND l.code NOT IN {_PILOTES_SQL}
             GROUP BY l.code
             """
         )
@@ -146,7 +153,8 @@ def test_confiance_b_communes(db_session: Session) -> None:
                 SELECT DISTINCT mr.niveau_confiance_derive FROM mesures_ressource mr
                 JOIN series_metadonnees sm ON sm.id = mr.serie_id
                 JOIN localites l ON l.id = sm.localite_id
-                WHERE sm.grandeur_code = 'precipitation' AND l.code NOT IN {_PILOTES_SQL}
+                WHERE sm.grandeur_code = 'precipitation'
+              AND sm.periode_debut = '2021-01-01' AND l.code NOT IN {_PILOTES_SQL}
                 """
             )
         ).all()
@@ -174,6 +182,7 @@ def test_series_structure_communes(db_session: Session) -> None:
             FROM series_metadonnees sm JOIN sources s ON s.id = sm.source_id
             JOIN localites l ON l.id = sm.localite_id
             WHERE sm.grandeur_code = 'precipitation' AND sm.granularite = 'journalier'
+              AND sm.periode_debut = '2021-01-01'
               AND l.code NOT IN {_PILOTES_SQL}
             """
         )

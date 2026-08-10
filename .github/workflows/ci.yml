@@ -103,7 +103,10 @@ jobs:
   tests-integration:
     name: Tests d'intégration
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 30 min : le rejeu integral inclut le backfill journalier profondeur
+    # (migration 107, 4 147 830 insertions, trigger d'audit par ligne) en plus
+    # de l'horaire pilote live. Mesure locale du seul backfill : 19 min.
+    timeout-minutes: 30
     needs: [lint, type-check]
 
     # Service container natif GitHub Actions : un PostgreSQL 16-alpine

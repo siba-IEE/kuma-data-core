@@ -205,7 +205,8 @@ class SerieMetadonnees(Base):
             "source_id",
             "periode_debut",
             "periode_fin",
-            name="uq_series_metadonnees_identite_metier_plage",
+            "granularite",
+            name="uq_series_metadonnees_identite_metier_plage_granularite",
         ),
         # Commentaire de table porté sur l'ORM pour cohérence avec la
         # migration 008 (alembic check). Le dict doit être le dernier

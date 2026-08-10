@@ -212,7 +212,10 @@ def test_ti50_exception_conakry_appliquee(db_session: Session) -> None:
 # x 28 x 1826, seed dedie chunke hors NASA_DAILY_PAYLOADS) = 268 784.
 # + 95 424 (migration 098 : PM EAC4 pm2_5/pm10 aux 28 communes, 2 grandeurs
 # x 28 x 1704 jours 2021-01..2025-08, seed dedie hors NASA_DAILY_PAYLOADS) = 364 208.
-_MESURES_NON_NASA_DAILY: int = 364208
+# + 4 147 830 (migration 106 : backfill journalier profondeur 1981/1984/2001-2020
+# aux 34 points, 10 grandeurs, seed dedie groupe par serie hors NASA_DAILY_PAYLOADS,
+# capture gapless) = 4 512 038.
+_MESURES_NON_NASA_DAILY: int = 4512038
 
 
 def _mesures_ressource_attendu() -> int:
@@ -381,7 +384,9 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
     # commune ; brutes hors famille referentielle exclue) = 1330.
     # + 340 (profondeur mensuelle NASA POWER : 34 points x 10 grandeurs, series longues
     # 1981/1984/2001-2025 ; brutes hors famille referentielle exclue) = 1670.
-    assert n_series_hors_calculees_ref == 1670
+    # + 340 (profondeur journaliere NASA POWER migration 106 : 34 points x 10 grandeurs,
+    # backfill 1981/1984/2001-2020 ; brutes hors famille referentielle exclue) = 2010.
+    assert n_series_hors_calculees_ref == 2010
     # Exact : NASA daily offline (seed) -> deterministe.
     # Attendu derive du seed (cf. _mesures_ressource_attendu, = 162 876).
     assert n_ressource == _mesures_ressource_attendu()

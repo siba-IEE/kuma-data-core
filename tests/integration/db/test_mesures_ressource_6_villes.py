@@ -133,7 +133,9 @@ def test_t39_total_mesures_5_nouvelles_villes(db_session: Session) -> None:
     face aux ajouts ulterieurs (kt ajoute 5 villes * 1825 = 9125
     lignes additionnelles dans mesures_ressource). Filtre
     source ``nasa_power`` ajoute : ERA5-Land journalier
-    2021-2025 (ghi/t2m) partage le profil grandeur/ville des brutes."""
+    2021-2025 (ghi/t2m) partage le profil grandeur/ville des brutes.
+    Filtre periode 2021-01-01 ajoute : le backfill journalier profondeur
+    (migration 107) est un millesime distinct."""
     rows = db_session.execute(
         text(
             """
@@ -144,6 +146,7 @@ def test_t39_total_mesures_5_nouvelles_villes(db_session: Session) -> None:
             WHERE l.code = ANY(:codes)
               AND sm.grandeur_code IN ('ghi', 'dni', 'dhi', 't2m', 'rh2m')
               AND sm.source_id = (SELECT id FROM sources WHERE code = 'nasa_power')
+              AND sm.periode_debut = '2021-01-01'
             """
         ),
         {"codes": list(_LOCALITES_1_4)},

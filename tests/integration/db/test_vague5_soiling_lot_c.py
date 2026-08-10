@@ -9,6 +9,8 @@ raterait car il filtre sur ``source_id``).
 
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -45,7 +47,12 @@ def test_resolveur_pluie_bisource_epingle_nasa_power(db_session: Session) -> Non
     conakry_id = db_session.execute(
         text("SELECT id FROM localites WHERE code = 'gin_conakry_kaloum'")
     ).scalar_one()
-    serie_id = _chercher_serie_pluie_nasa(db_session, int(conakry_id))
+    # Fenetre de la serie PM EAC4 (2021-2025) : depuis le backfill journalier
+    # profondeur (migration 107), Conakry porte aussi une pluie 1981-2020 ;
+    # le resolveur retient celle qui recouvre la fenetre demandee.
+    serie_id = _chercher_serie_pluie_nasa(
+        db_session, int(conakry_id), date(2021, 1, 1), date(2025, 8, 31)
+    )
     assert serie_id is not None
     row = db_session.execute(
         text(
@@ -66,4 +73,7 @@ def test_resolveur_pluie_none_si_absente(db_session: Session) -> None:
     """Localite sans serie de pluie (pays Guinee) -> None ; c'est la branche qui
     declenche le 400 ``INCOMPATIBILITE_SOURCE_GRANDEUR`` cote endpoint."""
     gin_id = db_session.execute(text("SELECT id FROM localites WHERE code = 'gin'")).scalar_one()
-    assert _chercher_serie_pluie_nasa(db_session, int(gin_id)) is None
+    assert (
+        _chercher_serie_pluie_nasa(db_session, int(gin_id), date(2021, 1, 1), date(2025, 8, 31))
+        is None
+    )

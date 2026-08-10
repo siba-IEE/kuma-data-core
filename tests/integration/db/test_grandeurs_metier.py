@@ -845,7 +845,8 @@ def test_ti32_kt_ingere_dans_mesures_ressource(db_session: Session) -> None:
 
     Scope localite aux 6 pilotes : la densification (migration 086) ajoute kt
     pour 28 communes ; ce test reste cantonne aux pilotes (les 28 sont couvertes
-    par test_densification_daily_b1).
+    par test_densification_daily_b1). Scope periode 2021-01-01 : le backfill
+    journalier profondeur (migration 107) est un millesime distinct.
     """
     n = db_session.execute(
         text(
@@ -854,6 +855,7 @@ def test_ti32_kt_ingere_dans_mesures_ressource(db_session: Session) -> None:
             JOIN series_metadonnees sm ON sm.id = mr.serie_id
             JOIN localites l ON l.id = sm.localite_id
             WHERE sm.grandeur_code = 'kt' AND mr.valide_au IS NULL
+            AND sm.periode_debut = '2021-01-01'
             AND l.code IN ('gin_conakry_kaloum', 'gin_kankan', 'gin_kindia',
                            'gin_labe', 'gin_mamou', 'gin_nzerekore')
             """
