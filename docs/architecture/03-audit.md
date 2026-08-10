@@ -140,6 +140,33 @@ Toute nouvelle table structurante (typiquement la future table
 `mesures`) devra être ajoutée à ce périmètre via une migration dédiée
 qui crée le trigger `trg_audit_<table>`.
 
+## Migrations de masse : suspension ciblée du trigger
+
+**Décision du 2026-08-10.** Les migrations de seed ou d'ingestion de
+masse **reproductibles** (déversement initial d'une source rejouable :
+seed offline committé, ingestion NASA POWER gardée) suspendent le
+trigger d'audit de la table cible le temps de leurs écritures
+(`ALTER TABLE ... DISABLE TRIGGER trg_audit_<table>`, réactivation en
+fin de migration ; geste transactionnel, un rollback restaure l'état).
+Même règle pour leurs downgrades (DELETE de masse) et pour les
+migrations de contrôle qualité algorithmique qui requalifient ces
+mêmes lignes en masse.
+
+Motif : l'audit trace l'édition, pas le déversement. Le rejeu du
+backfill journalier (4 147 830 insertions, migration 107, antérieure à
+cette décision) a montré le coût du trigger par ligne : 19 minutes
+d'insertion en local, 24 minutes de job CI, et autant de lignes
+d'`audit_log` écrites **à chaque rejeu complet** (CI, nightly en
+double via le roundtrip, rebuild local) sans aucune valeur de
+traçabilité : la donnée est déjà tracée par le seed committé et la
+migration elle-même.
+
+Bornes strictes : la suspension est **par table et par migration**,
+jamais globale (`session_replication_role` interdit) ; elle ne
+s'applique qu'aux écritures rejouables à l'identique. Toute écriture
+éditoriale (correction humaine, override de confiance, dépréciation)
+reste auditée sans exception.
+
 ## Rétention
 
 **Politique courante** : rétention infinie. Aucune purge automatique.

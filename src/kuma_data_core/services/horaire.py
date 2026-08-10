@@ -33,6 +33,9 @@ _MAPPING_GRANDEUR: dict[str, tuple[str, str]] = {
     "t2m": ("T2M", "°C"),
     "rh2m": ("RH2M", "%"),
     "kt": ("ALLSKY_KT", "sans dimension"),
+    "vent_2m": ("WS2M", "m/s"),
+    "vent_10m": ("WS10M", "m/s"),
+    "precipitation": ("PRECTOTCORR", "mm/h"),
 }
 """Mapping interne : grandeur Kuma -> (code amont, unité cible Kuma).
 

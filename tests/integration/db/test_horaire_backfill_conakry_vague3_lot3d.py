@@ -1,7 +1,8 @@
 """Tests d'integration du backfill Conakry.
 
 Ce backfill etend la serie pilote Conakry a la pleine profondeur
-2001-2023 par renommage in-place (``_2021_2023`` -> ``_2001_2023``,
+2001-2023 par renommage in-place (``_2021_2023`` -> ``_2001_2023``, puis
+``_2001_2025`` a l'extension pilote,
 ``periode_debut=2001``) + ingestion 2001-2020 dans le meme ``serie_id``.
 L'ingestion de masse est court-circuitee en CI (``KUMA_SKIP_INGESTION_MASSE_HORAIRE``) ;
 le renommage + ``periode_debut`` sont inconditionnels (verifies ici).
@@ -27,7 +28,7 @@ _GRANDEURS_HORAIRES: tuple[str, ...] = ("ghi", "dni", "dhi", "t2m", "rh2m", "kt"
 
 
 def _code_nouveau(grandeur: str) -> str:
-    return f"gin_conakry_{grandeur}_nasa_power_2001_2023"
+    return f"gin_conakry_{grandeur}_nasa_power_2001_2025"
 
 
 def _code_ancien(grandeur: str) -> str:
@@ -35,7 +36,7 @@ def _code_ancien(grandeur: str) -> str:
 
 
 def test_3d_series_conakry_renommees_pleine_profondeur(db_session: Session) -> None:
-    """Les 6 series Conakry horaire portent le code _2001_2023 et periode_debut=2001."""
+    """Les 6 series Conakry horaire portent le code _2001_2025 et periode_debut=2001."""
     rows = db_session.execute(
         text(
             """
@@ -46,11 +47,11 @@ def test_3d_series_conakry_renommees_pleine_profondeur(db_session: Session) -> N
         ),
         {"codes": [_code_nouveau(g) for g in _GRANDEURS_HORAIRES]},
     ).all()
-    assert len(rows) == 6, "6 series Conakry _2001_2023 attendues"
+    assert len(rows) == 6, "6 series Conakry _2001_2025 attendues"
     for r in rows:
         assert r.granularite == "horaire"
         assert r.periode_debut == dt.date(2001, 1, 1)
-        assert r.periode_fin == dt.date(2023, 12, 31)
+        assert r.periode_fin == dt.date(2025, 12, 31)
 
 
 def test_3d_ancien_code_2021_2023_disparu(db_session: Session) -> None:

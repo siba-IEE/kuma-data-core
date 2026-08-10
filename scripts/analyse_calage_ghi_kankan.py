@@ -1,6 +1,6 @@
 """Analyse de calage GHI sol vs satellite - Kankan (terrain-lite).
 
-Livrable **humain ponctuel** (dev deps), exécuté hors CI. Caractérise le **biais
+Script ponctuel (dev deps), exécuté hors CI. Caractérise le **biais
 du GHI satellite NASA POWER vs la mesure sol WAPP** au pixel co-localisé de Kankan,
 sur le recouvrement 2021-10 → 2023-10. **Analyse seule** : aucune écriture en base,
 aucune migration, aucune propagation au record long (B-calibré différé).
@@ -28,7 +28,7 @@ import sqlalchemy as sa
 from kuma_data_core.db.session import get_engine
 
 _WAPP = "gin_kankan_ghi_esmap_wapp_2021_2023"  # sol mesure (confiance A)
-_NASA = "gin_kankan_ghi_nasa_power_2001_2023"  # satellite (confiance B)
+_NASA = "gin_kankan_ghi_nasa_power_2001_2025"  # satellite (confiance B)
 _LAT, _LON = 10.38333333, -9.30000000  # gin_kankan (seed migration 011)
 _ELEV_MIN = 5.0  # heures de jour
 _BASCULE_AN2 = pd.Timestamp("2022-10-18", tz="UTC")  # an 1 / an 2

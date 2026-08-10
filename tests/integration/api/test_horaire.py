@@ -76,7 +76,7 @@ def test_ti94_data_sans_auth_rejete(client: TestClient) -> None:
     """GET /v1/horaire/.../... sans auth -> 401."""
     r = client.get(
         f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
-        params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-05"},
+        params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-05"},
     )
     assert r.status_code == 401
     assert r.json()["erreur"]["code"] == CodeErreur.AUTH_HEADER_MANQUANT.value
@@ -85,19 +85,19 @@ def test_ti94_data_sans_auth_rejete(client: TestClient) -> None:
 def test_ti95_data_succes_donnees_reelles(client: TestClient, headers_auth: dict[str, str]) -> None:
     """data avec auth + plage valide + GHI -> 200 + valeurs reelles."""
     mock_response = _construire_payload_amont_mock(
-        date(2024, 6, 1), date(2024, 6, 2), "ALLSKY_SFC_SW_DWN"
+        date(2026, 1, 1), date(2026, 1, 2), "ALLSKY_SFC_SW_DWN"
     )
     with patch("kuma_data_core.api.v1.horaire.fetch_hourly", return_value=mock_response):
         r = client.get(
             f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
-            params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-02"},
+            params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-02"},
             headers=headers_auth,
         )
     assert r.status_code == 200
     payload = r.json()
     assert payload["localite"] == _LOCALITE_TEST
     assert payload["grandeur"] == _GRANDEUR_TEST
-    assert payload["periode_demandee"] == {"debut": "2024-06-01", "fin": "2024-06-02"}
+    assert payload["periode_demandee"] == {"debut": "2026-01-01", "fin": "2026-01-02"}
     assert len(payload["resultats"]) == 48  # 2 jours * 24 heures
     for r_jour in payload["resultats"]:
         assert r_jour["statut_editorial"] == "passe_plat_non_valide"
@@ -110,12 +110,12 @@ def test_ti96_data_sentinelles_converties_en_null(
 ) -> None:
     """sentinelles -999.0 cote amont -> valeur null cote Kuma."""
     mock_response = _construire_payload_amont_mock(
-        date(2024, 6, 1), date(2024, 6, 1), "ALLSKY_SFC_SW_DWN", sentinelles=True
+        date(2026, 1, 1), date(2026, 1, 1), "ALLSKY_SFC_SW_DWN", sentinelles=True
     )
     with patch("kuma_data_core.api.v1.horaire.fetch_hourly", return_value=mock_response):
         r = client.get(
             f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
-            params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-01"},
+            params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-01"},
             headers=headers_auth,
         )
     assert r.status_code == 200
@@ -132,7 +132,7 @@ def test_ti97_data_localite_invalide(client: TestClient, headers_auth: dict[str,
     """
     r = client.get(
         "/v1/horaire/atlantide/ghi",
-        params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-05"},
+        params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-05"},
         headers=headers_auth,
     )
     assert r.status_code == 404
@@ -143,7 +143,7 @@ def test_ti98_data_grandeur_invalide(client: TestClient, headers_auth: dict[str,
     """grandeur hors enum -> 422."""
     r = client.get(
         f"/v1/horaire/{_LOCALITE_TEST}/poa",
-        params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-05"},
+        params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-05"},
         headers=headers_auth,
     )
     assert r.status_code == 422
@@ -207,7 +207,7 @@ def test_ti101_data_amont_indisponible_503(
     ):
         r = client.get(
             f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
-            params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-05"},
+            params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-05"},
             headers=headers_auth,
         )
     assert r.status_code == 503
@@ -220,14 +220,14 @@ def test_ti101_data_amont_indisponible_503(
 def test_ti102_data_format_csv(client: TestClient, headers_auth: dict[str, str]) -> None:
     """format=csv -> 200 text/csv avec header attendu."""
     mock_response = _construire_payload_amont_mock(
-        date(2024, 6, 1), date(2024, 6, 1), "ALLSKY_SFC_SW_DWN"
+        date(2026, 1, 1), date(2026, 1, 1), "ALLSKY_SFC_SW_DWN"
     )
     with patch("kuma_data_core.api.v1.horaire.fetch_hourly", return_value=mock_response):
         r = client.get(
             f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
             params={
-                "periode_debut": "2024-06-01",
-                "periode_fin": "2024-06-01",
+                "periode_debut": "2026-01-01",
+                "periode_fin": "2026-01-01",
                 "format": "csv",
             },
             headers=headers_auth,
@@ -242,12 +242,12 @@ def test_ti102_data_format_csv(client: TestClient, headers_auth: dict[str, str])
 def test_ti103_data_kt_nocturne_null(client: TestClient, headers_auth: dict[str, str]) -> None:
     """grandeur kt avec sentinelles nocturnes -> valeur null."""
     mock_response = _construire_payload_amont_mock(
-        date(2024, 6, 1), date(2024, 6, 1), "ALLSKY_KT", sentinelles=True
+        date(2026, 1, 1), date(2026, 1, 1), "ALLSKY_KT", sentinelles=True
     )
     with patch("kuma_data_core.api.v1.horaire.fetch_hourly", return_value=mock_response):
         r = client.get(
             f"/v1/horaire/{_LOCALITE_TEST}/kt",
-            params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-01"},
+            params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-01"},
             headers=headers_auth,
         )
     assert r.status_code == 200
@@ -258,11 +258,11 @@ def test_ti103_data_kt_nocturne_null(client: TestClient, headers_auth: dict[str,
 
 def test_ti104_data_unite_t2m_celsius(client: TestClient, headers_auth: dict[str, str]) -> None:
     """grandeur t2m -> unite °C cote Kuma."""
-    mock_response = _construire_payload_amont_mock(date(2024, 6, 1), date(2024, 6, 1), "T2M")
+    mock_response = _construire_payload_amont_mock(date(2026, 1, 1), date(2026, 1, 1), "T2M")
     with patch("kuma_data_core.api.v1.horaire.fetch_hourly", return_value=mock_response):
         r = client.get(
             f"/v1/horaire/{_LOCALITE_TEST}/t2m",
-            params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-01"},
+            params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-01"},
             headers=headers_auth,
         )
     assert r.status_code == 200
@@ -311,7 +311,7 @@ def test_ti109_edition_figee_refuse_le_repli_sans_appel_amont(
 ) -> None:
     """Profil édition figée (ADR-0003 D6) -> repli passe-plat refusé.
 
-    Plage 2024 non couverte par le stocké : en profil figé, l'endpoint
+    Plage 2026 non couverte par le stocké : en profil figé, l'endpoint
     renvoie 400 PLAGE_TEMPORELLE_NON_DISPONIBLE au lieu de relayer NASA
     POWER, et fetch_hourly n'est jamais appelé (zéro dépendance
     sortante).
@@ -322,7 +322,7 @@ def test_ti109_edition_figee_refuse_le_repli_sans_appel_amont(
     with patch("kuma_data_core.api.v1.horaire.fetch_hourly") as mock_fetch:
         r = client.get(
             f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
-            params={"periode_debut": "2024-06-01", "periode_fin": "2024-06-05"},
+            params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-05"},
             headers=headers_auth,
         )
     assert r.status_code == 400
@@ -356,7 +356,7 @@ def test_ti111_serie_coquille_ignoree_le_stocke_terrain_est_servi(
     """(kankan, ghi) : la coquille est écartée, le sol ESMAP est servi.
 
     Régression production 2026-07-20 : deux séries horaires actives
-    coexistent pour ce couple - la série substrat 2001-2023 sans
+    coexistent pour ce couple - la série substrat 2001-2025 sans
     aucune mesure stockée (coquille) et la série sol terrain
     2021-2023 (17 520 mesures valide_auto). La sélection sans garde
     prenait la coquille et l'endpoint répondait 200 avec zéro
@@ -412,7 +412,7 @@ def test_ti112_coquille_seule_en_figee_erreur_honnete(
     """(kindia, ghi) : coquille seule -> 400 honnête, pas 200 vide.
 
     Kindia ne possède qu'une série horaire GHI sans mesures stockées
-    (métadonnées 2001-2023). En profil figé, l'endpoint doit renvoyer
+    (métadonnées 2001-2025). En profil figé, l'endpoint doit renvoyer
     PLAGE_TEMPORELLE_NON_DISPONIBLE plutôt que de laisser croire à
     une donnée servie en répondant 200 avec zéro résultat. Aucun
     appel amont.

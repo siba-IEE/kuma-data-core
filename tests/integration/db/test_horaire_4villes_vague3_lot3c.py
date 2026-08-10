@@ -29,11 +29,12 @@ _GRANDEURS_COPIXEL_MAMOU: frozenset[str] = frozenset({"ghi", "dni", "dhi", "kt"}
 
 
 def _code_serie(localite: str, grandeur: str) -> str:
-    return f"{localite}_{grandeur}_nasa_power_2001_2023"
+    return f"{localite}_{grandeur}_nasa_power_2001_2025"
 
 
 def test_3c_24_series_seedees(db_session: Session) -> None:
-    """Les 24 series horaires (4 villes x 6 grandeurs) 2001-2023 sont seedees."""
+    """Les 24 series horaires (4 villes x 6 grandeurs) 2001-2025 sont seedees
+    (fenetre etendue in-place)."""
     codes = [_code_serie(loc, g) for loc in _VILLES_3C for g in _GRANDEURS_HORAIRES]
     rows = db_session.execute(
         text("SELECT code FROM series_metadonnees WHERE code = ANY(:codes)"),
@@ -46,7 +47,7 @@ def test_3c_24_series_seedees(db_session: Session) -> None:
 
 
 def test_3c_metadonnees_series(db_session: Session) -> None:
-    """Chaque serie 3c : granularite horaire, fenetre 2001-2023, source/methode."""
+    """Chaque serie 3c : granularite horaire, fenetre 2001-2025, source/methode."""
     rows = db_session.execute(
         text(
             """
@@ -65,7 +66,7 @@ def test_3c_metadonnees_series(db_session: Session) -> None:
     for r in rows:
         assert r.granularite == "horaire"
         assert r.periode_debut == dt.date(2001, 1, 1)
-        assert r.periode_fin == dt.date(2023, 12, 31)
+        assert r.periode_fin == dt.date(2025, 12, 31)
         assert r.source_code == "nasa_power"
         assert r.methode_collecte == "modele_satellitaire"
         assert r.localite_code in _VILLES_3C

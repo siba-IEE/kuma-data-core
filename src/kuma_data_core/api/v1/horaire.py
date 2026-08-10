@@ -188,7 +188,7 @@ def _chercher_serie_horaire_stockee(
     actives sans aucune ligne dans ``mesures_ressource_horaires``).
     Régression observée en production (2026-07-20) : pour (kankan, ghi),
     deux séries horaires actives coexistent - la série substrat
-    2001-2023 (métadonnées seules) et la série sol terrain 2021-2023
+    2001-2025 (métadonnées seules) et la série sol terrain 2021-2023
     (17 520 mesures validées). Le ``LIMIT 1`` sans garde sélectionnait
     la coquille, dont la période couvre toute fenêtre demandée, et
     l'endpoint servait 200 avec zéro résultat au lieu de la mesure

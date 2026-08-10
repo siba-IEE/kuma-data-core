@@ -77,7 +77,7 @@ def test_t_hschema_3_grandeur_invalide() -> None:
     with pytest.raises(ValidationError):
         ParametresHoraire(
             localite="kindia",
-            grandeur="poa",  # hors enum 6 grandeurs
+            grandeur="poa",  # hors enum des grandeurs horaires
             periode_debut=date(2024, 1, 1),
             periode_fin=date(2024, 1, 31),
         )
