@@ -1,6 +1,6 @@
 """Analyse de calage GHI sol vs satellite - Kankan (terrain-lite).
 
-Livrable **humain ponctuel** (dev deps), exécuté hors CI. Caractérise le **biais
+Script ponctuel (dev deps), exécuté hors CI. Caractérise le **biais
 du GHI satellite NASA POWER vs la mesure sol WAPP** au pixel co-localisé de Kankan,
 sur le recouvrement 2021-10 → 2023-10. **Analyse seule** : aucune écriture en base,
 aucune migration, aucune propagation au record long (B-calibré différé).

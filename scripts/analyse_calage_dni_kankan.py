@@ -1,6 +1,6 @@
 """Analyse de calage DNI sol vs satellite - Kankan (terrain-lite, 2 volets).
 
-Livrable **humain ponctuel** (dev deps), exécuté hors CI. **Analyse seule** :
+Script ponctuel (dev deps), exécuté hors CI. **Analyse seule** :
 aucune écriture en base, aucune migration. Déterministe et reproductible : lit les
 séries de la base, recalcule tout, sort les chiffres exacts cités par la note de
 calage DNI.

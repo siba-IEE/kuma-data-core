@@ -7,8 +7,8 @@ serie **unique pleine profondeur** par grandeur. L'ingestion de masse
 6 series est inconditionnel**, c'est lui qui est verifie ici. Les
 assertions portent donc sur la **structure** (codes, granularite,
 fenetre, source, methode), invariantes que l'ingestion ait tourne ou
-non. La distribution QC reelle sur Kindia (pixel interieur) est le
-livrable humain, inspecte hors CI.
+non. La distribution QC reelle sur Kindia (pixel interieur)
+s'inspecte manuellement hors CI, au rejeu reel.
 
 Pattern herite de ``test_mesures_ressource_mensuelles.py`` (fixture
 ``db_session`` conftest.py, assertions sur l'etat post-``upgrade head``).
