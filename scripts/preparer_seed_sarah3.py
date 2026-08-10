@@ -1,6 +1,6 @@
 """Préparation du seed offline PVGIS-SARAH3.
 
-Livrable **humain ponctuel** (hors CI). Capture en **live** le payload JSON brut
+Script ponctuel (hors CI). Capture en **live** le payload JSON brut
 PVGIS MRcalc (SARAH-3 ICDR 2021-2023) des 6 villes pilotes et écrit le seed
 committé ``src/kuma_data_core/db/seeds/sarah3_monthly_seed_data.py`` (+ compagnon
 ``.json.gz``). En CI, sous ``KUMA_INGESTION_MODE=offline``, l'ingestion renvoie

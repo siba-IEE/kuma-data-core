@@ -1,6 +1,6 @@
 """Préparation du seed offline NASA POWER monthly.
 
-Livrable **humain ponctuel** (hors CI). Capture en **live** le payload JSON brut
+Script ponctuel (hors CI). Capture en **live** le payload JSON brut
 NASA POWER monthly (climato 1991-2020, 9 paramètres) des **34 points** (6 villes
 pilotes + 28 nouvelles communes densification), et écrit un seed committé **par
 ville** ``nasa_power_monthly_seed_data_<code>.json.gz`` + le chargeur

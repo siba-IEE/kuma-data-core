@@ -150,8 +150,8 @@ def upgrade() -> None:
         op.execute(
             f"-- Migration 066 : metadonnee etendue (6 series Conakry renommees "
             f"_2001_2023, periode_debut 2001). Ingestion de masse court-circuitee "
-            f"({_VARIABLE_ENV_SKIP_MASSE}). 0 ligne 2001-2020 ingeree (livrable "
-            f"humain, cf. dette D-64)."
+            f"({_VARIABLE_ENV_SKIP_MASSE}). 0 ligne 2001-2020 ingeree (a executer "
+            f"manuellement, cf. dette D-64)."
         )
         return
 

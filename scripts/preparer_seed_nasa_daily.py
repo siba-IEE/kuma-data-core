@@ -1,6 +1,6 @@
 """Préparation du seed offline NASA POWER daily.
 
-Livrable **humain ponctuel** (hors CI). Capture en **live** le payload JSON brut
+Script ponctuel (hors CI). Capture en **live** le payload JSON brut
 NASA POWER daily (les 9 paramètres de l'union des migrations daily, fenêtre pleine
 2021-2025) des 6 villes pilotes, et écrit un seed committé **par ville**
 ``nasa_power_daily_seed_data_<code>.json.gz`` + le chargeur

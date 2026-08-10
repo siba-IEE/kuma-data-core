@@ -27,7 +27,7 @@ quand ``KUMA_SKIP_INGESTION_MASSE_HORAIRE`` est pose (CI), Kindia a 0
 ligne horaire ; ``executer_qc_horaire`` renvoie une liste vide et la
 migration est un **no-op** (0 ligne validee). L'inspection de la
 distribution QC reelle sur Kindia (% valide_auto / flag / rejet, pixel
-interieur) est le livrable humain.
+interieur) se fait manuellement au rejeu reel.
 
 Hors perimetre : tests d'aberration temporelle (doctrine §4.4, differes),
 imputation des lacunes, 4 villes restantes + backfill Conakry.
