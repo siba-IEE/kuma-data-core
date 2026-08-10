@@ -28,11 +28,12 @@ jobs:
   tests-regression:
     name: Tests regression (TI-24 roundtrip Alembic)
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    # Timeout large : le roundtrip fait downgrade(022) + upgrade(head) qui
-    # re-joue 23 migrations dont 5 a appels reseau (027 HEP ingestion,
-    # 029 kt, 030-034 grandeurs Kuma, 041 SARAH-3 + NASA POWER monthly,
-    # 043 calcul). Coût empirique observe ~5-7 min.
+    timeout-minutes: 90
+    # Timeout large : upgrade(head) initial puis roundtrip regression
+    # downgrade(022) + upgrade(head). Depuis le backfill journalier profondeur
+    # (migration 107, 4 147 830 insertions avec trigger d'audit par ligne,
+    # 24 min 37 observees en CI pour le seul upgrade), le roundtrip rejoue ce
+    # volume une seconde fois et audite aussi les DELETE du downgrade.
 
     services:
       postgres:
