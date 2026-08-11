@@ -44,7 +44,9 @@ def test_ecart_ghi_etendu_aux_34(db_session: Session) -> None:
 
 
 def test_ecart_dni_recent_34_climato_intact(db_session: Session) -> None:
-    """ecart_relatif_dni_cams : recent 2021-2023 = 34 x 36 = 1 224 ; climato 2004-2020 = 1 218."""
+    """ecart_relatif_dni_cams : recent 2021-2023 = 34 x 36 = 1 224 ; climato 2004-2020
+    = 34 x 203 = 6 902 (1 218 pilotes migration 072 + 5 684 communes migration 118).
+    Les fenetres restent disjointes (anti-melange)."""
     recent = db_session.execute(
         text(
             "SELECT COUNT(*) FROM grandeurs_metier "
@@ -58,7 +60,7 @@ def test_ecart_dni_recent_34_climato_intact(db_session: Session) -> None:
         )
     ).scalar_one()
     assert recent == 1224
-    assert climato == 1218  # inchange (anti-melange de fenetres)
+    assert climato == 6902
 
 
 def test_62_series_calculees_creees(db_session: Session) -> None:

@@ -181,21 +181,25 @@ def test_confiance_b_communes(db_session: Session) -> None:
 
 
 def test_brute_seulement_aucun_ecart_climato_communes(db_session: Session) -> None:
-    """Anti-scope-creep : le lot est BRUTE seulement. Aucune ligne ecart_relatif_dni_cams
-    climato (2004-2020) pour les communes (l'ecart reste une calculee separee, pilotes only
-    migration 072 ; l'atlas utilise l'ecart recent 2021-2023)."""
+    """La 095 etait BRUTE seulement : l'ecart climato des communes vient du lot dedie
+    (migration 118), jamais de la 095. On verifie que les 5 684 lignes communes (28 x
+    203 mois) existent ET qu'elles sont portees par les series kuma_calculs de la 118
+    (codes <commune>_ecart_relatif_dni_cams_kuma_calculs_2004_2020), pas par un
+    scope-creep du seed brut."""
     n = db_session.execute(
         text(
             f"""
             SELECT COUNT(*) FROM grandeurs_metier gm
             JOIN localites l ON l.id = gm.localite_id
+            JOIN series_metadonnees sm ON sm.id = gm.series_metadonnees_id
             WHERE gm.grandeur_code = 'ecart_relatif_dni_cams'
               AND gm.annee_debut <= 2020
               AND l.code NOT IN {_PILOTES_SQL}
+              AND sm.code LIKE '%ecart_relatif_dni_cams_kuma_calculs_2004_2020'
             """
         )
     ).scalar_one()
-    assert n == 0, "095 a cree un ecart climato pour des communes (scope-creep)"
+    assert n == 5684, f"ecart climato communes = {n} (attendu 5 684, migration 118)"
 
 
 def test_temoin_gin_boffa(db_session: Session) -> None:
