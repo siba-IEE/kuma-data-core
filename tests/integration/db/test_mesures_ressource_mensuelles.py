@@ -77,7 +77,9 @@ def test_ti47_decompte_mesures_ressource_mensuelles(db_session: Session) -> None
     # +156 672 series mensuelles longues NASA POWER (profondeur, 34 points x
     # 4 608 mois = 5 grandeurs x 540 [1981-2025] + 2 x 504 [1984-2025] + 3 x 300 [2001-2025])
     # = 284 342.
-    assert total == 284342
+    # +17 884 GHI/DHI CAMS mensuel (profondeur, migration 119 : 34 x 2 grandeurs x
+    # 263 mois 2004-02..2025-12) = 302 226.
+    assert total == 302226
 
     # Decompte par source via JOIN
     n_sarah3 = db_session.execute(
@@ -106,7 +108,8 @@ def test_ti47_decompte_mesures_ressource_mensuelles(db_session: Session) -> None
             """
         )
     ).scalar_one()
-    assert n_cams == 8126
+    # +17 884 (profondeur GHI/DHI mensuel migration 119) = 26 010.
+    assert n_cams == 26010
 
     # Decompte des series _power_1991_2020 : 6 GHI + 24 nouvelles
     # brutes (4 grandeurs MERRA-2 x 6 villes x 360) =
@@ -215,7 +218,9 @@ def test_ti50_exception_conakry_appliquee(db_session: Session) -> None:
 # + 4 147 830 (migration 106 : backfill journalier profondeur 1981/1984/2001-2020
 # aux 34 points, 10 grandeurs, seed dedie groupe par serie hors NASA_DAILY_PAYLOADS,
 # capture gapless) = 4 512 038.
-_MESURES_NON_NASA_DAILY: int = 4512038
+# + 815 796 (migration 120 : GHI/DHI/DNI CAMS journalier 2004-2025 aux 34 points,
+# 7 998 jours par serie, seed dedie hors NASA_DAILY_PAYLOADS) = 5 327 834.
+_MESURES_NON_NASA_DAILY: int = 5327834
 
 
 def _mesures_ressource_attendu() -> int:
@@ -388,7 +393,9 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
     # backfill 1981/1984/2001-2020 ; brutes hors famille referentielle exclue) = 2010.
     # + 270 (volet horaire : 252 series aux 28 communes + 18 nouvelles aux pilotes,
     # vents/precipitation ; les 36 pilotes historiques sont renommees, pas creees) = 2280.
-    assert n_series_hors_calculees_ref == 2280
+    # + 238 (profondeur CAMS migrations 119-120 : 136 series mensuelles GHI/DHI +
+    # 102 series journalieres GHI/DHI/DNI ; brutes hors famille referentielle) = 2 518.
+    assert n_series_hors_calculees_ref == 2518
     # Exact : NASA daily offline (seed) -> deterministe.
     # Attendu derive du seed (cf. _mesures_ressource_attendu, = 162 876).
     assert n_ressource == _mesures_ressource_attendu()
@@ -397,4 +404,5 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
     # migration 095, 28 x 203) = 107 510.
     # + 20 160 (densif ERA5-Land mensuel, migration 096, 28 x 3 x 240) = 127 670.
     # + 156 672 (profondeur mensuelle NASA POWER, 34 x 4 608) = 284 342.
-    assert n_mens == 284342
+    # + 17 884 (GHI/DHI CAMS mensuel migration 119) = 302 226.
+    assert n_mens == 302226
