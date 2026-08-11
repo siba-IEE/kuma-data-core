@@ -98,7 +98,9 @@ def test_ti54_grandeurs_metier_cumule_post_1_7b(db_session: Session) -> None:
     # + 3 808 (parite A2 migration 093 : humidex/variabilite/rang_temporel/indicateur aux
     # 28 communes, 28 x 136 lignes/commune (65 humidex + 5 variabilite + 60 rang_temporel
     # + 6 indicateur) = meme traitement que les 6 pilotes) = 51 014.
-    assert total == 51014
+    # + 5 684 (migration 118 : ecart_relatif_dni_cams climato 2004-2020 aux
+    # 28 communes, 28 x 203 mois) = 56 698.
+    assert total == 56698
 
 
 def test_ti55_grandeurs_referentiel_post_d39(db_session: Session) -> None:

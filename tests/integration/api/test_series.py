@@ -141,16 +141,18 @@ def test_ti63_filtre_source_kuma_calculs(client: TestClient, headers_auth: dict[
     - 84 series calculees (migration 093 : humidex + variabilite_journaliere
       + rang_referentiel_temporel aux 28 communes, fenetre recente, 3 series/commune ;
       l'indicateur ne cree pas de serie). Total : 302 + 84 = 386.
+    - 28 series ecart_relatif_dni_cams climato 2004-2020 aux 28 communes
+      (migration 118, residu du cadrage densification). Total : 386 + 28 = 414.
     """
     response = client.get(
-        "/v1/series?source=kuma_calculs&limit=400",
+        "/v1/series?source=kuma_calculs&limit=450",
         headers=headers_auth,
     )
     assert response.status_code == 200
     payload = response.json()
-    assert payload["total"] == 386
+    assert payload["total"] == 414
     items = payload["items"]
-    assert len(items) == 386
+    assert len(items) == 414
     for s in items:
         assert s["source_code"] == "kuma_calculs"
 
