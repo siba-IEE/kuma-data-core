@@ -79,7 +79,9 @@ def test_ti47_decompte_mesures_ressource_mensuelles(db_session: Session) -> None
     # = 284 342.
     # +17 884 GHI/DHI CAMS mensuel (profondeur, migration 119 : 34 x 2 grandeurs x
     # 263 mois 2004-02..2025-12) = 302 226.
-    assert total == 302226
+    # +15 504 GHI/DNI SARAH-3 mensuel (profondeur, migration 121 : 34 x 2 grandeurs x
+    # 228 mois 2005-2023) = 317 730.
+    assert total == 317730
 
     # Decompte par source via JOIN
     n_sarah3 = db_session.execute(
@@ -92,7 +94,8 @@ def test_ti47_decompte_mesures_ressource_mensuelles(db_session: Session) -> None
         )
     ).scalar_one()
     # 216 (6 pilotes) + 1 008 densification (28 communes x 36 mois, migration 088).
-    assert n_sarah3 == 1224
+    # +15 504 (profondeur GHI/DNI 2005-2023 migration 121) = 16 728.
+    assert n_sarah3 == 16728
 
     # Decompte CAMS Radiation par source (exclut cams_eac4 PM) :
     # 1 218 climato 2004-2020 pilotes (071) + 216 recent pilotes 2021-2023 (073) + 1 008
@@ -395,7 +398,8 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
     # vents/precipitation ; les 36 pilotes historiques sont renommees, pas creees) = 2280.
     # + 238 (profondeur CAMS migrations 119-120 : 136 series mensuelles GHI/DHI +
     # 102 series journalieres GHI/DHI/DNI ; brutes hors famille referentielle) = 2 518.
-    assert n_series_hors_calculees_ref == 2518
+    # + 68 (profondeur SARAH-3 migration 121 : 34 points x 2 grandeurs) = 2 586.
+    assert n_series_hors_calculees_ref == 2586
     # Exact : NASA daily offline (seed) -> deterministe.
     # Attendu derive du seed (cf. _mesures_ressource_attendu, = 162 876).
     assert n_ressource == _mesures_ressource_attendu()
@@ -405,4 +409,5 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
     # + 20 160 (densif ERA5-Land mensuel, migration 096, 28 x 3 x 240) = 127 670.
     # + 156 672 (profondeur mensuelle NASA POWER, 34 x 4 608) = 284 342.
     # + 17 884 (GHI/DHI CAMS mensuel migration 119) = 302 226.
-    assert n_mens == 302226
+    # + 15 504 (GHI/DNI SARAH-3 migration 121) = 317 730.
+    assert n_mens == 317730
