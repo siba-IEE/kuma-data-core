@@ -48,6 +48,7 @@ def test_28_series_sarah3(db_session: Session) -> None:
             JOIN localites l ON l.id = sm.localite_id
             WHERE l.code = ANY(:c) AND sm.granularite = 'mensuel'
             AND sm.source_id = (SELECT id FROM sources WHERE code = 'sarah3_monthly')
+            AND sm.periode_debut = '2021-01-01'
             """
         ),
         {"c": list(_COMMUNES)},
@@ -64,6 +65,7 @@ def test_volume_1008_mesures(db_session: Session) -> None:
             JOIN localites l ON l.id = sm.localite_id
             WHERE l.code = ANY(:c)
             AND sm.source_id = (SELECT id FROM sources WHERE code = 'sarah3_monthly')
+            AND sm.periode_debut = '2021-01-01'
             """
         ),
         {"c": list(_COMMUNES)},
@@ -105,9 +107,12 @@ def test_6_pilotes_intacts(db_session: Session) -> None:
             WHERE l.code IN ('gin_conakry_kaloum', 'gin_kankan', 'gin_kindia',
                              'gin_labe', 'gin_mamou', 'gin_nzerekore')
             AND sm.source_id = (SELECT id FROM sources WHERE code = 'sarah3_monthly')
+            AND sm.periode_debut = '2021-01-01'
             """
         )
     ).scalar_one()
+    # Scope periode 2021-01-01 : les series longues 2005-2023 (migration 121)
+    # sont un millesime distinct.
     assert n == 6  # 6 villes x 1 GHI SARAH-3 (041, zero retrofit)
 
 
@@ -135,6 +140,7 @@ def test_overlap_nasa_sarah3_ecart_calculable(db_session: Session) -> None:
             JOIN localites l ON l.id = sm.localite_id
             WHERE l.code = 'gin_boffa'
             AND sm.source_id = (SELECT id FROM sources WHERE code = 'sarah3_monthly')
+            AND sm.periode_debut = '2021-01-01'
             """
         )
     ).scalar_one()
