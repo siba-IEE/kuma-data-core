@@ -89,6 +89,8 @@ services:
       RATE_LIMITING_ACTIF: "true"
       DERRIERE_PROXY_CONFIANCE: "true"
       API_CLE_ADMIN: ${API_CLE_ADMIN}
+      KUMA_CALAGE_BASE: ${KUMA_CALAGE_BASE}
+      KUMA_CALAGE_JETON: ${KUMA_CALAGE_JETON}
     depends_on:
       postgres:
         condition: service_healthy

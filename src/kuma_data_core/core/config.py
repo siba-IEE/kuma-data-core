@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     # Migration vers une table ``cles_api`` prévue ultérieurement.
     api_cle_solar_bridge: SecretStr | None = Field(default=None)
     api_cle_admin: SecretStr | None = Field(default=None)
+    kuma_calage_base: str | None = Field(default=None)
+    kuma_calage_jeton: SecretStr | None = Field(default=None)
 
     # === Édition publique (ADR-0003) ===
     # ``edition_db`` : nom de la base d'édition active côté serveur, écrit

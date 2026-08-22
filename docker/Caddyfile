@@ -39,3 +39,20 @@
 		format json
 	}
 }
+
+# Forum Discourse de la Communaute Kuma Science (runbook
+# docs/hub-discourse-installation.md, depot kuma-science). Discourse pose
+# ses propres en-tetes de securite : bloc volontairement minimal, TLS
+# automatique + relais vers le conteneur app (reseau docker_kuma_interne).
+forum.kumascience.com {
+        tls admin@kumascience.com
+
+        encode gzip
+
+        reverse_proxy app:80
+
+        log {
+                output stdout
+                format json
+        }
+}

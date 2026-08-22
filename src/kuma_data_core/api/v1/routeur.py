@@ -14,6 +14,7 @@ from kuma_data_core.api.v1 import (
     calage,
     cles,
     edition,
+    etudes,
     grandeurs,
     health,
     horaire,
@@ -30,3 +31,4 @@ routeur_v1.include_router(localites.routeur)
 routeur_v1.include_router(grandeurs.routeur)
 routeur_v1.include_router(horaire.routeur)
 routeur_v1.include_router(calage.routeur)
+routeur_v1.include_router(etudes.routeur)
