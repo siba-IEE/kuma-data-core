@@ -14,6 +14,8 @@ from fastapi.testclient import TestClient
 
 from kuma_data_core.api.main import app
 
+pytestmark = pytest.mark.unit
+
 
 @pytest.fixture(scope="module")
 def client() -> TestClient:
