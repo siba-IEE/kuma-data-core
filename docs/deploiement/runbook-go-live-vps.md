@@ -72,8 +72,10 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
      KUMA_PG_CONTENEUR=kuma-postgres-prod \
      bash scripts/publication/provisionner-serveur.sh
    ```
-9. **Créer la table des clés** `cles_api` dans `kuma_api_meta` (schéma hors
-   Alembic), en tant que superutilisateur :
+9. **Créer les tables de service** `cles_api` et `licences_solclim` dans
+   `kuma_api_meta` (schéma hors Alembic), en tant que superutilisateur. La
+   commande est idempotente : sur un serveur déjà en service, elle ajoute
+   les tables absentes et laisse intactes celles qui existent :
    ```bash
    docker compose -f docker/docker-compose.prod.yml --env-file .env.prod \
      run --rm \
@@ -81,6 +83,22 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
      -e META_USER=$PGUSER -e META_PASSWORD=$PGPASSWORD \
      api python -m kuma_data_core.db.meta
    ```
+
+9 bis. **Licences SolClim-3** (ADR-0005). Générer une fois la paire de
+   signature, **sur un poste de confiance** :
+   ```bash
+   uv run python scripts/generer_cle_signature_licence.py
+   ```
+   Poser la graine dans `.env.prod` (`LICENCE_CLE_SIGNATURE=...`) et nulle
+   part ailleurs ; embarquer la clé publique dans SolClim-3 et le service de
+   calage. Une fois l'API démarrée, administrer les licences par :
+   ```bash
+   docker compose -f docker/docker-compose.prod.yml --env-file .env.prod \
+     exec api python -m kuma_data_core.services.licences \
+     accorder kuma_xxxxxxxx --titulaire "Prénom Nom" --organisation "..."
+   ```
+   (`lister`, `prolonger kuma_xxxxxxxx --expire AAAA-MM-JJ`,
+   `retirer kuma_xxxxxxxx`).
 
 ## Phase 3 - Publier la première édition
 

@@ -181,11 +181,16 @@ def test_ti100_data_plage_hors_disponibilite(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
     """plage futur (au-delà de la borne NRT) -> 400 PLAGE_TEMPORELLE_NON_DISPONIBLE."""
-    # Periode future garantit la sortie de plage disponible (B1 statique
-    # = aujourd'hui - 5 mois - 1 jour).
+    # Periode future, relative au jour du test : toujours hors de la plage
+    # disponible (B1 statique = aujourd'hui - 5 mois - 1 jour). Une date en
+    # dur cesse d'etre hors plage des que la borne la rattrape.
+    debut = date.today() + timedelta(days=30)
     r = client.get(
         f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
-        params={"periode_debut": "2026-04-01", "periode_fin": "2026-04-30"},
+        params={
+            "periode_debut": debut.isoformat(),
+            "periode_fin": (debut + timedelta(days=29)).isoformat(),
+        },
         headers=headers_auth,
     )
     assert r.status_code == 400

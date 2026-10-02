@@ -3,6 +3,19 @@
 Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/) et
 le projet suit le versionnement sémantique.
 
+## Non publié
+
+### Ajouté
+
+- Licences SolClim-3 (ADR-0005) : table `licences_solclim` dans la base de
+  service, à côté de `cles_api` ; une clé d'API publique seule n'ouvre plus
+  le logiciel.
+- `POST /v1/licence/bail` : bail Ed25519 de 30 jours, plafonné par le terme
+  de la licence, vérifiable hors ligne avec la clé publique.
+- Outil d'administration `python -m kuma_data_core.services.licences`
+  (accorder, lister, prolonger, retirer) et script de génération de la
+  paire de signature.
+
 ## 1.0.0
 
 Première version publique de Kuma Data Core.

@@ -64,6 +64,19 @@ class Settings(BaseSettings):
     kuma_calage_base: str | None = Field(default=None)
     kuma_calage_jeton: SecretStr | None = Field(default=None)
 
+    # === Licences SolClim-3 (bail signé) ===
+    # ``licence_cle_signature`` : graine Ed25519 (32 octets, base64) qui
+    # signe les baux. Elle ne quitte jamais le serveur ; la clé publique,
+    # elle, est embarquée dans le logiciel et le service de calage.
+    # ``None`` = pas d'émission de bail sur ce déploiement.
+    licence_cle_signature: SecretStr | None = Field(default=None)
+    # Durée nominale d'un bail : ce que le logiciel tient hors ligne avant
+    # de passer en lecture seule.
+    licence_duree_jours: int = Field(default=30, ge=1, le=365)
+    # Version minimale du logiciel inscrite au bail : en dessous, il passe
+    # en lecture seule et invite à se mettre à jour.
+    licence_version_minimale: str = Field(default="1.1.0")
+
     # === Édition publique (ADR-0003) ===
     # ``edition_db`` : nom de la base d'édition active côté serveur, écrit
     # par ``publier-edition.sh`` dans le fichier pointeur (bascule par

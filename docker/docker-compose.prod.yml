@@ -91,6 +91,10 @@ services:
       API_CLE_ADMIN: ${API_CLE_ADMIN}
       KUMA_CALAGE_BASE: ${KUMA_CALAGE_BASE}
       KUMA_CALAGE_JETON: ${KUMA_CALAGE_JETON}
+      # Licences SolClim-3 (ADR-0005) : graine de signature des baux. Vide =
+      # pas d'émission de bail (404 LICENCE_NON_ACTIVEE).
+      LICENCE_CLE_SIGNATURE: ${LICENCE_CLE_SIGNATURE:-}
+      LICENCE_VERSION_MINIMALE: ${LICENCE_VERSION_MINIMALE:-1.1.0}
     depends_on:
       postgres:
         condition: service_healthy

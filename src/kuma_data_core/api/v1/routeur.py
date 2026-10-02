@@ -18,6 +18,7 @@ from kuma_data_core.api.v1 import (
     grandeurs,
     health,
     horaire,
+    licence,
     localites,
     series,
 )
@@ -26,6 +27,7 @@ routeur_v1 = APIRouter(prefix="/v1")
 routeur_v1.include_router(health.routeur)
 routeur_v1.include_router(edition.routeur)
 routeur_v1.include_router(cles.routeur)
+routeur_v1.include_router(licence.routeur)
 routeur_v1.include_router(series.routeur)
 routeur_v1.include_router(localites.routeur)
 routeur_v1.include_router(grandeurs.routeur)
