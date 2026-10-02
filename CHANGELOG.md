@@ -7,6 +7,10 @@ le projet suit le versionnement sémantique.
 
 ### Ajouté
 
+- Contributions : format `minireseau@1` (ADR-0006). Postes de charge avec
+  leur profil sur 24 heures, groupe et prix du carburant, configuration
+  retenue et LCOE ; le module choisit le format, une fiche d'un module sous
+  l'autre est refusée.
 - Contributions d'études SolClim-3 (ADR-0006) : table `contributions_etudes`
   dans la base de service ; `POST /v1/contributions/{etude_uid}` dépose ou
   remplace la fiche d'une étude (clé porteuse d'une licence), `POST

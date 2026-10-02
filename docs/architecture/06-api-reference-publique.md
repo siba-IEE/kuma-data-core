@@ -789,15 +789,27 @@ la même clé avait déposée pour cette étude (ADR-0006). `etude_uid` est un
 UUID tiré par le logiciel, jamais le nom de l'étude. Sans base de
 service : `404 CONTRIBUTIONS_NON_ACTIVEES`.
 
-- Corps : `{"module": "pv-autonome", "format": "pv-autonome@1", "fiche": {...}}`.
-  La fiche porte `logiciel` (version, jour), `lieu` (code de
-  sous-préfecture **ou** point), `panneaux`, `ressource` (brut ou calé,
-  version de la base), `appareils`, `systeme`, `prix` (monnaie de
-  l'étude) et, si le calcul a été lancé, `resultats` (valeurs de
-  synthèse).
+- Corps : `{"module": ..., "format": ..., "fiche": {...}}`, deux formats :
+  - `pv-autonome` / `pv-autonome@1` : `logiciel` (version, jour), `lieu`
+    (code de sous-préfecture **ou** point), `panneaux`, `ressource` (brut
+    ou calé, version de la base), `appareils`, `systeme`, `prix` (monnaie
+    de l'étude) et `resultats` (valeurs de synthèse du dimensionnement) ;
+  - `minireseau` / `minireseau@1` : `logiciel`, `lieu`, `ressource`,
+    `champ` (ratio de performance, inclinaison, plan), `charge` (postes
+    avec leur énergie par jour et leur **profil sur 24 heures**, facteurs
+    mensuels, croissance année par année), `stockage`, `groupe`
+    (puissance, consommations, prix du litre, facteur d'émission),
+    `dimensionnement` (horizon, cible de délestage, plages balayées),
+    `prix` (coûts unitaires et paramètres économiques) et `resultats`
+    (configuration retenue, délestage, groupe, carburant, CO2, LCOE et
+    ses parts). Ni nom de site, ni textes du rapport, ni séries de la
+    ressource.
+
+  Le module et le format vont ensemble : une fiche d'un module sous
+  l'autre est refusée.
 - Contrat **fermé** : un champ non prévu est refusé (422). Le point est
-  arrondi à 0,1° et le nom d'un appareil coupé à 40 caractères, côté
-  serveur.
+  arrondi à 0,1° et le nom d'un appareil ou d'un poste coupé à 40
+  caractères, côté serveur.
 - Réponse **201** au premier envoi, **200** ensuite :
 
 ```json
