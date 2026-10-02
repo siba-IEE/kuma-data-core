@@ -52,6 +52,15 @@ ou un lieu précis.
    la clé par un numéro de contributeur ; aucune donnée publiée ne la
    porte.
 
+## Formats
+
+- `pv-autonome@1` (2026-10-02) : Photovoltaïque autonome.
+- `minireseau@1` (2026-10-02) : mini-réseau. La charge y part poste par
+  poste, avec son profil sur 24 heures ; le groupe, avec le prix du litre
+  de carburant ; les résultats, avec le LCOE et ses parts. Mêmes règles :
+  lieu arrondi, noms de postes coupés à 40 caractères, ni nom de site, ni
+  textes du rapport, ni séries de la ressource.
+
 ## Conséquences
 
 - Le schéma de table ne nomme pas les modules : un module de plus

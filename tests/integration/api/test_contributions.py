@@ -33,7 +33,7 @@ from kuma_data_core.core.config import get_settings
 from kuma_data_core.db.meta import BaseMeta, ContributionEtude
 from kuma_data_core.db.session import get_engine, get_engine_meta
 from kuma_data_core.services import contributions, licences
-from tests.unit.api.test_schemas_contributions import fiche_exemple
+from tests.unit.api.test_schemas_contributions import fiche_exemple, fiche_minireseau_exemple
 
 pytestmark = pytest.mark.integration
 
@@ -213,3 +213,25 @@ def test_outil_bilan_et_export(
     assert premiere["fiche"]["logiciel"]["version"] == "1.1.0"
     assert prefixe not in lignes[0]
     assert cle not in lignes[0]
+
+
+def test_les_deux_modules_cote_a_cote(
+    client: TestClient,
+    serveur_contributions: None,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    cle, _ = _cle_licenciee(client)
+    assert _deposer(client, cle, str(uuid.uuid4()))[0] == 201
+    assert _deposer(client, cle, str(uuid.uuid4()), fiche_minireseau_exemple())[0] == 201
+
+    par_module = {f.module: f for f in _fiches()}
+    assert sorted(par_module) == ["minireseau", "pv-autonome"]
+    mini = par_module["minireseau"]
+    assert mini.format_fiche == "minireseau@1"
+    assert mini.fiche["lieu"]["point"] == {"latitude_deg": 7.8, "longitude_deg": -9.2}
+    assert len(mini.fiche["charge"]["postes"][0]["profil_24"]) == 24
+
+    assert contributions.principal(["bilan"]) == 0
+    sortie = capsys.readouterr().out
+    assert "minireseau  1 fiche(s)" in sortie
+    assert "pv-autonome  1 fiche(s)" in sortie
