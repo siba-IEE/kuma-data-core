@@ -789,7 +789,7 @@ la même clé avait déposée pour cette étude (ADR-0006). `etude_uid` est un
 UUID tiré par le logiciel, jamais le nom de l'étude. Sans base de
 service : `404 CONTRIBUTIONS_NON_ACTIVEES`.
 
-- Corps : `{"module": ..., "format": ..., "fiche": {...}}`, deux formats :
+- Corps : `{"module": ..., "format": ..., "fiche": {...}}`, trois formats :
   - `pv-autonome` / `pv-autonome@1` : `logiciel` (version, jour), `lieu`
     (code de sous-préfecture **ou** point), `panneaux`, `ressource` (brut
     ou calé, version de la base), `appareils`, `systeme`, `prix` (monnaie
@@ -803,7 +803,16 @@ service : `404 CONTRIBUTIONS_NON_ACTIVEES`.
     `prix` (coûts unitaires et paramètres économiques) et `resultats`
     (configuration retenue, délestage, groupe, carburant, CO2, LCOE et
     ses parts). Ni nom de site, ni textes du rapport, ni séries de la
-    ressource.
+    ressource ;
+  - `pv-champ` / `pv-champ@1` : `logiciel`, `lieu`, `ressource`, `plan`,
+    `conditions` (puissance visée, températures, ensoleillement saisi),
+    `module` et `onduleur` (caractéristiques, **sans marque ni
+    référence**), `pertes` (poste par poste), `cablage` (longueurs, chutes
+    de tension, matériau, tension AC, dératage, dimensions du module) et
+    `resultats` (strings, onduleurs, modules, puissance DC, ratio DC/AC,
+    vérifications électriques, température de cellule, PR et productible,
+    sections de câbles, calibres de protections). Ni nom d'étude, ni
+    coordonnées exactes, ni nomenclature chiffrée.
 
   Le module et le format vont ensemble : une fiche d'un module sous
   l'autre est refusée.

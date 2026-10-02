@@ -60,6 +60,11 @@ ou un lieu précis.
   de carburant ; les résultats, avec le LCOE et ses parts. Mêmes règles :
   lieu arrondi, noms de postes coupés à 40 caractères, ni nom de site, ni
   textes du rapport, ni séries de la ressource.
+- `pv-champ@1` (2026-10-02) : conception de champ PV. Le module et
+  l'onduleur partent par leurs caractéristiques, sans marque ni référence ;
+  les résultats portent la configuration des strings, les vérifications
+  électriques, le productible, les sections de câbles et les calibres de
+  protections. Pas de prix : le module n'en saisit pas.
 
 ## Conséquences
 
