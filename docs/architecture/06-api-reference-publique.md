@@ -42,6 +42,8 @@ Structure des routes :
 /v1/cles                POST                      émission self-service d'une clé (non authentifié)
 /v1/cles/{prefixe}      DELETE                    révocation d'une clé (administrateur)
 /v1/licence/bail        POST                      bail signé d'usage de SolClim-3 (clé porteuse d'une licence)
+/v1/contributions/{uid} POST                      dépôt de la fiche d'une étude SolClim-3 (clé porteuse d'une licence)
+/v1/contributions/{uid}/retrait POST              retrait de cette fiche (clé)
 /v1/series                                        catalogue des séries
 /v1/series/{code_serie}                           détail d'une série + ses mesures
 /v1/localites                                     référentiel géographique
@@ -779,6 +781,42 @@ Les licences s'administrent sur le serveur, par
 prolonger, retirer). Retirer la licence laisse la clé ouvrir l'API
 publique ; révoquer la clé coupe tout.
 
+### 3.11 quinquies `POST /v1/contributions/{etude_uid}` : fiche d'une étude SolClim-3
+
+Authentifié, clé porteuse d'une licence SolClim-3 active (sinon
+`403 LICENCE_ABSENTE`). Dépose la fiche d'une étude, ou remplace celle que
+la même clé avait déposée pour cette étude (ADR-0006). `etude_uid` est un
+UUID tiré par le logiciel, jamais le nom de l'étude. Sans base de
+service : `404 CONTRIBUTIONS_NON_ACTIVEES`.
+
+- Corps : `{"module": "pv-autonome", "format": "pv-autonome@1", "fiche": {...}}`.
+  La fiche porte `logiciel` (version, jour), `lieu` (code de
+  sous-préfecture **ou** point), `panneaux`, `ressource` (brut ou calé,
+  version de la base), `appareils`, `systeme`, `prix` (monnaie de
+  l'étude) et, si le calcul a été lancé, `resultats` (valeurs de
+  synthèse).
+- Contrat **fermé** : un champ non prévu est refusé (422). Le point est
+  arrondi à 0,1° et le nom d'un appareil coupé à 40 caractères, côté
+  serveur.
+- Réponse **201** au premier envoi, **200** ensuite :
+
+```json
+{
+  "etude_uid": "6f1c…",
+  "recue_le": "2026-10-02T10:12:03Z",
+  "mise_a_jour_le": "2026-10-02T11:40:27Z",
+  "nombre_envois": 2
+}
+```
+
+`POST /v1/contributions/{etude_uid}/retrait` supprime la fiche que la
+clé avait déposée : **204**, ou `404 CONTRIBUTION_INCONNUE` si elle n'en
+a pas déposé. La clé suffit, licence ou non. Les deux routes sont en
+`POST` : le CORS n'ouvre aux vues web que `GET` et `POST`.
+
+Le bilan et l'export (sans les clés) se font sur le serveur, par
+`python -m kuma_data_core.services.contributions` (bilan, exporter).
+
 ### 3.12 Codes d'erreur exposés par l'API
 
 | Code | Statut HTTP type | Sens |
@@ -803,6 +841,8 @@ publique ; révoquer la clé coupe tout.
 | `CLES_QUOTA_JOURNALIER_DEPASSE` | 429 | quota journalier de la clé self-service dépassé |
 | `LICENCE_NON_ACTIVEE` | 404 | émission de bail SolClim-3 non disponible sur ce déploiement |
 | `LICENCE_ABSENTE` | 403 | aucune licence SolClim-3 active n'est attachée à la clé |
+| `CONTRIBUTIONS_NON_ACTIVEES` | 404 | réception des fiches d'études non disponible sur ce déploiement |
+| `CONTRIBUTION_INCONNUE` | 404 | aucune fiche de cette étude n'a été déposée avec cette clé |
 | `INFRASTRUCTURE_BASE_INDISPONIBLE` | 503 | PostgreSQL injoignable |
 | `INFRASTRUCTURE_CACHE_INDISPONIBLE` | 503 | cache (Redis) indisponible (déclaré, non levé : les compteurs sont fail-open) |
 | `SERVEUR_ERREUR_INTERNE` | 500 | filet de sécurité, aucune fuite technique |

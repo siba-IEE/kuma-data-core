@@ -7,6 +7,13 @@ le projet suit le versionnement sémantique.
 
 ### Ajouté
 
+- Contributions d'études SolClim-3 (ADR-0006) : table `contributions_etudes`
+  dans la base de service ; `POST /v1/contributions/{etude_uid}` dépose ou
+  remplace la fiche d'une étude (clé porteuse d'une licence), `POST
+  /v1/contributions/{etude_uid}/retrait` la retire. Contrat fermé : point
+  arrondi à 0,1°, nom d'appareil coupé à 40 caractères, tout champ non prévu
+  refusé. Outil `python -m kuma_data_core.services.contributions` (bilan,
+  exporter sans les clés).
 - Licences SolClim-3 (ADR-0005) : table `licences_solclim` dans la base de
   service, à côté de `cles_api` ; une clé d'API publique seule n'ouvre plus
   le logiciel.
