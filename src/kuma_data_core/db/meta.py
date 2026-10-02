@@ -19,6 +19,13 @@ licence lui soit accordée par l'administrateur ; c'est elle qui donne
 droit au bail signé de ``POST /v1/licence/bail``. Retirer la licence ôte
 SolClim-3 sans toucher à la clé ; révoquer la clé coupe tout.
 
+La table ``contributions_etudes`` reçoit les fiches d'études que les
+utilisateurs de SolClim-3 partagent (ADR-0006) : une fiche par étude et par
+clé, remplacée à chaque envoi, retirée à la demande. Son schéma ne nomme
+pas les modules : la fiche est un document JSON validé à l'entrée, si bien
+qu'un module de plus n'exige aucune modification de table (``create_all``
+ne migre pas une table existante).
+
 Provisioning : ``python -m kuma_data_core.db.meta`` crée les tables
 (idempotent, ``create_all`` : une table déjà présente n'est pas touchée,
 une table nouvelle est créée) dans la base désignée par ``META_DB``. À
@@ -30,6 +37,7 @@ exécuter avec le rôle administrateur après ``provisionner-serveur.sh``
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import (
     BigInteger,
@@ -45,6 +53,7 @@ from sqlalchemy import (
     func,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 
@@ -150,6 +159,47 @@ class LicenceSolclim(BaseMeta):
             unique=True,
             postgresql_where=text("actif"),
         ),
+    )
+
+
+class ContributionEtude(BaseMeta):
+    """Fiche d'une étude SolClim-3 partagée par son auteur (ADR-0006)."""
+
+    __tablename__ = "contributions_etudes"
+
+    # === Identifiants ===
+    id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
+    # La clé qui a déposé la fiche : la source de la donnée. Elle ne sort
+    # jamais de cette base.
+    cle_api_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey("cles_api.id", name="fk_contributions_etudes_cle_api_id"),
+        nullable=False,
+    )
+    # Identifiant aléatoire de l'étude, tiré par le logiciel (UUID) : jamais
+    # son nom. Unique par clé, pour qu'un envoi ne puisse remplacer que les
+    # fiches de son auteur.
+    etude_uid: Mapped[str] = mapped_column(String(36), nullable=False)
+
+    # === La fiche ===
+    module: Mapped[str] = mapped_column(String(32), nullable=False)
+    format_fiche: Mapped[str] = mapped_column(String(32), nullable=False)
+    version_logiciel: Mapped[str] = mapped_column(String(32), nullable=False)
+    fiche: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    # === Traçabilité ===
+    recue_le: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    mise_a_jour_le: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    nombre_envois: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("1"))
+
+    __table_args__ = (
+        CheckConstraint("nombre_envois > 0", name="ck_contributions_etudes_envois_positifs"),
+        Index("uq_contributions_etudes_cle_etude", "cle_api_id", "etude_uid", unique=True),
+        Index("idx_contributions_etudes_module", "module"),
     )
 
 

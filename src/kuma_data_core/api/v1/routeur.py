@@ -13,6 +13,7 @@ from fastapi import APIRouter
 from kuma_data_core.api.v1 import (
     calage,
     cles,
+    contributions,
     edition,
     etudes,
     grandeurs,
@@ -28,6 +29,7 @@ routeur_v1.include_router(health.routeur)
 routeur_v1.include_router(edition.routeur)
 routeur_v1.include_router(cles.routeur)
 routeur_v1.include_router(licence.routeur)
+routeur_v1.include_router(contributions.routeur)
 routeur_v1.include_router(series.routeur)
 routeur_v1.include_router(localites.routeur)
 routeur_v1.include_router(grandeurs.routeur)
