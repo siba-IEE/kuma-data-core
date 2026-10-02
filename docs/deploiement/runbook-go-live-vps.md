@@ -72,7 +72,7 @@ Ordre important : la base et ses rôles doivent exister avant l'API.
      KUMA_PG_CONTENEUR=kuma-postgres-prod \
      bash scripts/publication/provisionner-serveur.sh
    ```
-9. **Créer les tables de service** `cles_api` et `licences_solclim` dans
+9. **Créer les tables de service** `cles_api`, `licences_solclim` et `contributions_etudes` dans
    `kuma_api_meta` (schéma hors Alembic), en tant que superutilisateur. La
    commande est idempotente : sur un serveur déjà en service, elle ajoute
    les tables absentes et laisse intactes celles qui existent :

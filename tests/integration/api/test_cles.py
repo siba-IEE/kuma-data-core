@@ -39,7 +39,8 @@ def base_service_active(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     BaseMeta.metadata.create_all(get_engine_meta())
     yield
     with get_engine().begin() as connexion:
-        # ``licences_solclim`` référence ``cles_api`` : elle part la première.
+        # Les tables qui référencent ``cles_api`` partent les premières.
+        connexion.execute(text("DROP TABLE IF EXISTS contributions_etudes"))
         connexion.execute(text("DROP TABLE IF EXISTS licences_solclim"))
         connexion.execute(text("DROP TABLE IF EXISTS cles_api"))
 

@@ -55,6 +55,7 @@ def serveur_licences(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     BaseMeta.metadata.create_all(get_engine_meta())
     yield
     with get_engine().begin() as connexion:
+        connexion.execute(text("DROP TABLE IF EXISTS contributions_etudes"))
         connexion.execute(text("DROP TABLE IF EXISTS licences_solclim"))
         connexion.execute(text("DROP TABLE IF EXISTS cles_api"))
 
