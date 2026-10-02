@@ -29,7 +29,7 @@ from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from kuma_data_core.api.v1.schemas.contributions import DemandeContribution
+from kuma_data_core.api.v1.schemas.contributions import TypeDemande
 from kuma_data_core.db.meta import CleApi, ContributionEtude
 from kuma_data_core.services.cles import hacher_cle
 
@@ -58,7 +58,7 @@ def deposer(
     session: Session,
     cle_api: CleApi,
     etude_uid: str,
-    demande: DemandeContribution,
+    demande: TypeDemande,
     maintenant: datetime,
 ) -> Depot:
     """Crée la fiche de l'étude, ou remplace celle que la même clé avait déposée."""
