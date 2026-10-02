@@ -1,4 +1,4 @@
-"""Le contrat des fiches de contribution (``pv-autonome@1``, ``minireseau@1``, ADR-0006).
+"""Le contrat des fiches de contribution (``pv-autonome@1``, ``minireseau@1``, ``pv-champ@1``).
 
 Ce qui quitte le poste est borné par ce schéma : un champ de plus est
 refusé, le point est arrondi, le nom d'un appareil est coupé.
@@ -17,6 +17,7 @@ from kuma_data_core.api.v1.schemas.contributions import (
     DemandeContribution,
     DemandeMiniReseau,
     DemandePvAutonome,
+    DemandePvChamp,
     TypeDemande,
 )
 
@@ -337,4 +338,146 @@ def test_minireseau_champ_hors_contrat_refuse(chemin: tuple[str, ...], cle: str)
         cible = cible[etape]
     cible[cle] = "x"
     with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        valider(brut)
+
+
+# === Conception de champ PV, ``pv-champ@1`` ===
+
+
+def fiche_pv_champ_exemple() -> dict[str, Any]:
+    """Une fiche complète et valide de conception de champ PV."""
+    return {
+        "module": "pv-champ",
+        "format": "pv-champ@1",
+        "fiche": {
+            "logiciel": {"version": "1.1.0", "enregistre_le": "2026-10-02"},
+            "lieu": {"sous_prefecture": "GN00400113"},
+            "ressource": {"mode": "cale", "version_base": "calage-guinee-v3"},
+            "plan": {"inclinaison_deg": 12, "orientation_deg": 0},
+            "conditions": {"kwc_cible": 50, "t_min_c": 12, "t_max_c": 42, "hse_moyenne": None},
+            "module": {
+                "puissance_crete_w": 550,
+                "voc_v": 49.6,
+                "isc_a": 14.0,
+                "vmp_v": 41.7,
+                "imp_a": 13.2,
+                "beta_voc_pct_par_c": -0.27,
+                "beta_vmp_pct_par_c": -0.35,
+                "gamma_pmax_pct_par_c": -0.35,
+                "noct_c": 45,
+                "fusible_max_a": 25,
+            },
+            "onduleur": {
+                "puissance_ac_nom_w": 50_000,
+                "tension_dc_max_v": 1100,
+                "mppt_min_v": 200,
+                "mppt_max_v": 1000,
+                "courant_mppt_max_a": 32,
+                "nombre_mppt": 4,
+                "puissance_dc_max_w": 75_000,
+            },
+            "pertes": [
+                {"cle": "salissure", "fraction": 0.03},
+                {"cle": "temperature", "fraction": 0.08},
+            ],
+            "cablage": {
+                "longueur_string_m": 30,
+                "longueur_principal_dc_m": 20,
+                "longueur_ac_m": 40,
+                "chute_max_dc_pct": 1.5,
+                "chute_max_ac_pct": 1.5,
+                "materiau": "cuivre",
+                "tension_ac_v": 400,
+                "triphase": True,
+                "facteur_deratage": 0.8,
+                "longueur_module_m": 2.28,
+                "largeur_module_m": 1.13,
+            },
+            "resultats": {
+                "modules_par_string": 18,
+                "modules_par_string_min": 6,
+                "modules_par_string_max": 20,
+                "fenetre_valide": True,
+                "nombre_strings": 5,
+                "strings_par_mppt": 2,
+                "nombre_onduleurs": 1,
+                "nombre_modules": 90,
+                "puissance_dc_kwc": 49.5,
+                "ratio_dc_ac": 0.99,
+                "t_cellule_max_c": 71.3,
+                "verifications": [
+                    {
+                        "cle": "voc_froid",
+                        "valeur": 940.2,
+                        "limite": 1100,
+                        "respecte": True,
+                        "marge": 0.145,
+                    }
+                ],
+                "pr_reel": 0.81,
+                "productible_annuel_kwh": 78_400,
+                "productible_specifique_kwh_kwc": 1_584,
+                "cables": [
+                    {
+                        "cle": "string",
+                        "courant_conception_a": 17.5,
+                        "longueur_m": 30,
+                        "section_mm2": 6,
+                        "chute_reelle_pct": 0.6,
+                        "contrainte": "ampacite",
+                    }
+                ],
+                "protections": [
+                    {
+                        "cle": "fusible_string",
+                        "quantite": 10,
+                        "calibre": "20 A gPV",
+                        "conforme": True,
+                    }
+                ],
+            },
+        },
+    }
+
+
+def test_fiche_pv_champ_acceptee() -> None:
+    demande = valider(fiche_pv_champ_exemple())
+    assert isinstance(demande, DemandePvChamp)
+    assert demande.fiche.module.puissance_crete_w == 550
+    assert demande.fiche.resultats is not None
+    assert demande.fiche.resultats.nombre_modules == 90
+
+
+def test_fiche_pv_champ_minimale_acceptee() -> None:
+    """Sans site posé, sans résultats : la conception part quand même."""
+    brut = fiche_pv_champ_exemple()
+    for cle in ("lieu", "ressource", "resultats"):
+        del brut["fiche"][cle]
+    brut["fiche"]["conditions"]["hse_moyenne"] = 5.4
+    assert isinstance(valider(brut), DemandePvChamp)
+
+
+@pytest.mark.parametrize(
+    ("chemin", "cle"),
+    [
+        ((), "nom_etude"),
+        (("module",), "marque"),
+        (("onduleur",), "reference"),
+        (("resultats",), "nomenclature"),
+    ],
+)
+def test_pv_champ_champ_hors_contrat_refuse(chemin: tuple[str, ...], cle: str) -> None:
+    brut = fiche_pv_champ_exemple()
+    cible = brut["fiche"]
+    for etape in chemin:
+        cible = cible[etape]
+    cible[cle] = "x"
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        valider(brut)
+
+
+def test_pv_champ_sous_un_autre_module_refuse() -> None:
+    brut = fiche_pv_champ_exemple()
+    brut["module"], brut["format"] = "pv-autonome", "pv-autonome@1"
+    with pytest.raises(ValidationError):
         valider(brut)

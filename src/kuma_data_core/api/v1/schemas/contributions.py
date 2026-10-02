@@ -1,7 +1,8 @@
 """Schémas Pydantic des contributions d'études SolClim-3 (ADR-0006).
 
-Deux formats de fiche : ``pv-autonome@1`` (Photovoltaïque autonome) et
-``minireseau@1`` (mini-réseau). La demande les distingue par ``module``.
+Trois formats de fiche : ``pv-autonome@1`` (Photovoltaïque autonome),
+``minireseau@1`` (mini-réseau) et ``pv-champ@1`` (conception de champ PV).
+La demande les distingue par ``module``.
 
 La fiche est le contrat de ce qui quitte le poste de l'utilisateur. Elle est
 validée **strictement** : un champ que le contrat ne nomme pas est refusé
@@ -272,6 +273,135 @@ class FicheMiniReseau(_Strict):
     resultats: ResultatsMiniReseau | None = None
 
 
+# === Conception de champ PV, format ``pv-champ@1`` ===
+
+
+class PlanChamp(_Strict):
+    inclinaison_deg: float = Field(ge=0, le=90)
+    orientation_deg: float = Field(ge=-180, le=360)
+
+
+class ConditionsChamp(_Strict):
+    kwc_cible: float = Field(gt=0, le=100_000, description="Puissance visée.")
+    t_min_c: float = Field(ge=-60, le=60)
+    t_max_c: float = Field(ge=-20, le=80)
+    hse_moyenne: float | None = Field(
+        default=None, ge=0, le=15, description="Ensoleillement saisi à la main, sans site posé."
+    )
+
+
+class ModuleChamp(_Strict):
+    """Les caractéristiques d'un module, sans marque ni référence."""
+
+    puissance_crete_w: float = Field(gt=0, le=2000)
+    voc_v: float = Field(gt=0, le=300)
+    isc_a: float = Field(gt=0, le=100)
+    vmp_v: float = Field(gt=0, le=300)
+    imp_a: float = Field(gt=0, le=100)
+    beta_voc_pct_par_c: float = Field(ge=-5, le=5)
+    beta_vmp_pct_par_c: float = Field(ge=-5, le=5)
+    gamma_pmax_pct_par_c: float | None = Field(default=None, ge=-5, le=5)
+    noct_c: float | None = Field(default=None, ge=0, le=100)
+    fusible_max_a: float | None = Field(default=None, ge=0, le=200)
+
+
+class OnduleurChamp(_Strict):
+    """Les caractéristiques d'un onduleur, sans marque ni référence."""
+
+    puissance_ac_nom_w: float = Field(gt=0, le=10_000_000)
+    tension_dc_max_v: float = Field(gt=0, le=3000)
+    mppt_min_v: float = Field(ge=0, le=3000)
+    mppt_max_v: float = Field(gt=0, le=3000)
+    courant_mppt_max_a: float = Field(gt=0, le=2000)
+    nombre_mppt: int = Field(ge=1, le=100)
+    puissance_dc_max_w: float = Field(gt=0, le=20_000_000)
+
+
+class PostePerte(_Strict):
+    cle: str = Field(min_length=1, max_length=60, description="Code du poste de perte.")
+    fraction: float = Field(ge=0, le=1)
+
+
+class Cablage(_Strict):
+    longueur_string_m: float = Field(ge=0, le=10_000)
+    longueur_principal_dc_m: float = Field(ge=0, le=10_000)
+    longueur_ac_m: float = Field(ge=0, le=10_000)
+    chute_max_dc_pct: float = Field(ge=0, le=20)
+    chute_max_ac_pct: float = Field(ge=0, le=20)
+    materiau: Literal["cuivre", "aluminium"]
+    tension_ac_v: float = Field(gt=0, le=2000)
+    triphase: bool
+    facteur_deratage: float = Field(gt=0, le=2)
+    longueur_module_m: float = Field(gt=0, le=5)
+    largeur_module_m: float = Field(gt=0, le=5)
+
+
+class VerificationChamp(_Strict):
+    cle: str = Field(min_length=1, max_length=60)
+    valeur: float
+    limite: float
+    respecte: bool
+    marge: float
+
+
+class CableChamp(_Strict):
+    cle: str = Field(min_length=1, max_length=60)
+    courant_conception_a: float = Field(ge=0)
+    longueur_m: float = Field(ge=0)
+    section_mm2: float = Field(gt=0)
+    chute_reelle_pct: float = Field(ge=0)
+    contrainte: Literal["ampacite", "chute"]
+
+
+class ProtectionChamp(_Strict):
+    cle: str = Field(min_length=1, max_length=60)
+    quantite: float = Field(ge=0)
+    calibre: str = Field(max_length=60)
+    conforme: bool | None = None
+
+
+class ResultatsChamp(_Strict):
+    """La configuration du champ, ses vérifications et ce qu'elle produit."""
+
+    modules_par_string: int = Field(ge=0)
+    modules_par_string_min: int = Field(ge=0)
+    modules_par_string_max: int = Field(ge=0)
+    fenetre_valide: bool
+    nombre_strings: int = Field(ge=0)
+    strings_par_mppt: int = Field(ge=0)
+    nombre_onduleurs: int = Field(ge=0)
+    nombre_modules: int = Field(ge=0)
+    puissance_dc_kwc: float = Field(ge=0)
+    ratio_dc_ac: float = Field(ge=0)
+    t_cellule_max_c: float
+    verifications: list[VerificationChamp] = Field(max_length=50)
+    pr_reel: float | None = Field(default=None, ge=0, le=1)
+    productible_annuel_kwh: float | None = Field(default=None, ge=0)
+    productible_specifique_kwh_kwc: float | None = Field(default=None, ge=0)
+    cables: list[CableChamp] = Field(max_length=20)
+    protections: list[ProtectionChamp] = Field(max_length=50)
+
+
+class FichePvChamp(_Strict):
+    """Fiche d'une conception de champ PV, format ``pv-champ@1``.
+
+    Le module et l'onduleur partent par leurs caractéristiques, sans marque ni
+    référence. Ni nom d'étude, ni coordonnées exactes, ni nomenclature
+    chiffrée (elle se recalcule de la saisie).
+    """
+
+    logiciel: Logiciel
+    lieu: Lieu | None = None
+    ressource: Ressource | None = None
+    plan: PlanChamp
+    conditions: ConditionsChamp
+    module: ModuleChamp
+    onduleur: OnduleurChamp
+    pertes: list[PostePerte] = Field(max_length=30)
+    cablage: Cablage
+    resultats: ResultatsChamp | None = None
+
+
 # === La demande ===
 
 
@@ -287,8 +417,14 @@ class DemandeMiniReseau(_Strict):
     fiche: FicheMiniReseau
 
 
-#: Une demande, l'une des deux.
-TypeDemande = DemandePvAutonome | DemandeMiniReseau
+class DemandePvChamp(_Strict):
+    module: Literal["pv-champ"]
+    format: Literal["pv-champ@1"]
+    fiche: FichePvChamp
+
+
+#: Une demande, l'une des trois.
+TypeDemande = DemandePvAutonome | DemandeMiniReseau | DemandePvChamp
 
 #: Corps de ``POST /v1/contributions/{etude_uid}`` : le module choisit le format.
 DemandeContribution = Annotated[TypeDemande, Field(discriminator="module")]
