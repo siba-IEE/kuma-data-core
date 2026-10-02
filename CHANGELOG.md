@@ -7,6 +7,10 @@ le projet suit le versionnement sémantique.
 
 ### Ajouté
 
+- Contributions : format `pv-champ@1` (ADR-0006), conception de champ PV.
+  Module et onduleur par leurs caractéristiques (sans marque ni référence),
+  pertes, câblage, et résultats : strings, vérifications électriques,
+  productible, sections de câbles, protections.
 - Contributions : format `minireseau@1` (ADR-0006). Postes de charge avec
   leur profil sur 24 heures, groupe et prix du carburant, configuration
   retenue et LCOE ; le module choisit le format, une fiche d'un module sous
