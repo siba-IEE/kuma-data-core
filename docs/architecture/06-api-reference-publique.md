@@ -41,6 +41,7 @@ Structure des routes :
 /v1/edition                                       édition publiée servie (non authentifié)
 /v1/cles                POST                      émission self-service d'une clé (non authentifié)
 /v1/cles/{prefixe}      DELETE                    révocation d'une clé (administrateur)
+/v1/licence/bail        POST                      bail signé d'usage de SolClim-3 (clé porteuse d'une licence)
 /v1/series                                        catalogue des séries
 /v1/series/{code_serie}                           détail d'une série + ses mesures
 /v1/localites                                     référentiel géographique
@@ -744,6 +745,40 @@ d'étude calée doit vérifier que la localité résolue de son site en
 fait partie ; l'extension du domaine passe par la recherche et les
 éditions, jamais par les consommateurs.
 
+### 3.11 quater `POST /v1/licence/bail` : bail d'usage de SolClim-3
+
+Authentifié. Remet un **bail signé** à une clé porteuse d'une licence
+SolClim-3 active (table `licences_solclim`, ADR-0005). Une clé d'API
+publique seule, la clé d'environnement partagée ou la clé
+administrateur n'y donnent pas droit : `403 LICENCE_ABSENTE`. Sans base
+de service ou sans graine de signature configurée :
+`404 LICENCE_NON_ACTIVEE`.
+
+- Réponse 200 :
+
+```json
+{
+  "charge": "<JSON canonique en base64url>",
+  "signature": "<Ed25519 des octets de la charge, base64url>",
+  "titulaire": "Prénom Nom",
+  "expire_le": "2026-10-31T12:30:45Z"
+}
+```
+
+- La charge décodée porte `version`, `produit` (`solclim3`),
+  `prefixe_cle`, `titulaire`, `organisation`, `emis_le`, `expire_le` et
+  `version_minimale`. Le bail vaut 30 jours (`LICENCE_DUREE_JOURS`),
+  sans dépasser le terme de la licence.
+- La signature porte sur les **octets** transportés : le vérificateur
+  décode la charge, vérifie la signature avec la clé publique, puis lit
+  le JSON. L'expiration est jugée par le lecteur (logiciel, calage).
+- Chaque émission note la date du dernier bail de la licence.
+
+Les licences s'administrent sur le serveur, par
+`python -m kuma_data_core.services.licences` (accorder, lister,
+prolonger, retirer). Retirer la licence laisse la clé ouvrir l'API
+publique ; révoquer la clé coupe tout.
+
 ### 3.12 Codes d'erreur exposés par l'API
 
 | Code | Statut HTTP type | Sens |
@@ -766,6 +801,8 @@ fait partie ; l'extension du domaine passe par la recherche et les
 | `CLES_EMISSION_NON_ACTIVEE` | 404 | self-service de clés non disponible sur ce déploiement |
 | `CLES_LIMITE_EMISSION_ATTEINTE` | 429 | limite d'émission de clés par IP atteinte |
 | `CLES_QUOTA_JOURNALIER_DEPASSE` | 429 | quota journalier de la clé self-service dépassé |
+| `LICENCE_NON_ACTIVEE` | 404 | émission de bail SolClim-3 non disponible sur ce déploiement |
+| `LICENCE_ABSENTE` | 403 | aucune licence SolClim-3 active n'est attachée à la clé |
 | `INFRASTRUCTURE_BASE_INDISPONIBLE` | 503 | PostgreSQL injoignable |
 | `INFRASTRUCTURE_CACHE_INDISPONIBLE` | 503 | cache (Redis) indisponible (déclaré, non levé : les compteurs sont fail-open) |
 | `SERVEUR_ERREUR_INTERNE` | 500 | filet de sécurité, aucune fuite technique |
