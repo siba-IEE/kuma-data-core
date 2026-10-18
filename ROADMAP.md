@@ -22,6 +22,12 @@ confiance A/B/C, et un guide pour un contributeur pays ou terrain.
 
 ## Jalon 2 : multi-pays
 
+Changement de cap proposé ([ADR-0007](docs/decisions/0007-assistant-kuma-couverture-regionale.md)) :
+la couverture passe par une grille régionale de 1° sur les 13 pays des
+stations d'ancrage, ingérée depuis les sources ouvertes, sans attendre de
+dépôt ni d'adoption par pays. Les points ci-dessous restent utiles comme
+renforts nationaux.
+
 Le schéma n'a aucune notion de pays en dur : le pays est un axe de
 classification. L'objectif est de le rendre explicite et de construire le
 **pont** qui verse un RDS national dans le Core, sans qu'un contributeur ait à
@@ -109,6 +115,21 @@ La confiance A est réservée aux mesures validées au sol.
   locaux).
 - Établir le terme d'incertitude absolu du solaire (biais satellite vs sol).
 - Construire ou intégrer une année météo typique (TMY) Guinée.
+
+## Jalon 6 : Assistant Kuma (13 pays)
+
+Une porte d'entrée conversationnelle sur le Core, décrite par
+l'[ADR-0007](docs/decisions/0007-assistant-kuma-couverture-regionale.md) :
+une question sur un lieu donne sa ressource avec source, confiance et
+incertitude ; une consommation donne un dimensionnement avec sa méthode.
+Le modèle de langage ne produit aucun chiffre, les outils (Core,
+kuma-calage, moteurs) les produisent. Service distinct, consommateur de
+l'API.
+
+- Grille 1° des 13 pays, climatologie mensuelle 1991-2020 (lot R1) ; dépend
+  du découplage de l'ingestion de masse (jalon 4).
+- Statistiques agrégées par pays côté Core (outil `statistiques_pays`).
+- Séquence horaire type par maille, pour le mini-réseau (lot R3).
 
 ## Backlog
 
