@@ -239,9 +239,10 @@ def test_t8_niveau_b_pour_calcul_derive_avec_fiabilite_haute() -> None:
 
     Pour les 6 séries HEP :
     ``methode_collecte='calcul_derive'`` + source ``kuma_calculs``
-    fiabilité ``'haute'`` → R1 / R2 / R3 ne matchent pas → R4 catch-all
-    → ``'B'``. Ce test verrouille que toute future modification de
-    R1-R4 reste compatible avec ce cas pivot.
+    fiabilité ``'haute'`` → R1 / R2 / R3 ne matchent pas ; sans niveaux
+    d'entrée, la règle P ne s'applique pas et R4 donne ``'B'``. Ce test
+    verrouille ce cas pivot ; la propagation P est testée dans
+    ``test_propagation_grandeurs_stockees.py``.
     """
     niveau = calculer_niveau_confiance_derive(
         methode_collecte="calcul_derive",

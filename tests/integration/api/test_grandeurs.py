@@ -27,10 +27,15 @@ Couverture explicite Condition 2 du checkpoint 2 :
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
+from kuma_data_core.db.session import get_engine, obtenir_session
 
 pytestmark = pytest.mark.integration
 
@@ -1198,3 +1203,206 @@ def test_bifacial_horaire_inferieur_a_journaliere(
     total_h = sum(x["valeur"] for x in r_h.json()["resultats"])
     total_j = sum(x["valeur"] for x in r_j.json()["resultats"])
     assert total_h < total_j, f"biais attendu (horaire {total_h:.1f} < journalier {total_j:.1f})"
+
+
+# === Règle de propagation P (ADR-0008) =====================================
+
+_SERIE_GHI_SOL_KANKAN = "gin_kankan_ghi_esmap_wapp_2021_2023"
+
+
+def _params_pr_horaire(code_serie: str) -> dict[str, str]:
+    return {
+        "code_serie_source": code_serie,
+        "periode_debut": "2022-01-10",
+        "periode_fin": "2022-01-16",
+        "pr_fourni": "0.80",
+        "correction": "aucune",
+        "puissance_stc_wc": "1000",
+        "methode": "integration_horaire",
+    }
+
+
+def test_propagation_plafond_b_sur_mesures_au_sol(
+    client: TestClient, headers_auth: dict[str, str]
+) -> None:
+    """Productible à PR fourni sur le GHI mesuré à Kankan (A) : B, plafond d'un PR supposé."""
+    response = client.get(
+        "/v1/grandeurs/productible_pr_fourni",
+        params=_params_pr_horaire(_SERIE_GHI_SOL_KANKAN),
+        headers=headers_auth,
+    )
+    assert response.status_code == 200
+    resultats = response.json()["resultats"]
+    assert resultats
+    assert {r["niveau_confiance"] for r in resultats} == {"B"}
+
+
+def test_propagation_modele_satellitaire_reste_b(
+    client: TestClient, headers_auth: dict[str, str]
+) -> None:
+    """Même calcul sur le GHI horaire NASA POWER de Conakry (confiance B) : B."""
+    response = client.get(
+        "/v1/grandeurs/productible_pr_fourni",
+        params=_params_pr_horaire(_code_serie_horaire_conakry("ghi")),
+        headers=headers_auth,
+    )
+    assert response.status_code == 200
+    resultats = response.json()["resultats"]
+    assert resultats
+    assert {r["niveau_confiance"] for r in resultats} == {"B"}
+
+
+@pytest.fixture
+def session_api() -> Iterator[Session]:
+    """Session servie à l'API dans une transaction annulée en fin de test."""
+    from kuma_data_core.api.main import app
+
+    connection = get_engine().connect()
+    transaction = connection.begin()
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
+
+    def _session() -> Iterator[Session]:
+        yield session
+
+    app.dependency_overrides[obtenir_session] = _session
+    try:
+        yield session
+    finally:
+        app.dependency_overrides.pop(obtenir_session, None)
+        session.close()
+        transaction.rollback()
+        connection.close()
+
+
+def _mettre_en_c(session: Session, code_serie: str, jour: str) -> None:
+    """Override éditorial C sur une mesure journalière courante (annulé en fin de test)."""
+    resultat = session.execute(
+        text(
+            "UPDATE mesures_ressource SET niveau_confiance_override = 'C', "
+            "commentaire_editorial = 'test propagation' "
+            "WHERE serie_id = (SELECT id FROM series_metadonnees WHERE code = :code) "
+            "AND instant_mesure = :jour AND valide_au IS NULL"
+        ),
+        {"code": code_serie, "jour": jour},
+    )
+    assert resultat.rowcount == 1  # type: ignore[attr-defined]
+
+
+def _niveaux_par_instant(resultats: list[dict[str, str]]) -> dict[str, str]:
+    return {r["instant"]: r["niveau_confiance"] for r in resultats}
+
+
+def test_propagation_poa_dhi_compagne_en_c(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """POA : un DHI compagne en C met son seul jour en C."""
+    _mettre_en_c(session_api, "gin_conakry_dhi_nasa_power_2021_2025", "2024-01-03")
+    response = client.get(
+        "/v1/grandeurs/poa_parametrable", params=_params_poa_valides(), headers=headers_auth
+    )
+    assert response.status_code == 200
+    niveaux = _niveaux_par_instant(response.json()["resultats"])
+    assert niveaux.pop("2024-01-03") == "C"
+    assert set(niveaux.values()) == {"B"}
+
+
+def test_propagation_thermique_t2m_compagne_en_c(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """Productible thermique : une T2M compagne en C met son seul jour en C."""
+    _mettre_en_c(session_api, _SERIE_T2M_CONAKRY, "2024-01-02")
+    response = client.get(
+        "/v1/grandeurs/productible_correction_thermique",
+        params=_params_thermique_valides(),
+        headers=headers_auth,
+    )
+    assert response.status_code == 200
+    niveaux = _niveaux_par_instant(response.json()["resultats"])
+    assert niveaux.pop("2024-01-02") == "C"
+    assert set(niveaux.values()) == {"B"}
+
+
+def test_propagation_djc_mois_au_niveau_de_ses_jours(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """DJC mensuel : un jour de T2M en C met son mois en C, pas le mois suivant."""
+    _mettre_en_c(session_api, _SERIE_T2M_CONAKRY, "2024-01-15")
+    params = _params_djc_valides() | {"periode_fin": "2024-02-29"}
+    response = client.get(
+        "/v1/grandeurs/degre_jour_climatisation", params=params, headers=headers_auth
+    )
+    assert response.status_code == 200
+    niveaux = _niveaux_par_instant(response.json()["resultats"])
+    assert niveaux == {"2024-01": "C", "2024-02": "B"}
+
+
+def test_propagation_pr_realiste_par_jour_sans_salissure(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """PR réaliste sans salissure : un GHI en C ne touche que son jour."""
+    _mettre_en_c(session_api, _SERIE_GHI_CONAKRY, "2024-01-03")
+    response = client.get(
+        f"/v1/grandeurs/pr_realiste/{_SERIE_GHI_CONAKRY}",
+        params={"pr_fourni": "0.80", "correction": "aucune"},
+        headers=headers_auth,
+    )
+    assert response.status_code == 200
+    niveaux = _niveaux_par_instant(response.json()["mesures_journalier"])
+    assert niveaux.pop("2024-01-03") == "C"
+    assert set(niveaux.values()) == {"B"}
+
+
+def test_propagation_salissure_cumulative(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """Salissure (modèle cumulatif) : un PM2.5 en C met toute la fenêtre en C."""
+    serie_pm25 = "gin_conakry_pm2_5_cams_eac4_2021_2025"
+    _mettre_en_c(session_api, serie_pm25, "2024-01-03")
+    response = client.get(f"/v1/grandeurs/taux_salissure_proxy/{serie_pm25}", headers=headers_auth)
+    assert response.status_code == 200
+    assert {m["niveau_confiance"] for m in response.json()["mesures"]} == {"C"}
+
+
+def test_propagation_lecteur_horaire_par_jour_utc(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """Productible horaire sur Kankan : une heure en C met son jour UTC en C."""
+    resultat = session_api.execute(
+        text(
+            "UPDATE mesures_ressource_horaires SET niveau_confiance_override = 'C', "
+            "commentaire_editorial = 'test propagation' "
+            "WHERE serie_id = (SELECT id FROM series_metadonnees WHERE code = :code) "
+            "AND instant_mesure = '2022-01-12 12:00:00+00' AND valide_au IS NULL "
+            "AND statut IN ('valide_auto', 'valide_humain', 'publie')"
+        ),
+        {"code": _SERIE_GHI_SOL_KANKAN},
+    )
+    assert resultat.rowcount == 1  # type: ignore[attr-defined]
+    response = client.get(
+        "/v1/grandeurs/productible_pr_fourni",
+        params=_params_pr_horaire(_SERIE_GHI_SOL_KANKAN),
+        headers=headers_auth,
+    )
+    assert response.status_code == 200
+    niveaux = _niveaux_par_instant(response.json()["resultats"])
+    assert niveaux.pop("2022-01-12") == "C"
+    assert set(niveaux.values()) == {"B"}
+
+
+def test_propagation_lecteur_mensuel_ghi_exceedance(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """P50/P90 : un mois de la climatologie en C met la fiche en C."""
+    resultat = session_api.execute(
+        text(
+            "UPDATE mesures_ressource_mensuelles SET niveau_confiance_override = 'C', "
+            "commentaire_editorial = 'test propagation' "
+            "WHERE serie_id = (SELECT id FROM series_metadonnees WHERE code = :code) "
+            "AND annee = 2000 AND mois = 6 AND valide_au IS NULL"
+        ),
+        {"code": _SERIE_GHI_CLIMATO_CONAKRY},
+    )
+    assert resultat.rowcount == 1  # type: ignore[attr-defined]
+    response = client.get("/v1/grandeurs/ghi_exceedance/gin_conakry_kaloum", headers=headers_auth)
+    assert response.status_code == 200
+    assert response.json()["niveau_confiance"] == "C"

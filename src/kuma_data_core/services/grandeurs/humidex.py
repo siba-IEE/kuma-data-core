@@ -43,8 +43,13 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.editorial.niveaux_confiance import (
+    NiveauConfiance,
+    NiveauxEntrees,
     calculer_niveau_confiance_derive,
 )
+
+PLAFOND_CONFIANCE: NiveauConfiance = "A"
+"""Plafond de confiance : formule fermée sur T2M et RH2M, sans modèle ni hypothèse."""
 
 GRANDEUR_CODE_HUMIDEX: str = "humidex"
 METHODE_COLLECTE_HUMIDEX: str = "calcul_derive"
@@ -314,17 +319,13 @@ def calculer_et_inserer_humidex(
             f"{code_serie_rh2m_amont!r} localite_id={int(serie_rh2m.localite_id)}."
         )
 
-    # 5. Niveau de confiance
-    niveau_derive = calculer_niveau_confiance_derive(
-        methode_collecte=serie_cible.methode_collecte,
-        fiabilite_source=serie_cible.fiabilite_source,
-    )
-
-    # 6. Lecture mesures T2M et RH2M
+    # 5. Lecture mesures T2M et RH2M
     rows_t2m = session.execute(
         text(
             """
-            SELECT instant_mesure, valeur FROM mesures_ressource
+            SELECT instant_mesure, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
+            FROM mesures_ressource
             WHERE serie_id = :serie_id AND valide_au IS NULL AND statut <> 'deprecie'
             ORDER BY instant_mesure
             """
@@ -334,7 +335,9 @@ def calculer_et_inserer_humidex(
     rows_rh2m = session.execute(
         text(
             """
-            SELECT instant_mesure, valeur FROM mesures_ressource
+            SELECT instant_mesure, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
+            FROM mesures_ressource
             WHERE serie_id = :serie_id AND valide_au IS NULL AND statut <> 'deprecie'
             ORDER BY instant_mesure
             """
@@ -346,12 +349,17 @@ def calculer_et_inserer_humidex(
         (r.instant_mesure, float(r.valeur)) for r in rows_rh2m
     ]
 
-    # 7. Agrégation pure
+    # Niveaux effectifs des entrées, pour la règle de propagation P
+    niveaux = NiveauxEntrees()
+    for r in (*rows_t2m, *rows_rh2m):
+        niveaux.ajouter(r.instant_mesure, r.niveau)
+
+    # 6. Agrégation pure
     agregation = _agreger_humidex(
         mesures_t2m, mesures_rh2m, seuil_inconfort_modere=seuil_inconfort_modere
     )
 
-    # 8. Bulk INSERT
+    # 7. Bulk INSERT
     toutes_lignes: list[_LigneAgregeeHumidex] = list(agregation["lignes_annuelles"]) + list(
         agregation["lignes_mensuelles"]
     )
@@ -367,7 +375,14 @@ def calculer_et_inserer_humidex(
                 "mois": ligne["mois"],
                 "version_formule": version_formule,
                 "valeur": ligne["valeur"],
-                "niveau_confiance_derive": niveau_derive,
+                "niveau_confiance_derive": calculer_niveau_confiance_derive(
+                    methode_collecte=serie_cible.methode_collecte,
+                    fiabilite_source=serie_cible.fiabilite_source,
+                    plafond=PLAFOND_CONFIANCE,
+                    niveaux_entrees=niveaux.de_periode(
+                        ligne["annee_debut"], ligne["annee_fin"], ligne["mois"]
+                    ),
+                ),
             }
             for ligne in toutes_lignes
         ]

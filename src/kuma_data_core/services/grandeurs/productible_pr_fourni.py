@@ -26,7 +26,8 @@ Endpoint paramétré par ``correction = 'aucune' | 'temperature'`` :
     ratio_T = 1 + gamma_Pmax / 100 * (T_cell - 25)
     E_AC = P_STC * G / G_STC * PR_fourni * ratio_T
 
-Niveau de confiance dérivé uniforme ``'B'``.
+Niveau de confiance : le plus bas des entrées, au plus ``PLAFOND_CONFIANCE``
+(B), par la règle de propagation P que la route applique (ADR-0008).
 
 Pattern fonction publique pure ``calculer_productible_pr_fourni`` +
 fonctions privées. Aucune dépendance SQL, testable unitairement.
@@ -60,6 +61,7 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
     ResultatJournalier,
     ResultatMensuel,
 )
+from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
 
 # Import délibéré d'une fonction privée cross-module : la logique NOCT
 # (``_temperature_cellule_noct``) est conceptuellement liée au modèle
@@ -72,13 +74,16 @@ from kuma_data_core.services.grandeurs.productible_correction_thermique import (
     _temperature_cellule_noct,
 )
 
+PLAFOND_CONFIANCE: NiveauConfiance = "B"
+"""Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables (L-TR-2)."""
+
 # === Constantes module ====================================================
 
 UNITE_PRODUCTIBLE: str = "kWh"
 """Unité de sortie : énergie cumulée journalière en kWh."""
 
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
-"""Niveau de confiance uniforme v1."""
+"""Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
 
 TEMPERATURE_STC_DEGC: float = 25.0
 """Température STC de référence (°C)."""
@@ -197,8 +202,8 @@ def calculer_productible_pr_fourni(
     - ``'temperature'`` : PR_T temperature-corrected (Dierauf 2013).
 
     Renvoie une liste ordonnée de :class:`ResultatJournalier`. Liste vide
-    si ``mesures`` est vide. Le niveau de confiance dérivé est
-    uniformément ``'B'``.
+    si ``mesures`` est vide. Niveau de confiance provisoire ``'B'``,
+    remplacé par la route (règle P).
 
     Aucune dépendance SQL, idempotent, pur.
     """
@@ -242,8 +247,8 @@ def calculer_productible_pr_fourni_mensuel(
     mensuel).
 
     Renvoie une liste ordonnée de :class:`ResultatMensuel` au format
-    ``instant='YYYY-MM'``. Liste vide si ``mesures`` est vide. Le niveau
-    de confiance dérivé est uniformément ``'B'``.
+    ``instant='YYYY-MM'``. Liste vide si ``mesures`` est vide. Niveau de
+    confiance provisoire ``'B'``, remplacé par la route (règle P).
 
     Aucune dépendance SQL, idempotent, pur.
 

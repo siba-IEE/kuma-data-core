@@ -34,7 +34,7 @@ from __future__ import annotations
 import csv
 import io
 from collections.abc import Sequence
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Literal, NamedTuple
 
 from fastapi import APIRouter, Depends, Query, status
@@ -70,11 +70,22 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
     ResultatMensuel,
 )
 from kuma_data_core.db.session import obtenir_session
+from kuma_data_core.editorial.niveaux_confiance import (
+    NiveauConfiance,
+    NiveauxEntrees,
+    propager_niveau_confiance,
+)
+from kuma_data_core.services.grandeurs.degre_jour_climatisation import (
+    PLAFOND_CONFIANCE as PLAFOND_DJC,
+)
 from kuma_data_core.services.grandeurs.degre_jour_climatisation import (
     MesureHeureTemperature,
     MesureJourTemperature,
     calculer_degre_jour_climatisation,
     calculer_degre_jour_climatisation_horaire,
+)
+from kuma_data_core.services.grandeurs.energie_utile_ecs import (
+    PLAFOND_CONFIANCE as PLAFOND_ECS,
 )
 from kuma_data_core.services.grandeurs.energie_utile_ecs import (
     MesureHeureECS,
@@ -86,12 +97,17 @@ from kuma_data_core.services.grandeurs.ghi_exceedance import (
     ANNEE_DEBUT_CLIMATOLOGIE,
     ANNEE_FIN_CLIMATOLOGIE,
     METHODE_PERCENTILE,
-    NIVEAU_CONFIANCE_DERIVE,
     NOMBRE_ANNEES_BASE,
     PAIRES_COLOCALISEES_D29,
     UNITE_GHI_EXCEEDANCE,
     calculer_ghi_exceedance,
     calculer_totaux_annuels,
+)
+from kuma_data_core.services.grandeurs.ghi_exceedance import (
+    PLAFOND_CONFIANCE as PLAFOND_GHI_EXCEEDANCE,
+)
+from kuma_data_core.services.grandeurs.poa_bifacial import (
+    PLAFOND_CONFIANCE as PLAFOND_POA_BIFACIAL,
 )
 from kuma_data_core.services.grandeurs.poa_bifacial import (
     MesureHeureBifacial,
@@ -101,10 +117,16 @@ from kuma_data_core.services.grandeurs.poa_bifacial import (
     calculer_poa_bifacial_horaire,
 )
 from kuma_data_core.services.grandeurs.poa_parametrable import (
+    PLAFOND_CONFIANCE as PLAFOND_POA,
+)
+from kuma_data_core.services.grandeurs.poa_parametrable import (
     MesureHeurePOA,
     MesureJourPOA,
     calculer_poa_parametrable,
     calculer_poa_parametrable_horaire,
+)
+from kuma_data_core.services.grandeurs.pr_realiste import (
+    PLAFOND_CONFIANCE as PLAFOND_PR_REALISTE,
 )
 from kuma_data_core.services.grandeurs.pr_realiste import (
     MesureJourPRRealiste,
@@ -112,10 +134,16 @@ from kuma_data_core.services.grandeurs.pr_realiste import (
     calculer_pr_realiste,
 )
 from kuma_data_core.services.grandeurs.productible_correction_thermique import (
+    PLAFOND_CONFIANCE as PLAFOND_THERMIQUE,
+)
+from kuma_data_core.services.grandeurs.productible_correction_thermique import (
     MesureHeureThermique,
     MesureJourThermique,
     calculer_productible_correction_thermique,
     calculer_productible_correction_thermique_horaire,
+)
+from kuma_data_core.services.grandeurs.productible_pr_fourni import (
+    PLAFOND_CONFIANCE as PLAFOND_PR_FOURNI,
 )
 from kuma_data_core.services.grandeurs.productible_pr_fourni import (
     MesureHeurePRFourni,
@@ -130,6 +158,9 @@ from kuma_data_core.services.grandeurs.soiling_hsu import (
     SURFACE_TILT_DEFAUT,
     MesureEntreeSoiling,
     calculer_taux_salissure_proxy,
+)
+from kuma_data_core.services.grandeurs.soiling_hsu import (
+    PLAFOND_CONFIANCE as PLAFOND_SALISSURE,
 )
 
 routeur = APIRouter(prefix="/grandeurs", tags=["grandeurs-F2"])
@@ -314,17 +345,21 @@ def _lire_mesures_par_serie_id(
     serie_id: int,
     periode_debut: date,
     periode_fin: date,
+    *,
+    niveaux: NiveauxEntrees,
 ) -> dict[date, float]:
     """Lit les valeurs journalières d'une série sur la fenêtre.
 
     Renvoie un dict ``{instant_mesure: valeur}`` pour indexation rapide
     par date (utilisé pour aligner GHI/DNI/DHI/T2M lors des calculs
-    multi-séries).
+    multi-séries). Range le niveau effectif de chaque valeur lue dans
+    ``niveaux`` (règle de propagation P).
     """
     rows = session.execute(
         text(
             """
-            SELECT instant_mesure, valeur
+            SELECT instant_mesure, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource
             WHERE serie_id = :serie_id
               AND valide_au IS NULL
@@ -335,6 +370,8 @@ def _lire_mesures_par_serie_id(
         ),
         {"serie_id": serie_id, "debut": periode_debut, "fin": periode_fin},
     ).all()
+    for r in rows:
+        niveaux.ajouter(r.instant_mesure, r.niveau)
     return {r.instant_mesure: float(r.valeur) for r in rows}
 
 
@@ -343,6 +380,8 @@ def _lire_mesures_horaires_par_serie_id(
     serie_id: int,
     periode_debut: date,
     periode_fin: date,
+    *,
+    niveaux: NiveauxEntrees,
 ) -> dict[datetime, float]:
     """Lit les valeurs horaires **validées** d'une série sur la fenêtre.
 
@@ -351,12 +390,14 @@ def _lire_mesures_horaires_par_serie_id(
     UTC. Utilisé par l'intégration horaire DJC
     (``methode='integration_horaire'``). Les lignes rejetées par le QC
     (statut ``brut``) sont exclues. Borne de fenêtre sur la date UTC,
-    cohérente avec la lecture journalière.
+    cohérente avec la lecture journalière. Range le niveau effectif de
+    chaque valeur lue sous son jour UTC dans ``niveaux``.
     """
     rows = session.execute(
         text(
             """
-            SELECT instant_mesure, valeur
+            SELECT instant_mesure, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource_horaires
             WHERE serie_id = :serie_id
               AND statut IN ('valide_auto', 'valide_humain', 'publie')
@@ -368,6 +409,8 @@ def _lire_mesures_horaires_par_serie_id(
         ),
         {"serie_id": serie_id, "debut": periode_debut, "fin": periode_fin},
     ).all()
+    for r in rows:
+        niveaux.ajouter(r.instant_mesure.astimezone(UTC).date(), r.niveau)
     return {r.instant_mesure: float(r.valeur) for r in rows}
 
 
@@ -376,6 +419,8 @@ def _lire_mesures_mensuel_par_serie_id(
     serie_id: int,
     periode_debut: date,
     periode_fin: date,
+    *,
+    niveaux: NiveauxEntrees,
 ) -> dict[tuple[int, int], float]:
     """Lit les valeurs mensuelles d'une série sur la fenêtre.
 
@@ -386,12 +431,14 @@ def _lire_mesures_mensuel_par_serie_id(
     et ``<=`` (cf. ``api/v1/series.py:_lire_mesures_mensuel``).
 
     Réutilisé par les endpoints F2 à entrée polymorphe journalier /
-    mensuel (dispatch via ``resolve_table_from_series_metadata``).
+    mensuel (dispatch via ``resolve_table_from_series_metadata``). Range le
+    niveau effectif de chaque valeur lue sous son mois dans ``niveaux``.
     """
     rows = session.execute(
         text(
             """
-            SELECT annee, mois, valeur
+            SELECT annee, mois, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource_mensuelles
             WHERE serie_id = :serie_id
               AND valide_au IS NULL
@@ -408,6 +455,8 @@ def _lire_mesures_mensuel_par_serie_id(
             "to_m": periode_fin.month,
         },
     ).all()
+    for r in rows:
+        niveaux.ajouter((int(r.annee), int(r.mois)), r.niveau)
     return {(int(r.annee), int(r.mois)): float(r.valeur) for r in rows}
 
 
@@ -425,19 +474,52 @@ def _serialiser_csv_journalier(reponse: ReponseGrandeurF2) -> str:
     return buffer.getvalue()
 
 
+def _propager(
+    resultats: Sequence[ResultatJournalier | ResultatMensuel],
+    niveaux: NiveauxEntrees,
+    plafond: NiveauConfiance,
+) -> list[ResultatJournalier | ResultatMensuel]:
+    """Règle P : chaque résultat prend le niveau des entrées de son jour ou de son mois.
+
+    Le niveau ne dépasse pas le plafond de la grandeur. Un résultat dont le
+    jour n'a pas d'entrée rangée (calcul horaire groupé dans un autre fuseau
+    que l'UTC des lecteurs) prend, par prudence, le niveau de toutes les
+    entrées.
+    """
+    propages: list[ResultatJournalier | ResultatMensuel] = []
+    for r in resultats:
+        if isinstance(r, ResultatJournalier):
+            entrees = niveaux.du_jour(r.instant)
+        else:
+            annee, mois = (int(x) for x in r.instant.split("-"))
+            entrees = niveaux.du_mois(annee, mois)
+        niveau = propager_niveau_confiance(
+            entrees or niveaux.tous() or {r.niveau_confiance}, plafond=plafond
+        )
+        propages.append(r.model_copy(update={"niveau_confiance": niveau}))
+    return propages
+
+
 def _construire_reponse(
     code_grandeur: str,
     code_serie_source: str,
     parametres_appliques: dict[str, object],
     resultats: Sequence[ResultatJournalier | ResultatMensuel],
     format_sortie: Literal["json", "csv"],
+    *,
+    niveaux: NiveauxEntrees,
+    plafond: NiveauConfiance,
 ) -> Response:
-    """Construit la réponse HTTP finale (JSON par défaut, CSV si demandé)."""
+    """Construit la réponse HTTP finale (JSON par défaut, CSV si demandé).
+
+    Le niveau de confiance de chaque résultat suit la règle P à partir des
+    niveaux des entrées lues et du plafond de la grandeur (ADR-0008).
+    """
     reponse = ReponseGrandeurF2(
         code_grandeur=code_grandeur,
         code_serie_source=code_serie_source,
         parametres_appliques=parametres_appliques,
-        resultats=list(resultats),
+        resultats=_propager(resultats, niveaux, plafond),
     )
     if format_sortie == "csv":
         return Response(
@@ -480,6 +562,7 @@ def grandeur_poa_parametrable(
     - **Traçabilité limitée v1** : la réponse JSON n'indique pas
       explicitement quel modèle a été appliqué.
     """
+    niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
     _exiger_grandeur(serie.grandeur_code, "ghi", params.code_serie_source, "poa_parametrable")
 
@@ -519,13 +602,13 @@ def grandeur_poa_parametrable(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_h = _lire_mesures_horaires_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         dni_h = _lire_mesures_horaires_par_serie_id(
-            session, dni_serie_id, params.periode_debut, params.periode_fin
+            session, dni_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         dhi_h = _lire_mesures_horaires_par_serie_id(
-            session, dhi_serie_id, params.periode_debut, params.periode_fin
+            session, dhi_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         mesures_horaires: list[MesureHeurePOA] = [
             {"instant_mesure": instant, "ghi": ghi, "dni": dni_h[instant], "dhi": dhi_h[instant]}
@@ -540,19 +623,19 @@ def grandeur_poa_parametrable(
         )
     else:
         ghi_par_jour = _lire_mesures_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         # Fallback Liu-Jordan automatique dans la fonction pure si DNI/DHI absentes.
         dni_par_jour: dict[date, float] = (
             _lire_mesures_par_serie_id(
-                session, dni_serie_id, params.periode_debut, params.periode_fin
+                session, dni_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
             )
             if dni_serie_id is not None
             else {}
         )
         dhi_par_jour: dict[date, float] = (
             _lire_mesures_par_serie_id(
-                session, dhi_serie_id, params.periode_debut, params.periode_fin
+                session, dhi_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
             )
             if dhi_serie_id is not None
             else {}
@@ -584,6 +667,8 @@ def grandeur_poa_parametrable(
         },
         resultats=resultats,
         format_sortie=params.format_sortie,
+        niveaux=niveaux,
+        plafond=PLAFOND_POA,
     )
 
 
@@ -637,6 +722,7 @@ def grandeur_poa_bifacial(
     série `albedo_surface` journalière (réel par localité ; repli `albedo_sol` si
     absente ; broadcast aux heures en mode horaire).
     """
+    niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
     _exiger_grandeur(serie.grandeur_code, "ghi", params.code_serie_source, "poa_bifacial")
     latitude, longitude = _resoudre_coordonnees(session, serie.localite_id)
@@ -660,7 +746,7 @@ def grandeur_poa_bifacial(
     albedo_serie_id = _resoudre_serie_albedo_journalier(session, serie.localite_id, serie.source_id)
     albedo_jour: dict[date, float] = (
         _lire_mesures_par_serie_id(
-            session, albedo_serie_id, params.periode_debut, params.periode_fin
+            session, albedo_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         if albedo_serie_id is not None
         else {}
@@ -678,13 +764,13 @@ def grandeur_poa_bifacial(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_h = _lire_mesures_horaires_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         dni_h = _lire_mesures_horaires_par_serie_id(
-            session, dni_serie_id, params.periode_debut, params.periode_fin
+            session, dni_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         dhi_h = _lire_mesures_horaires_par_serie_id(
-            session, dhi_serie_id, params.periode_debut, params.periode_fin
+            session, dhi_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         mesures_horaires: list[MesureHeureBifacial] = [
             {
@@ -705,13 +791,13 @@ def grandeur_poa_bifacial(
         )
     else:
         ghi_j = _lire_mesures_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         dni_j = _lire_mesures_par_serie_id(
-            session, dni_serie_id, params.periode_debut, params.periode_fin
+            session, dni_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         dhi_j = _lire_mesures_par_serie_id(
-            session, dhi_serie_id, params.periode_debut, params.periode_fin
+            session, dhi_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         mesures: list[MesureJourBifacial] = [
             {
@@ -746,6 +832,8 @@ def grandeur_poa_bifacial(
         },
         resultats=resultats,
         format_sortie=params.format_sortie,
+        niveaux=niveaux,
+        plafond=PLAFOND_POA_BIFACIAL,
     )
 
 
@@ -762,6 +850,8 @@ def _lire_t2m_compagne(
     periode_fin: date,
     periode_debut_source: date,
     granularite_source: str | None,
+    *,
+    niveaux: NiveauxEntrees,
 ) -> dict[date, float]:
     """Cherche et lit la série T2M compagne d'une série source (même loc/source).
 
@@ -785,7 +875,9 @@ def _lire_t2m_compagne(
             ),
             statut_http=status.HTTP_400_BAD_REQUEST,
         )
-    return _lire_mesures_par_serie_id(session, t2m_serie_id, periode_debut, periode_fin)
+    return _lire_mesures_par_serie_id(
+        session, t2m_serie_id, periode_debut, periode_fin, niveaux=niveaux
+    )
 
 
 @routeur.get(
@@ -817,6 +909,7 @@ def grandeur_productible_correction_thermique(
     terrain, calibration locale u0/u1 requise pour éviter une fausse
     confiance B.
     """
+    niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
     _exiger_grandeur(
         serie.grandeur_code, "ghi", params.code_serie_source, "productible_correction_thermique"
@@ -853,10 +946,10 @@ def grandeur_productible_correction_thermique(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_h = _lire_mesures_horaires_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         t2m_h = _lire_mesures_horaires_par_serie_id(
-            session, t2m_serie_id, params.periode_debut, params.periode_fin
+            session, t2m_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         mesures_horaires: list[MesureHeureThermique] = [
             {"instant_mesure": instant, "t_amb_degc": t2m_h[instant], "irradiance_w_par_m2": ghi}
@@ -868,7 +961,7 @@ def grandeur_productible_correction_thermique(
         )
     else:
         ghi_par_jour = _lire_mesures_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         t2m_par_jour = _lire_t2m_compagne(
             session,
@@ -880,6 +973,7 @@ def grandeur_productible_correction_thermique(
             params.periode_fin,
             serie.periode_debut,
             serie.granularite,
+            niveaux=niveaux,
         )
         mesures: list[MesureJourThermique] = [
             {
@@ -905,6 +999,8 @@ def grandeur_productible_correction_thermique(
         parametres_appliques=parametres_appliques,
         resultats=resultats,
         format_sortie=params.format_sortie,
+        niveaux=niveaux,
+        plafond=PLAFOND_THERMIQUE,
     )
 
 
@@ -950,6 +1046,7 @@ def grandeur_productible_pr_fourni(
 
     Variantes PR_W et PR_C non exposées v1 (TMY Guinée non disponible).
     """
+    niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
 
     # Dispatch table-cible avant vérification grandeur_code : la nature
@@ -993,7 +1090,7 @@ def grandeur_productible_pr_fourni(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_h = _lire_mesures_horaires_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         mesures_horaires: list[MesureHeurePRFourni]
         if params.correction == "temperature":
@@ -1016,7 +1113,7 @@ def grandeur_productible_pr_fourni(
                     statut_http=status.HTTP_400_BAD_REQUEST,
                 )
             t2m_h = _lire_mesures_horaires_par_serie_id(
-                session, t2m_serie_id, params.periode_debut, params.periode_fin
+                session, t2m_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
             )
             mesures_horaires = [
                 {
@@ -1054,6 +1151,8 @@ def grandeur_productible_pr_fourni(
             },
             resultats=resultats,
             format_sortie=params.format_sortie,
+            niveaux=niveaux,
+            plafond=PLAFOND_PR_FOURNI,
         )
 
     if table_cible == TableMesures.MENSUEL_RESSOURCE:
@@ -1069,7 +1168,7 @@ def grandeur_productible_pr_fourni(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_par_mois = _lire_mesures_mensuel_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         mesures_mensuel: list[MesureMoisPRFourni] = [
             {
@@ -1093,10 +1192,12 @@ def grandeur_productible_pr_fourni(
             },
             resultats=resultats_mensuel,
             format_sortie=params.format_sortie,
+            niveaux=niveaux,
+            plafond=PLAFOND_PR_FOURNI,
         )
 
     ghi_par_jour = _lire_mesures_par_serie_id(
-        session, serie.serie_id, params.periode_debut, params.periode_fin
+        session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
     )
     t2m_par_jour: dict[date, float] = {}
     if params.correction == "temperature":
@@ -1110,6 +1211,7 @@ def grandeur_productible_pr_fourni(
             params.periode_fin,
             serie.periode_debut,
             serie.granularite,
+            niveaux=niveaux,
         )
 
     mesures: list[MesureJourPRFourni] = [
@@ -1141,6 +1243,8 @@ def grandeur_productible_pr_fourni(
         },
         resultats=resultats,
         format_sortie=params.format_sortie,
+        niveaux=niveaux,
+        plafond=PLAFOND_PR_FOURNI,
     )
 
 
@@ -1170,6 +1274,7 @@ def grandeur_energie_utile_ecs(
       ``INCOMPATIBILITE_SOURCE_GRANDEUR`` (le rendement HWB dépend de
       la différence T_fluide - T_amb).
     """
+    niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
     _exiger_grandeur(serie.grandeur_code, "ghi", params.code_serie_source, "energie_utile_ecs")
 
@@ -1204,10 +1309,10 @@ def grandeur_energie_utile_ecs(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_h = _lire_mesures_horaires_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         t2m_h = _lire_mesures_horaires_par_serie_id(
-            session, t2m_serie_id, params.periode_debut, params.periode_fin
+            session, t2m_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         mesures_horaires: list[MesureHeureECS] = [
             {"instant_mesure": instant, "t_amb_degc": t2m_h[instant], "irradiance_w_par_m2": ghi}
@@ -1227,10 +1332,12 @@ def grandeur_energie_utile_ecs(
             },
             resultats=resultats,
             format_sortie=params.format_sortie,
+            niveaux=niveaux,
+            plafond=PLAFOND_ECS,
         )
 
     ghi_par_jour = _lire_mesures_par_serie_id(
-        session, serie.serie_id, params.periode_debut, params.periode_fin
+        session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
     )
     t2m_par_jour = _lire_t2m_compagne(
         session,
@@ -1242,6 +1349,7 @@ def grandeur_energie_utile_ecs(
         params.periode_fin,
         serie.periode_debut,
         serie.granularite,
+        niveaux=niveaux,
     )
 
     mesures: list[MesureJourECS] = [
@@ -1266,6 +1374,8 @@ def grandeur_energie_utile_ecs(
         },
         resultats=resultats,
         format_sortie=params.format_sortie,
+        niveaux=niveaux,
+        plafond=PLAFOND_ECS,
     )
 
 
@@ -1296,6 +1406,7 @@ def grandeur_degre_jour_climatisation(
       :class:`ResultatMensuel` au format ``instant="YYYY-MM"`` par
       sommation des écarts journaliers positifs sur le mois.
     """
+    niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
     _exiger_grandeur(
         serie.grandeur_code, "t2m", params.code_serie_source, "degre_jour_climatisation"
@@ -1316,7 +1427,7 @@ def grandeur_degre_jour_climatisation(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         t2m_par_heure = _lire_mesures_horaires_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         mesures_horaires: list[MesureHeureTemperature] = [
             {"instant_mesure": instant, "t_degc": valeur}
@@ -1327,7 +1438,7 @@ def grandeur_degre_jour_climatisation(
         )
     else:
         t2m_par_jour = _lire_mesures_par_serie_id(
-            session, serie.serie_id, params.periode_debut, params.periode_fin
+            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
         mesures: list[MesureJourTemperature] = [
             {"instant_mesure": jour, "t_moy_degc": valeur} for jour, valeur in t2m_par_jour.items()
@@ -1343,6 +1454,8 @@ def grandeur_degre_jour_climatisation(
         },
         resultats=resultats,
         format_sortie=params.format_sortie,
+        niveaux=niveaux,
+        plafond=PLAFOND_DJC,
     )
 
 
@@ -1396,18 +1509,22 @@ def _resoudre_serie_ghi_mensuelle_1991_2020(
     return int(row.serie_id), str(row.code_serie)
 
 
-def _lire_mensuelles_brutes(session: Session, serie_id: int) -> list[tuple[int, int, float]]:
+def _lire_mensuelles_brutes(
+    session: Session, serie_id: int, *, niveaux: NiveauxEntrees
+) -> list[tuple[int, int, float]]:
     """Lit les 360 mesures mensuelles courantes d'une série sous forme de tuples.
 
     Renvoie une liste de tuples ``(annee, mois, valeur)`` ordonnés
     chronologiquement. Filtre standard ``valide_au IS NULL`` (version
     courante). Pas de pagination : on charge tout (360 lignes attendues
-    pour une série 1991-2020 complète).
+    pour une série 1991-2020 complète). Range le niveau effectif de chaque
+    valeur lue dans ``niveaux``.
     """
     rows = session.execute(
         text(
             """
-            SELECT annee, mois, valeur
+            SELECT annee, mois, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource_mensuelles
             WHERE serie_id = :serie_id AND valide_au IS NULL
             ORDER BY annee, mois
@@ -1415,6 +1532,8 @@ def _lire_mensuelles_brutes(session: Session, serie_id: int) -> list[tuple[int, 
         ),
         {"serie_id": serie_id},
     ).all()
+    for r in rows:
+        niveaux.ajouter((int(r.annee), int(r.mois)), r.niveau)
     return [(int(r.annee), int(r.mois), float(r.valeur)) for r in rows]
 
 
@@ -1470,8 +1589,9 @@ def grandeur_ghi_exceedance(
     5. Construction de la réponse avec champ ``limite`` enrichi pour
        les villes co-localisées Kindia / Mamou.
     """
+    niveaux = NiveauxEntrees()
     serie_id, code_serie = _resoudre_serie_ghi_mensuelle_1991_2020(session, code_localite)
-    mensuelles = _lire_mensuelles_brutes(session, serie_id)
+    mensuelles = _lire_mensuelles_brutes(session, serie_id, niveaux=niveaux)
     totaux_par_annee = calculer_totaux_annuels(mensuelles)
     resultat = calculer_ghi_exceedance(list(totaux_par_annee.values()))
     return ReponseGhiExceedance(
@@ -1483,7 +1603,7 @@ def grandeur_ghi_exceedance(
         p90=resultat.p90,
         unite=UNITE_GHI_EXCEEDANCE,
         methode_percentile=METHODE_PERCENTILE,
-        niveau_confiance=NIVEAU_CONFIANCE_DERIVE,
+        niveau_confiance=propager_niveau_confiance(niveaux.tous(), plafond=PLAFOND_GHI_EXCEEDANCE),
         limite=_construire_limite_ghi_exceedance(code_localite),
     )
 
@@ -1582,6 +1702,7 @@ def grandeur_taux_salissure_proxy(
     4. Modèle HSU (pvlib) sur la fenêtre complète depuis le début (le spin-up n'est
        amorti qu'une fois) ; tilt / seuil de nettoyage = défauts F1 documentés.
     """
+    niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, code_serie_source)
     _exiger_grandeur(serie.grandeur_code, "pm2_5", code_serie_source, "taux_salissure_proxy")
 
@@ -1603,13 +1724,13 @@ def grandeur_taux_salissure_proxy(
         )
 
     pm2_5 = _lire_mesures_par_serie_id(
-        session, serie.serie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN
+        session, serie.serie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN, niveaux=niveaux
     )
     pm10 = _lire_mesures_par_serie_id(
-        session, pm10_serie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN
+        session, pm10_serie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN, niveaux=niveaux
     )
     pluie = _lire_mesures_par_serie_id(
-        session, pluie_serie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN
+        session, pluie_serie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN, niveaux=niveaux
     )
 
     dates = sorted(pm2_5.keys() & pm10.keys() & pluie.keys())
@@ -1625,6 +1746,15 @@ def grandeur_taux_salissure_proxy(
         for jour in dates
     ]
     resultat = calculer_taux_salissure_proxy(entrees)
+    # Modèle cumulatif : un jour dépend des jours précédents depuis le dernier
+    # nettoyage, chaque jour prend le niveau des entrées des jours retenus (règle P).
+    niveau = (
+        propager_niveau_confiance(
+            {n for jour in dates for n in niveaux.du_jour(jour)}, plafond=PLAFOND_SALISSURE
+        )
+        if dates
+        else "B"
+    )
     periode = f"{dates[0].isoformat()}/{dates[-1].isoformat()}" if dates else "aucune"
 
     return ReponseTauxSalissureProxy(
@@ -1633,7 +1763,7 @@ def grandeur_taux_salissure_proxy(
         periode=periode,
         surface_tilt_deg=SURFACE_TILT_DEFAUT,
         cleaning_threshold_mm=CLEANING_THRESHOLD_DEFAUT_MM,
-        mesures=resultat.mesures,
+        mesures=[m.model_copy(update={"niveau_confiance": niveau}) for m in resultat.mesures],
         limite=resultat.limite,
     )
 
@@ -1691,6 +1821,7 @@ def grandeur_pr_realiste(
     EAC4, 2025-08-31), avec garde-fou de contiguïté (HSU path-dependant). Sorties
     journalier + mensuel (la courbe mensuelle = la PR saisonnière).
     """
+    niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, code_serie_source)
     _exiger_grandeur(serie.grandeur_code, "ghi", code_serie_source, "pr_realiste")
     besoin_thermique = params.correction in ("temperature", "temperature_salissure")
@@ -1709,7 +1840,7 @@ def grandeur_pr_realiste(
         )
 
     ghi = _lire_mesures_par_serie_id(
-        session, serie.serie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN
+        session, serie.serie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN, niveaux=niveaux
     )
     ensembles_dates: list[set[date]] = [set(ghi.keys())]
 
@@ -1732,7 +1863,9 @@ def grandeur_pr_realiste(
                 ),
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
-        t2m = _lire_mesures_par_serie_id(session, t2m_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN)
+        t2m = _lire_mesures_par_serie_id(
+            session, t2m_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN, niveaux=niveaux
+        )
         ensembles_dates.append(set(t2m.keys()))
 
     pluie: dict[date, float] = {}
@@ -1760,13 +1893,13 @@ def grandeur_pr_realiste(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         pluie = _lire_mesures_par_serie_id(
-            session, pluie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN
+            session, pluie_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN, niveaux=niveaux
         )
         pm2_5 = _lire_mesures_par_serie_id(
-            session, pm2_5_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN
+            session, pm2_5_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN, niveaux=niveaux
         )
         pm10 = _lire_mesures_par_serie_id(
-            session, pm10_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN
+            session, pm10_id, _FENETRE_LARGE_DEBUT, _FENETRE_LARGE_FIN, niveaux=niveaux
         )
         ensembles_dates += [set(pluie.keys()), set(pm2_5.keys()), set(pm10.keys())]
 
@@ -1794,6 +1927,21 @@ def grandeur_pr_realiste(
         noct_degc=params.noct_degc,
         gamma_pmax_pct=params.coeff_temp_pourcent_par_degc,
     )
+    # Règle P : sans salissure, chaque jour ne dépend que de ses entrées ; la
+    # salissure est cumulative, chaque jour prend alors le niveau des entrées
+    # des jours retenus. Le mois prend celui de ses jours.
+    niveaux_fenetre = {n for jour in dates for n in niveaux.du_jour(jour)}
+    mesures_jour = [
+        m.model_copy(
+            update={
+                "niveau_confiance": propager_niveau_confiance(
+                    niveaux_fenetre if besoin_salissure else niveaux.du_jour(m.instant),
+                    plafond=PLAFOND_PR_REALISTE,
+                )
+            }
+        )
+        for m in resultat.mesures
+    ]
     periode = f"{dates[0].isoformat()}/{dates[-1].isoformat()}" if dates else "aucune"
 
     return ReponsePRRealiste(
@@ -1802,8 +1950,8 @@ def grandeur_pr_realiste(
         periode=periode,
         correction=params.correction,
         pr_fourni=params.pr_fourni,
-        mesures_journalier=resultat.mesures,
-        mesures_mensuel=agreger_pr_mensuel(resultat.mesures),
+        mesures_journalier=mesures_jour,
+        mesures_mensuel=agreger_pr_mensuel(mesures_jour),
         limite=resultat.limite,
     )
 

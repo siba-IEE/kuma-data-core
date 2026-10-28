@@ -27,8 +27,9 @@ Architecture :
   ``kuma_data_core.ingestion.nasa_power_daily.ingerer_serie_daily``.
 
 Le niveau de confiance dérivé des lignes HEP insérées est calculé via
-``kuma_data_core.editorial.niveaux_confiance.calculer_niveau_confiance_derive``
-(R1-R4) - cohérence pattern repo (migrations 018, 020, 022).
+``kuma_data_core.editorial.niveaux_confiance.calculer_niveau_confiance_derive`` :
+règle de propagation P sur les niveaux des mesures GHI de la période de chaque
+ligne, jusqu'à A (somme exacte, ADR-0008).
 """
 
 from __future__ import annotations
@@ -43,8 +44,13 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.editorial.niveaux_confiance import (
+    NiveauConfiance,
+    NiveauxEntrees,
     calculer_niveau_confiance_derive,
 )
+
+PLAFOND_CONFIANCE: NiveauConfiance = "A"
+"""Plafond de confiance : somme exacte des mesures GHI, sans modèle ni hypothèse."""
 
 GRANDEUR_CODE_HEP: str = "hep"
 """Code naturel de la grandeur HEP dans ``grandeurs_referentiel`` (seed 010)."""
@@ -277,17 +283,12 @@ def calculer_et_inserer_hep(
             f"{code_serie_ghi_amont!r} (localite_id={int(serie_ghi.localite_id)})."
         )
 
-    # 4. Niveau de confiance dérivé via la couche service (R1-R4)
-    niveau_derive = calculer_niveau_confiance_derive(
-        methode_collecte=serie_hep.methode_collecte,
-        fiabilite_source=serie_hep.fiabilite_source,
-    )
-
-    # 5. Lire les mesures GHI courantes (valide_au IS NULL, non dépréciées)
+    # 4. Lire les mesures GHI courantes (valide_au IS NULL, non dépréciées)
     rows_ghi = session.execute(
         text(
             """
-            SELECT instant_mesure, valeur
+            SELECT instant_mesure, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource
             WHERE serie_id = :serie_id
               AND valide_au IS NULL
@@ -301,10 +302,15 @@ def calculer_et_inserer_hep(
         (row.instant_mesure, float(row.valeur)) for row in rows_ghi
     ]
 
-    # 6. Agrégation pure (politique de complétude)
+    # Niveaux effectifs des entrées, pour la règle de propagation P
+    niveaux = NiveauxEntrees()
+    for r in rows_ghi:
+        niveaux.ajouter(r.instant_mesure, r.niveau)
+
+    # 5. Agrégation pure (politique de complétude)
     agregation = _agreger_hep_journaliers(mesures_journalieres)
 
-    # 7. Bulk INSERT (annuelles + mensuelles, server_defaults sur statut,
+    # 6. Bulk INSERT (annuelles + mensuelles, server_defaults sur statut,
     #    valide_du, niveau_confiance_override, commentaire_editorial, audit)
     toutes_lignes: list[_LigneAgregeeHEP] = list(agregation["lignes_annuelles"]) + list(
         agregation["lignes_mensuelles"]
@@ -321,7 +327,14 @@ def calculer_et_inserer_hep(
                 "mois": ligne["mois"],
                 "version_formule": version_formule,
                 "valeur": ligne["valeur"],
-                "niveau_confiance_derive": niveau_derive,
+                "niveau_confiance_derive": calculer_niveau_confiance_derive(
+                    methode_collecte=serie_hep.methode_collecte,
+                    fiabilite_source=serie_hep.fiabilite_source,
+                    plafond=PLAFOND_CONFIANCE,
+                    niveaux_entrees=niveaux.de_periode(
+                        ligne["annee_debut"], ligne["annee_fin"], ligne["mois"]
+                    ),
+                ),
             }
             for ligne in toutes_lignes
         ]

@@ -31,8 +31,13 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.editorial.niveaux_confiance import (
+    NiveauConfiance,
+    NiveauxEntrees,
     calculer_niveau_confiance_derive,
 )
+
+PLAFOND_CONFIANCE: NiveauConfiance = "A"
+"""Plafond de confiance : statistique exacte des mesures GHI (coefficient de variation)."""
 
 GRANDEUR_CODE_VARIABILITE: str = "variabilite_journaliere"
 METHODE_COLLECTE_VARIABILITE: str = "calcul_derive"
@@ -228,17 +233,13 @@ def calculer_et_inserer_variabilite_journaliere(
             f"{code_serie_ghi_amont!r} localite_id={int(serie_ghi.localite_id)}."
         )
 
-    # 5. Niveau de confiance
-    niveau_derive = calculer_niveau_confiance_derive(
-        methode_collecte=serie_cible.methode_collecte,
-        fiabilite_source=serie_cible.fiabilite_source,
-    )
-
-    # 6. Lecture mesures GHI
+    # 5. Lecture mesures GHI
     rows_ghi = session.execute(
         text(
             """
-            SELECT instant_mesure, valeur FROM mesures_ressource
+            SELECT instant_mesure, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
+            FROM mesures_ressource
             WHERE serie_id = :serie_id AND valide_au IS NULL AND statut <> 'deprecie'
             ORDER BY instant_mesure
             """
@@ -247,10 +248,15 @@ def calculer_et_inserer_variabilite_journaliere(
     ).all()
     mesures_ghi: list[tuple[date, float]] = [(r.instant_mesure, float(r.valeur)) for r in rows_ghi]
 
-    # 7. Agrégation pure
+    # Niveaux effectifs des entrées, pour la règle de propagation P
+    niveaux = NiveauxEntrees()
+    for r in rows_ghi:
+        niveaux.ajouter(r.instant_mesure, r.niveau)
+
+    # 6. Agrégation pure
     agregation = _agreger_variabilite_journaliere(mesures_ghi)
 
-    # 8. Bulk INSERT
+    # 7. Bulk INSERT
     if agregation["lignes_annuelles"]:
         params: list[dict[str, Any]] = [
             {
@@ -263,7 +269,14 @@ def calculer_et_inserer_variabilite_journaliere(
                 "mois": ligne["mois"],
                 "version_formule": version_formule,
                 "valeur": ligne["valeur"],
-                "niveau_confiance_derive": niveau_derive,
+                "niveau_confiance_derive": calculer_niveau_confiance_derive(
+                    methode_collecte=serie_cible.methode_collecte,
+                    fiabilite_source=serie_cible.fiabilite_source,
+                    plafond=PLAFOND_CONFIANCE,
+                    niveaux_entrees=niveaux.de_periode(
+                        ligne["annee_debut"], ligne["annee_fin"], ligne["mois"]
+                    ),
+                ),
             }
             for ligne in agregation["lignes_annuelles"]
         ]

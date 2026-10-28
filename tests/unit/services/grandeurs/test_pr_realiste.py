@@ -13,8 +13,10 @@ from datetime import date, timedelta
 
 import pytest
 
+from kuma_data_core.api.v1.schemas.grandeurs import MesureJourPR
 from kuma_data_core.services.grandeurs.pr_realiste import (
     MesureJourPRRealiste,
+    agreger_pr_mensuel,
     calculer_pr_realiste,
 )
 from kuma_data_core.services.grandeurs.soiling_hsu import (
@@ -129,3 +131,15 @@ def test_temperature_sans_noct_gamma_rejete() -> None:
     mesures = [_mesure(j, ghi=6.0, t_amb=30.0) for j in _jours(5)]
     with pytest.raises(ValueError, match="noct_degc"):
         calculer_pr_realiste(mesures, _PR, "temperature")
+
+
+def test_mensuel_prend_le_niveau_le_plus_bas_de_ses_jours() -> None:
+    """Règle P : un mois est au niveau le plus bas de ses jours, au plus B (plafond)."""
+    jours = [
+        MesureJourPR(instant=date(2021, 1, 1), pr_realiste=0.8, niveau_confiance="A"),
+        MesureJourPR(instant=date(2021, 1, 2), pr_realiste=0.7, niveau_confiance="C"),
+        MesureJourPR(instant=date(2021, 2, 1), pr_realiste=0.8, niveau_confiance="A"),
+    ]
+    mois = agreger_pr_mensuel(jours)
+    assert [(m.instant, m.niveau_confiance) for m in mois] == [("2021-01", "C"), ("2021-02", "B")]
+    assert mois[0].pr_realiste == pytest.approx(0.75)

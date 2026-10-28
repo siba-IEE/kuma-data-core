@@ -26,8 +26,9 @@ Méthode :
 **Piège documenté** : P90 = dépassement 90 % => 10ᵉ percentile (et non
 90ᵉ). La fonction garantit ``P90 < P50`` par construction.
 
-Niveau de confiance : ``'B'`` (modèle satellitaire NASA POWER, cohérent
-avec les autres grandeurs F1/F2).
+Niveau de confiance : le plus bas des mesures mensuelles lues, jusqu'à A
+(percentiles exacts), par la règle de propagation P que la route applique
+(ADR-0008).
 
 Pattern fonctions pures + orchestrateur I/O : la fonction
 ``calculer_ghi_exceedance`` est pure (``Sequence[float]`` en entrée,
@@ -63,13 +64,15 @@ from typing import Literal
 import numpy as np
 from pydantic import BaseModel, Field
 
+from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+
+PLAFOND_CONFIANCE: NiveauConfiance = "A"
+"""Plafond de confiance : percentiles exacts des totaux annuels, sans modèle ni hypothèse."""
+
 # === Constantes module ====================================================
 
 UNITE_GHI_EXCEEDANCE: str = "kWh/m²/an"
 """Unité de sortie : irradiation annuelle (énergie cumulée sur l'année)."""
-
-NIVEAU_CONFIANCE_DERIVE: Literal["B"] = "B"
-"""Niveau de confiance uniforme : modèle satellitaire NASA POWER."""
 
 PERCENTILE_P50: float = 50.0
 """Médiane : irradiation annuelle typique."""

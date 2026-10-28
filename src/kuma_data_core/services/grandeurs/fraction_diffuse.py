@@ -40,8 +40,13 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.editorial.niveaux_confiance import (
+    NiveauConfiance,
+    NiveauxEntrees,
     calculer_niveau_confiance_derive,
 )
+
+PLAFOND_CONFIANCE: NiveauConfiance = "A"
+"""Plafond de confiance : ratio exact DHI / GHI, sans modèle ni hypothèse."""
 
 GRANDEUR_CODE_FRACTION_DIFFUSE: str = "fraction_diffuse"
 """Code naturel de la grandeur dans `grandeurs_referentiel`."""
@@ -302,17 +307,12 @@ def calculer_et_inserer_fraction_diffuse(
             f"{code_serie_ghi_amont!r} localite_id={int(serie_ghi.localite_id)}."
         )
 
-    # 5. Niveau de confiance dérivé
-    niveau_derive = calculer_niveau_confiance_derive(
-        methode_collecte=serie_cible.methode_collecte,
-        fiabilite_source=serie_cible.fiabilite_source,
-    )
-
-    # 6. Lire les mesures DHI et GHI courantes
+    # 5. Lire les mesures DHI et GHI courantes
     rows_dhi = session.execute(
         text(
             """
-            SELECT instant_mesure, valeur
+            SELECT instant_mesure, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource
             WHERE serie_id = :serie_id
               AND valide_au IS NULL
@@ -325,7 +325,8 @@ def calculer_et_inserer_fraction_diffuse(
     rows_ghi = session.execute(
         text(
             """
-            SELECT instant_mesure, valeur
+            SELECT instant_mesure, valeur,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource
             WHERE serie_id = :serie_id
               AND valide_au IS NULL
@@ -338,10 +339,15 @@ def calculer_et_inserer_fraction_diffuse(
     mesures_dhi: list[tuple[date, float]] = [(r.instant_mesure, float(r.valeur)) for r in rows_dhi]
     mesures_ghi: list[tuple[date, float]] = [(r.instant_mesure, float(r.valeur)) for r in rows_ghi]
 
-    # 7. Agrégation pure
+    # Niveaux effectifs des entrées, pour la règle de propagation P
+    niveaux = NiveauxEntrees()
+    for r in (*rows_dhi, *rows_ghi):
+        niveaux.ajouter(r.instant_mesure, r.niveau)
+
+    # 6. Agrégation pure
     agregation = _agreger_fraction_diffuse(mesures_dhi, mesures_ghi)
 
-    # 8. Bulk INSERT (annuelles + mensuelles)
+    # 7. Bulk INSERT (annuelles + mensuelles)
     toutes_lignes: list[_LigneAgregeeFractionDiffuse] = list(agregation["lignes_annuelles"]) + list(
         agregation["lignes_mensuelles"]
     )
@@ -357,7 +363,14 @@ def calculer_et_inserer_fraction_diffuse(
                 "mois": ligne["mois"],
                 "version_formule": version_formule,
                 "valeur": ligne["valeur"],
-                "niveau_confiance_derive": niveau_derive,
+                "niveau_confiance_derive": calculer_niveau_confiance_derive(
+                    methode_collecte=serie_cible.methode_collecte,
+                    fiabilite_source=serie_cible.fiabilite_source,
+                    plafond=PLAFOND_CONFIANCE,
+                    niveaux_entrees=niveaux.de_periode(
+                        ligne["annee_debut"], ligne["annee_fin"], ligne["mois"]
+                    ),
+                ),
             }
             for ligne in toutes_lignes
         ]
