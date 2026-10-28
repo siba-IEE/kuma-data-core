@@ -50,7 +50,8 @@ comme des métadonnées optionnelles.
   est un axe de classification, pas une base séparée.
 - **Confiance A/B/C.** A = validé au sol (terrain), B = satellite ou
   réanalyse, C = littérature. Le niveau est dérivé de règles explicites
-  (R1-R4) et porté par chaque série.
+  (R1-R4) et porté par chaque série ; une grandeur calculée prend le niveau
+  le plus bas de ses entrées (règle P, ADR-0008).
 - **Non destructif.** Aucune mise à jour en place : rotation temporelle
   (`valide_du` / `valide_au`). L'historique éditorial est conservé.
 - **Audité.** Chaque écriture est tracée par des triggers PostgreSQL vers

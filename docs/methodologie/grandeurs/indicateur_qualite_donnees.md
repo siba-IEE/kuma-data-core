@@ -57,7 +57,7 @@ Une ligne `grandeurs_metier` par série évaluée :
 - `periode_type = 'statique'`, `mois IS NULL`, `annee_debut = 2021`,
   `annee_fin = 2025`
 - `valeur` = score discret entier dans `{1..5}`
-- `niveau_confiance_derive = 'B'` (constant, cf. § 5.2)
+- `niveau_confiance_derive` au plus `'B'` (règle P, cf. § 5.2)
 - `series_metadonnees_id` = **ID de la série évaluée** (exception
   méthodologique, cf. § 6.3)
 
@@ -98,8 +98,8 @@ Conséquences :
 - Le score 1 ou 2 (théoriquement possible mais non observé, cf.
   § 8) marque éditorialement une série fortement incomplète ou
   faiblement fiable.
-- Pas de niveau de confiance dégradé en C ; la ligne `grandeurs_metier`
-  porte systématiquement `niveau_confiance_derive='B'` (cf. § 5.2).
+- La ligne `grandeurs_metier` porte `'B'`, ou `'C'` si une mesure
+  évaluée est `'C'` (règle P, plafond `'B'`, cf. § 5.2).
 
 ## 5. Hypothèses méthodologiques
 
@@ -128,9 +128,10 @@ Plage théorique : `score_continu ∈ [0.41, 0.91]`. Plage
 discrétisée : `{3, 4, 5}`. Dominée par C1.
 
 Le `niveau_confiance_derive` de la ligne `grandeurs_metier` portant
-l'indicateur lui-même est `B` (R4 catch-all :
-`methode_collecte='calcul_derive'` + source `kuma_calculs`
-`fiabilite='haute'`). Pas de NULL.
+l'indicateur lui-même est le plus bas des niveaux effectifs des mesures
+évaluées, au plus `B` (règle de propagation P, ADR-0008), soit `B` pour ces
+séries.
+Pas de NULL.
 
 ### 5.3 Migration corrective de la contrainte EXCLUDE
 
