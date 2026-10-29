@@ -1,18 +1,21 @@
 """Tests unitaires de la dérivation et override des niveaux A/B/C.
 
-Couvre les règles mécaniques R1-R4 et l'override.
+Couvre les règles mécaniques R1-R4, la propagation P et l'override.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC, date, datetime
 
 import pytest
 
 from kuma_data_core.editorial.niveaux_confiance import (
     NIVEAUX_CONFIANCE_AUTORISES,
+    NiveauxEntrees,
     calculer_niveau_confiance_derive,
     overrider_niveau_confiance,
+    propager_niveau_confiance,
     retirer_override_niveau_confiance,
     valider_niveau_confiance,
 )
@@ -144,6 +147,175 @@ def test_r1_prioritaire_sur_r2() -> None:
         )
         == "C"
     )
+
+
+# ---------------------------------------------------------------------------
+# Règle P : propagation aux grandeurs calculées
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("entrees", "attendu"),
+    [
+        (["A"], "A"),
+        (["A", "A", "A"], "A"),
+        (["A", "B"], "B"),
+        (["B", "B"], "B"),
+        (["A", "C"], "C"),
+        (["B", "C", "A"], "C"),
+    ],
+)
+def test_propagation_le_plus_bas_des_entrees(entrees: list[str], attendu: str) -> None:
+    """Calcul exact (plafond A) : le niveau de la moins sûre des entrées."""
+    assert propager_niveau_confiance(entrees, plafond="A") == attendu
+
+
+@pytest.mark.parametrize(
+    ("entrees", "attendu"), [(["A"], "B"), (["A", "B"], "B"), (["A", "C"], "C")]
+)
+def test_propagation_plafond_b_par_defaut(entrees: list[str], attendu: str) -> None:
+    """Sans plafond déclaré, une valeur calculée ne dépasse pas B."""
+    assert propager_niveau_confiance(entrees) == attendu
+
+
+def test_propagation_refuse_une_chaine() -> None:
+    with pytest.raises(TypeError):
+        propager_niveau_confiance("AB")
+
+
+def test_propagation_sans_entree_refusee() -> None:
+    with pytest.raises(ValueError, match="sans aucune entrée"):
+        propager_niveau_confiance([])
+
+
+def test_propagation_niveau_invalide_refuse() -> None:
+    with pytest.raises(NiveauConfianceInvalide):
+        propager_niveau_confiance(["A", "D"])
+
+
+def test_p_calcul_derive_d_entrees_a_donne_a() -> None:
+    """P : calcul exact (plafond A) à partir de mesures A → A (définition de A)."""
+    assert (
+        calculer_niveau_confiance_derive(
+            methode_collecte="calcul_derive",
+            fiabilite_source="haute",
+            niveaux_entrees={"A"},
+            plafond="A",
+        )
+        == "A"
+    )
+
+
+def test_p_modele_ou_hypothese_plafonne_a_b() -> None:
+    """P : un calcul qui modélise ou suppose (plafond B par défaut) reste B sur des mesures A."""
+    assert (
+        calculer_niveau_confiance_derive(
+            methode_collecte="calcul_derive",
+            fiabilite_source="haute",
+            niveaux_entrees={"A"},
+        )
+        == "B"
+    )
+
+
+@pytest.mark.parametrize("fiabilite", ["moyenne", None])
+def test_p_source_non_haute_plafonne_a_b(fiabilite: str | None) -> None:
+    """Comme R3 pour une mesure, A exige une source de calcul de fiabilité haute."""
+    assert (
+        calculer_niveau_confiance_derive(
+            methode_collecte="calcul_derive",
+            fiabilite_source=fiabilite,
+            niveaux_entrees={"A"},
+            plafond="A",
+        )
+        == "B"
+    )
+
+
+def test_p_calcul_derive_d_une_entree_c_donne_c() -> None:
+    assert (
+        calculer_niveau_confiance_derive(
+            methode_collecte="calcul_derive",
+            fiabilite_source="haute",
+            niveaux_entrees={"A", "C"},
+        )
+        == "C"
+    )
+
+
+def test_r1_prioritaire_sur_p() -> None:
+    """Une grandeur calculée par une source de fiabilité faible reste C."""
+    assert (
+        calculer_niveau_confiance_derive(
+            methode_collecte="calcul_derive",
+            fiabilite_source="faible",
+            niveaux_entrees={"A"},
+        )
+        == "C"
+    )
+
+
+@pytest.mark.parametrize("entrees", [None, set()])
+def test_p_sans_entrees_retombe_sur_r4(entrees: set[str] | None) -> None:
+    assert (
+        calculer_niveau_confiance_derive(
+            methode_collecte="calcul_derive",
+            fiabilite_source="haute",
+            niveaux_entrees=entrees,
+        )
+        == "B"
+    )
+
+
+def test_p_ne_s_applique_qu_au_calcul_derive() -> None:
+    """Une série satellitaire reste en R4 même si une entrée C est fournie."""
+    assert (
+        calculer_niveau_confiance_derive(
+            methode_collecte="modele_satellitaire",
+            fiabilite_source="haute",
+            niveaux_entrees={"C"},
+            plafond="A",
+        )
+        == "B"
+    )
+
+
+def test_p_plafond_invalide_refuse() -> None:
+    with pytest.raises(NiveauConfianceInvalide):
+        calculer_niveau_confiance_derive(
+            methode_collecte="calcul_derive",
+            fiabilite_source="haute",
+            niveaux_entrees={"A"},
+            plafond="Z",  # type: ignore[arg-type]
+        )
+
+
+def test_niveaux_entrees_par_jour_mois_et_periode() -> None:
+    """Chaque valeur calculée ne voit que les entrées de sa période."""
+    niveaux = NiveauxEntrees()
+    niveaux.ajouter(date(2021, 1, 1), "A")
+    niveaux.ajouter(date(2021, 1, 2), "C")
+    niveaux.ajouter((2021, 2), "B")
+    niveaux.ajouter(date(2022, 1, 5), "A")
+
+    assert niveaux.du_jour(date(2021, 1, 1)) == {"A"}
+    assert niveaux.du_jour(date(2021, 2, 10)) == {"B"}
+    assert niveaux.du_jour(date(2021, 3, 1)) == set()
+    assert niveaux.du_mois(2021, 1) == {"A", "C"}
+    assert niveaux.de_periode(2021, 2022, mois=1) == {"A", "C"}
+    assert niveaux.de_periode(2022, 2022) == {"A"}
+    assert niveaux.tous() == {"A", "B", "C"}
+
+
+def test_niveaux_entrees_niveau_invalide_refuse() -> None:
+    with pytest.raises(NiveauConfianceInvalide):
+        NiveauxEntrees().ajouter(date(2021, 1, 1), "X")
+
+
+def test_niveaux_entrees_refuse_un_instant_horaire() -> None:
+    """Une heure se range sous son jour UTC, calculé par l'appelant."""
+    with pytest.raises(TypeError):
+        NiveauxEntrees().ajouter(datetime(2021, 1, 1, 12, tzinfo=UTC), "A")
 
 
 # ---------------------------------------------------------------------------

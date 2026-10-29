@@ -3,7 +3,8 @@
 Expose la perte de transmission par salissure des modules PV, en **% de perte**
 = ``(1 - ratio_hsu) x 100``, estimée par le modèle **HSU** (``pvlib.soiling.hsu``,
 Coello & Boyle 2019) à partir des **PM2.5/PM10** (EAC4) et de la **pluie**
-(NASA POWER). Grandeur F1 ``calculee_volee``, confiance dérivée ``'B'``.
+(NASA POWER). Grandeur F1 ``calculee_volee``, confiance par la règle de propagation P
+appliquée par la route (ADR-0008).
 
 Pattern fonction publique pure (``pvlib`` / ``pandas``, aucune dépendance
 SQL). L'orchestration (résolution des séries PM2.5/PM10 + pluie, alignement) vit
@@ -37,6 +38,10 @@ from pvlib import soiling  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
 from kuma_data_core.api.v1.schemas.grandeurs import MesureSoilingJour
+from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+
+PLAFOND_CONFIANCE: NiveauConfiance = "B"
+"""Plafond de confiance : modèle HSU, proxy de la salissure (pas une mesure)."""
 
 # === Constantes (defauts F1 "soiling de site", documentes) =================
 
@@ -50,7 +55,7 @@ CLEANING_THRESHOLD_DEFAUT_MM: float = 1.0
 module (défaut HSU usuel)."""
 
 NIVEAU_CONFIANCE: Literal["B"] = "B"
-"""Niveau de confiance dérivé uniforme (proxy modèle satellitaire, pas mesure)."""
+"""Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
 
 RAIN_ACCUM_PERIOD = pd.Timedelta("1D")
 """Période d'accumulation de la pluie (1 jour : pas journalier, pluie déjà cumulée

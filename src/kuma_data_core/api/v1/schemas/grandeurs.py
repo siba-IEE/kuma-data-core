@@ -368,7 +368,9 @@ class ReponseGhiExceedance(BaseModel):
     )
     niveau_confiance: Literal["A", "B", "C"] = Field(
         ...,
-        description="Niveau de confiance du calcul. 'B' (modele satellitaire) en phase 1.",
+        description=(
+            "Niveau de confiance du calcul : le plus bas des mesures lues (regle de propagation P)."
+        ),
     )
     limite: str = Field(
         ...,

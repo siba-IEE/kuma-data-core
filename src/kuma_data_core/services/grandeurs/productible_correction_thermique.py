@@ -38,7 +38,8 @@ Limitations documentées :
 - T_amb = T2M MERRA-2 NASA POWER avec biais d'altitude documenté -
   sous-estimation possible Labé / Mamou.
 
-Niveau de confiance dérivé uniforme ``'B'``.
+Niveau de confiance : le plus bas des entrées, au plus ``PLAFOND_CONFIANCE``
+(B), par la règle de propagation P que la route applique (ADR-0008).
 
 Pattern fonction publique pure
 ``calculer_productible_correction_thermique`` + fonctions privées.
@@ -71,6 +72,10 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
     ParametresProductibleCorrectionThermique,
     ResultatJournalier,
 )
+from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+
+PLAFOND_CONFIANCE: NiveauConfiance = "B"
+"""Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables (L-TR-2)."""
 
 # === Constantes module ====================================================
 
@@ -78,7 +83,7 @@ UNITE_PRODUCTIBLE: str = "kWh"
 """Unité de sortie : énergie cumulée journalière en kWh."""
 
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
-"""Niveau de confiance uniforme v1."""
+"""Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
 
 IRRADIANCE_STC_W_PAR_M2: float = 1000.0
 """Irradiance STC de référence (W/m²)."""
@@ -189,7 +194,8 @@ def calculer_productible_correction_thermique(
 
     Itère sur les mesures journalières (T2M + irradiance G, GHI ou POA
     selon le contexte) et renvoie une liste ordonnée de
-    :class:`ResultatJournalier`. Niveau de confiance dérivé uniforme ``'B'``.
+    :class:`ResultatJournalier`.
+    Niveau de confiance provisoire ``'B'``, remplacé par la route (règle P).
     """
     resultats: list[ResultatJournalier] = []
     for mesure in mesures:

@@ -92,7 +92,7 @@ Une convention transverse peut suivre trois trajectoires possibles :
 **Tests attendus** :
 
 - Fonctions pures : tests unitaires sans mock DB, fixtures Python pures. Couvrent : mapping unitaire, politique de complétude annuelle et mensuelle, sanity plage tropicale, invariant non-additif spécifique (somme = annuel, ratio ∈ [0, 1], CoV ≥ 0, H ≥ T, etc.).
-- Orchestrateur : tests unitaires avec mock session SQLAlchemy minimal (`unittest.mock.MagicMock` + `side_effect`). Couvrent : RuntimeError sur série amont absente, RuntimeError sur `version_formule` désalignée, régression sur `niveau_confiance_derive` attendu (généralement `'B'` via R4 catch-all).
+- Orchestrateur : tests unitaires avec mock session SQLAlchemy minimal (`unittest.mock.MagicMock` + `side_effect`). Couvrent : RuntimeError sur série amont absente, RuntimeError sur `version_formule` désalignée, régression sur `niveau_confiance_derive` attendu (règle de propagation P et plafond de la grandeur, ADR-0008).
 
 **Cas testés** (énumération exhaustive, cinq modules confirmés) :
 

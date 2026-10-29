@@ -47,6 +47,7 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
     MesureMoisPR,
     ModeCorrectionPR,
 )
+from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance, propager_niveau_confiance
 from kuma_data_core.services.grandeurs.productible_correction_thermique import (
     TEMPERATURE_STC_DEGC,
     _temperature_cellule_noct,
@@ -56,13 +57,16 @@ from kuma_data_core.services.grandeurs.soiling_hsu import (
     calculer_taux_salissure_proxy,
 )
 
+PLAFOND_CONFIANCE: NiveauConfiance = "B"
+"""Plafond de confiance : modèle thermique, proxy de salissure et PR fourni par l'utilisateur."""
+
 # === Types / constantes ====================================================
 
 _BESOIN_THERMIQUE: frozenset[str] = frozenset({"temperature", "temperature_salissure"})
 _BESOIN_SALISSURE: frozenset[str] = frozenset({"salissure", "temperature_salissure"})
 
 NIVEAU_CONFIANCE: Literal["B"] = "B"
-"""Niveau de confiance dérivé uniforme (proxy modèle satellitaire)."""
+"""Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
 
 _HEURES_PAR_JOUR: float = 24.0
 _WATT_PAR_KILOWATT: float = 1000.0
@@ -70,7 +74,7 @@ _WATT_PAR_KILOWATT: float = 1000.0
 _CAVEAT_PR_REFERENCE: str = (
     "PR_fourni suppose hors salissure ET hors temperature (corrections "
     "multiplicatives separables ; un PR plaque tout-compris double-compterait, "
-    "doctrine PR-reference L-PR-2). Proxy API confiance B, pas un PR mesure sol "
+    "doctrine PR-reference L-PR-2). Proxy API (confiance au plus B), pas un PR mesure sol "
     "(D-67, L-PR-1). v1 : facteurs thermique et salissure independants (L-PR-3)."
 )
 _CAVEAT_SPIN_UP: str = (
@@ -203,16 +207,19 @@ def agreger_pr_mensuel(mesures_jour: Sequence[MesureJourPR]) -> list[MesureMoisP
     """Agrège le PR réaliste journalier en **moyenne mensuelle**.
 
     La courbe mensuelle résultante est la « PR saisonnière » (creux Harmattan). Pure,
-    triée chronologiquement (``YYYY-MM``).
+    triée chronologiquement (``YYYY-MM``). Chaque mois prend le niveau de confiance
+    le plus bas de ses jours (règle de propagation P).
     """
-    par_mois: dict[str, list[float]] = defaultdict(list)
+    par_mois: dict[str, list[MesureJourPR]] = defaultdict(list)
     for m in mesures_jour:
-        par_mois[f"{m.instant.year:04d}-{m.instant.month:02d}"].append(m.pr_realiste)
+        par_mois[f"{m.instant.year:04d}-{m.instant.month:02d}"].append(m)
     return [
         MesureMoisPR(
             instant=mois,
-            pr_realiste=sum(valeurs) / len(valeurs),
-            niveau_confiance=NIVEAU_CONFIANCE,
+            pr_realiste=sum(j.pr_realiste for j in jours) / len(jours),
+            niveau_confiance=propager_niveau_confiance(
+                (j.niveau_confiance for j in jours), plafond=PLAFOND_CONFIANCE
+            ),
         )
-        for mois, valeurs in sorted(par_mois.items())
+        for mois, jours in sorted(par_mois.items())
     ]

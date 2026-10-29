@@ -101,7 +101,11 @@ def test_t7_runtime_error_si_version_formule_desalignee() -> None:
 
 
 def test_t8_niveau_b_pour_calcul_derive_avec_fiabilite_haute() -> None:
-    """T-8 : régression Drift 6."""
+    """T-8 : régression Drift 6.
+
+    Sans niveaux d'entrée, R4 donne 'B' ; la règle P est testée dans
+    ``test_propagation_grandeurs_stockees.py``.
+    """
     assert (
         calculer_niveau_confiance_derive(methode_collecte="calcul_derive", fiabilite_source="haute")
         == "B"

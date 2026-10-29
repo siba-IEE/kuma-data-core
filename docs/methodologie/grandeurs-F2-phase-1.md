@@ -65,8 +65,9 @@ effectué à chaque appel API à partir des séries existantes
 (`mesures_ressource`, `mesures_ressource_mensuelles`, `grandeurs_metier`)
 et des paramètres techniques fournis.
 
-**Niveau de confiance dérivé** : `'B'` uniforme sur les 5
-grandeurs F2 en v1. Justification : la valeur produite dépend (a) de
+**Niveau de confiance dérivé** : au plus `'B'` sur les 5 grandeurs
+F2 (plafond de la règle de propagation P, ADR-0008) ; `'C'` si une entrée
+de la période est `'C'`. Justification : la valeur produite dépend (a) de
 la fiabilité de la série F1 source ingérée depuis une source `'haute'`
 (typiquement NASA POWER NRT, SARAH-3 ICDR) et (b) de la qualité des
 paramètres techniques fournis par l'appelant (NOCT déclaré, η₀ déclaré,
@@ -74,7 +75,7 @@ T_b déclaré, etc.) dont on ne peut pas vérifier l'exactitude. Le
 niveau `'B'` reflète cette indépendance partielle vis-à-vis du contrôle
 producteur.
 
-Le niveau `'B'` uniforme est un **choix éditorial pragmatique** v1.
+Le plafond `'B'` est un **choix éditorial pragmatique**.
 Une différenciation par grandeur (par exemple `'A'` pour POA dont les
 paramètres sont géométriques aisément vérifiables, `'C'` pour DJC dont
 la méthode présente un biais documenté en climat tropical) pourra
@@ -533,7 +534,7 @@ informatif pour les consignes climatisation 24-26 °C en zone CEDEAO.
 | # | Limitation | Grandeurs F2 touchées | Mitigation |
 |---|---|---|---|
 | L-TR-1 | Biais d'altitude T2M MERRA-2 (Fouta-Djalon) répercuté sur grandeurs avec T_amb | F2-#11 (thermique), F2-#12 (PR si correction='temperature'), F2-#13 (ECS), F2-#14 (DJC) | Documenter par localité. Lever avec validation sol Guinée. |
-| L-TR-2 | Pas de propagation d'incertitude probabiliste sur les paramètres utilisateur | Toutes (#10-#14) | Le niveau de confiance dérivé `'B'` reflète l'incertitude qualitative. Mitigation ultérieure : intervalle d'incertitude calculé selon plage paramètres. |
+| L-TR-2 | Pas de propagation d'incertitude probabiliste sur les paramètres utilisateur | Toutes (#10-#14) | Le plafond `'B'` de la règle P (ADR-0008) reflète l'incertitude qualitative : même sur des mesures au sol A, une grandeur F2 reste au plus B. Mitigation ultérieure : intervalle d'incertitude calculé selon plage paramètres. |
 | L-TR-3 | Pas de prise en compte d'ombrage local (bâtiments, végétation, relief proche) | F2-#10 (POA), F2-#11 (thermique), F2-#13 (ECS) | Hors périmètre F2 strict. Modélisation 3D site = module dédié ultérieur. |
 | L-TR-4 | Validation locale sol Guinée différée | Toutes (#10-#14) | Lever avec stations sol. |
 | L-TR-5 | Sensibilité aux réingestions NRT : les résultats F2 sont sensibles aux réingestions des séries F1 source | Toutes (#10-#14) | Cohérent avec la stratégie `calculee_volee` : deux appels identiques à deux dates différentes peuvent retourner des valeurs différentes si une réingestion NRT → ICDR (ou correction rétroactive) est intervenue entre temps. À documenter dans la doc consommateur. |
@@ -626,7 +627,7 @@ Les 5 grandeurs F2 paramétrables s'appuient sur des grandeurs F1 Kuma
 (GHI, DNI, DHI, T2M selon le cas) ingérées NASA POWER. La propagation
 des niveaux de confiance est la suivante :
 
-| Grandeur F2 | Grandeur F1 source principale | Niveau confiance source F1 | Niveau dérivé F2 v1 |
+| Grandeur F2 | Grandeur F1 source principale | Niveau confiance source F1 | Niveau dérivé F2 (plafond) |
 |---|---|---|---|
 | F2-#10 POA | GHI, DNI, DHI | haute | B |
 | F2-#11 Thermique | T2M, GHI ou POA | haute | B |
@@ -634,15 +635,16 @@ des niveaux de confiance est la suivante :
 | F2-#13 ECS | T2M, GHI ou POA | haute | B |
 | F2-#14 DJC | T2M | haute | B |
 
-Le niveau `'B'` uniforme reflète que la qualité de la valeur F2 dépend
-non seulement de la source F1 (`'haute'`) mais aussi des **paramètres
-techniques fournis par l'appelant** dont le producteur ne contrôle pas
-l'exactitude (NOCT, γ_Pmax, η₀, a₁, a₂, T_b, etc.). Le niveau `'B'`
-est donc un dénominateur commun pragmatique reflétant cette double
-dépendance.
+Depuis l'ADR-0008, ce `'B'` est un plafond : une entrée `'C'` fait
+descendre en `'C'` les seuls résultats de sa période. Le plafond reflète
+que la qualité de la valeur F2 dépend non seulement de la source F1
+(`'haute'`) mais aussi des **paramètres techniques fournis par
+l'appelant** dont le producteur ne contrôle pas l'exactitude (NOCT,
+γ_Pmax, η₀, a₁, a₂, T_b, etc.). Le niveau `'B'` est donc un dénominateur
+commun pragmatique reflétant cette double dépendance.
 
-**Choix éditorial v1** : le niveau `'B'` uniforme est délibérément
-choisi comme pragmatique pour la première itération.
+**Choix éditorial** : le plafond `'B'` commun aux cinq grandeurs est
+délibérément pragmatique.
 Une différenciation par grandeur (par exemple `'A'` pour POA aux
 paramètres géométriques aisément vérifiables, `'C'` pour DJC dont la
 méthode présente un biais documenté en climat tropical) pourra être
@@ -728,9 +730,9 @@ Dierauf et al. 2013** via endpoint paramétré, PR_W et PR_C différés,
 ECS avec f-chart Klein 1976 différée comme grandeur F3 future, (14)
 **méthode moyenne journalière Erbs et al. 1983 + Schoenau & Kehrig
 1990** pour DJC avec T_b utilisateur obligatoire, intégration horaire
-livrée. Niveau de confiance dérivé `'B'` uniforme
-comme choix éditorial pragmatique v1 reflétant la double dépendance
-source F1 + paramètres utilisateur. Références primaires scientifiques
+livrée. Niveau de confiance dérivé au plus `'B'` (plafond de la
+règle P, ADR-0008) reflétant la double dépendance source F1 +
+paramètres utilisateur. Références primaires scientifiques
 peer-reviewed et rapports publics privilégiées, contre les normes
 payantes IEC / ISO / ASHRAE. Six
 limitations transverses documentées (L-TR-1 à L-TR-6) dont les

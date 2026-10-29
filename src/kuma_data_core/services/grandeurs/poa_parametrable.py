@@ -23,7 +23,8 @@ PVsyst et NREL SAM comme référence industrielle. Approche midi solaire
 local (jour représentatif) pour la granularité journalière - biais de
 moyennage acté.
 
-Niveau de confiance dérivé uniforme ``'B'``.
+Niveau de confiance : le plus bas des entrées, au plus ``PLAFOND_CONFIANCE``
+(B), par la règle de propagation P que la route applique (ADR-0008).
 
 Pattern fonction publique pure ``calculer_poa_parametrable`` +
 fonctions privées. Aucune dépendance SQL, testable unitairement.
@@ -65,6 +66,10 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
     ParametresPOA,
     ResultatJournalier,
 )
+from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+
+PLAFOND_CONFIANCE: NiveauConfiance = "B"
+"""Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables (L-TR-2)."""
 
 # === Constantes module ====================================================
 
@@ -72,7 +77,7 @@ UNITE_POA: str = "kWh/m²/jour"
 """Unité de sortie POA en granularité journalière."""
 
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
-"""Niveau de confiance uniforme v1."""
+"""Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
 
 MODELE_PEREZ: Literal["perez"] = "perez"
 """Identifiant pvlib du modèle Perez 1990."""
@@ -222,8 +227,8 @@ def calculer_poa_parametrable(
         ``instant_mesure`` croissante. Liste vide si ``mesures`` est
         vide.
 
-    Aucune dépendance SQL, idempotent, pur. Le niveau de confiance
-    dérivé est uniformément ``'B'``.
+    Aucune dépendance SQL, idempotent, pur.
+    Niveau de confiance provisoire ``'B'``, remplacé par la route (règle P).
     """
     resultats: list[ResultatJournalier] = []
     for mesure in mesures:
@@ -266,7 +271,7 @@ def calculer_poa_parametrable_horaire(
     journalière).
 
     Pure (pandas/pvlib, aucune dépendance SQL), idempotente. Niveau de
-    confiance dérivé uniforme ``'B'``.
+    confiance provisoire ``'B'``, remplacé par la route (règle P).
     """
     if not mesures:
         return []

@@ -36,8 +36,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.editorial.niveaux_confiance import (
+    NiveauConfiance,
     calculer_niveau_confiance_derive,
 )
+
+PLAFOND_CONFIANCE: NiveauConfiance = "B"
+"""Plafond de confiance : le PR théorique est une hypothèse conventionnelle, pas une mesure."""
 
 GRANDEUR_CODE_PRODUCTIBLE: str = "productible_specifique_theorique"
 METHODE_COLLECTE_PRODUCTIBLE: str = "calcul_derive"
@@ -178,20 +182,15 @@ def calculer_et_inserer_productible_specifique_theorique(
             f"{code_serie_hep_amont!r} localite_id={int(serie_hep.localite_id)}."
         )
 
-    # 5. Niveau de confiance
-    niveau_derive = calculer_niveau_confiance_derive(
-        methode_collecte=serie_cible.methode_collecte,
-        fiabilite_source=serie_cible.fiabilite_source,
-    )
-
-    # 6. Lire les lignes HEP courantes de la série amont (annuel + mensuel)
+    # 5. Lire les lignes HEP courantes de la série amont (annuel + mensuel)
     # Source : grandeurs_metier (pas mesures_ressource). Filtrage version
     # courante de hep (cohérent avec la vue v_grandeurs_metier_courantes).
     rows_hep = session.execute(
         text(
             """
             SELECT
-                gm.periode_type, gm.annee_debut, gm.annee_fin, gm.mois, gm.valeur
+                gm.periode_type, gm.annee_debut, gm.annee_fin, gm.mois, gm.valeur,
+                coalesce(gm.niveau_confiance_override, gm.niveau_confiance_derive) AS niveau
             FROM grandeurs_metier gm
             JOIN grandeurs_referentiel gr ON gr.code = gm.grandeur_code
             WHERE gm.series_metadonnees_id = :serie_id
@@ -214,7 +213,7 @@ def calculer_et_inserer_productible_specifique_theorique(
             "Verifier que 1-5D-iii (migration 027) a bien ete applique."
         )
 
-    # 7. Application PR théorique + construction des lignes à insérer
+    # 6. Application PR théorique + construction des lignes à insérer
     lignes_a_inserer: list[_LigneAgregeeProductible] = [
         {
             "periode_type": r.periode_type,
@@ -229,7 +228,7 @@ def calculer_et_inserer_productible_specifique_theorique(
     nb_annuel = sum(1 for ligne in lignes_a_inserer if ligne["periode_type"] == "annuel")
     nb_mensuel = sum(1 for ligne in lignes_a_inserer if ligne["periode_type"] == "mensuel")
 
-    # 8. Bulk INSERT
+    # 7. Bulk INSERT
     params: list[dict[str, Any]] = [
         {
             "grandeur_code": GRANDEUR_CODE_PRODUCTIBLE,
@@ -241,9 +240,15 @@ def calculer_et_inserer_productible_specifique_theorique(
             "mois": ligne["mois"],
             "version_formule": version_formule,
             "valeur": ligne["valeur"],
-            "niveau_confiance_derive": niveau_derive,
+            # Règle P : chaque ligne prend le niveau de la ligne HEP dont elle est tirée
+            "niveau_confiance_derive": calculer_niveau_confiance_derive(
+                methode_collecte=serie_cible.methode_collecte,
+                fiabilite_source=serie_cible.fiabilite_source,
+                plafond=PLAFOND_CONFIANCE,
+                niveaux_entrees={r.niveau},
+            ),
         }
-        for ligne in lignes_a_inserer
+        for ligne, r in zip(lignes_a_inserer, rows_hep, strict=True)
     ]
     session.execute(
         text(

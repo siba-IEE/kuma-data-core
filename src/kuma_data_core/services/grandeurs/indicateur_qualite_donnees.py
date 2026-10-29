@@ -41,6 +41,14 @@ from typing import TypedDict
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from kuma_data_core.editorial.niveaux_confiance import (
+    NiveauConfiance,
+    propager_niveau_confiance,
+)
+
+PLAFOND_CONFIANCE: NiveauConfiance = "B"
+"""Plafond de confiance : méta-indicateur sur une série, au plus B (comme degenerescence_pixel)."""
+
 GRANDEUR_CODE_INDICATEUR: str = "indicateur_qualite_donnees"
 METHODE_COLLECTE_INDICATEUR: str = "calcul_derive"
 SOURCE_CODE_INDICATEUR: str = "kuma_calculs"
@@ -229,7 +237,8 @@ def calculer_et_inserer_indicateur_qualite_donnees(
     rows = session.execute(
         text(
             """
-            SELECT niveau_confiance_derive
+            SELECT niveau_confiance_derive,
+                   coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource
             WHERE serie_id = :serie_id
               AND valide_au IS NULL
@@ -239,6 +248,12 @@ def calculer_et_inserer_indicateur_qualite_donnees(
         {"serie_id": int(serie.serie_id)},
     ).all()
     niveaux_confiance: list[str] = [r.niveau_confiance_derive for r in rows]
+    # Règle P : l'indicateur ne peut pas être plus sûr que les mesures qu'il évalue
+    niveau_indicateur = (
+        propager_niveau_confiance((r.niveau for r in rows), plafond=PLAFOND_CONFIANCE)
+        if rows
+        else "B"
+    )
     nb_mesures_courantes = len(niveaux_confiance)
     nb_jours_attendus = _nb_jours_civils_plage(annee_debut, annee_fin)
 
@@ -260,7 +275,7 @@ def calculer_et_inserer_indicateur_qualite_donnees(
             VALUES (
                 :grandeur_code, :localite_id, :series_metadonnees_id,
                 'statique', :annee_debut, :annee_fin, NULL,
-                :version_formule, :valeur, 'B'
+                :version_formule, :valeur, :niveau
             )
             """
         ),
@@ -272,6 +287,7 @@ def calculer_et_inserer_indicateur_qualite_donnees(
             "annee_fin": annee_fin,
             "version_formule": version_formule,
             "valeur": score["score_discret"],
+            "niveau": niveau_indicateur,
         },
     )
     session.flush()

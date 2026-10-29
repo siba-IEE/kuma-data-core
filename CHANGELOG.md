@@ -7,6 +7,17 @@ le projet suit le versionnement sémantique.
 
 ### Ajouté
 
+- Confiance : règle de propagation P (ADR-0008). Une valeur calculée prend le
+  niveau effectif le plus bas des valeurs dont elle est tirée, sur sa seule
+  période, sans dépasser le plafond de sa méthode : B par défaut, A pour un
+  calcul exact sans modèle ni hypothèse (HEP, fraction diffuse, humidex,
+  variabilité journalière, P50/P90) dont la source de calcul est de
+  fiabilité haute. `calculer_niveau_confiance_derive` prend
+  `niveaux_entrees` et `plafond`, `NiveauxEntrees` range les niveaux par
+  jour et par mois, chaque module de calcul déclare `PLAFOND_CONFIANCE`.
+  Appliquée aux grandeurs stockées (HEP, humidex, fraction diffuse,
+  variabilité journalière, productible spécifique théorique, indicateur
+  qualité) et aux calculs à la volée de `/v1/grandeurs`.
 - Contributions : format `pv-champ@1` (ADR-0006), conception de champ PV.
   Module et onduleur par leurs caractéristiques (sans marque ni référence),
   pertes, câblage, et résultats : strings, vérifications électriques,
@@ -30,6 +41,16 @@ le projet suit le versionnement sémantique.
 - Outil d'administration `python -m kuma_data_core.services.licences`
   (accorder, lister, prolonger, retirer) et script de génération de la
   paire de signature.
+
+### Modifié
+
+- `/v1/grandeurs` : le `niveau_confiance` des résultats suit la règle P. Les
+  grandeurs paramétrables, `taux_salissure_proxy` et `pr_realiste` restent
+  au plus B et passent en C pour les périodes dont une entrée est C ;
+  `ghi_exceedance` prend le niveau des mesures mensuelles lues, avec le
+  plafond A d'un calcul exact. Les séries satellitaires et de réanalyse
+  donnent toujours B. La constante
+  `ghi_exceedance.NIVEAU_CONFIANCE_DERIVE` est retirée.
 
 ## 1.0.0
 
