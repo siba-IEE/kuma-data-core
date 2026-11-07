@@ -42,16 +42,27 @@ FAITS CONFIRMES (depot ou schema public ADS, consulte le 2026-11-07) :
   ``dust_aerosol_optical_depth_550nm``, ``ozone`` ; ``model_level`` de "1" a "60" ;
   ``data_format`` dans {``grib``, ``netcdf_zip``} (schema public du processus).
 
-SUPPOSES, A CONFIRMER PAR ``--sonde`` AVANT TOUTE CAPTURE COMPLETE :
+CONFIRME (sonde ADS du 2026-11-07, janvier 2021, boite Guinee) :
 
-- noms des variables dans le .nc : ``aod550``, ``duaod550``, ``go3`` (le mode
-  complet echoue en listant les variables reelles si l'un manque) ;
-- unite native de l'ozone : rapport de melange massique kg/kg (le mode complet
-  echoue sinon) ;
-- ``model_level`` 60 = niveau le plus bas (le plus proche de la surface) ;
-- cle ``date`` de la requete : elle fonctionnait pour le script PM mais n'apparait
-  pas dans le schema public du processus (``CLE_DATE_REQUETE`` a ajuster si besoin) ;
-- date de fin EAC4 disponible : inconnue du depot, a fournir par ``--fin``.
+- noms des variables dans le .nc : ``aod550`` (long_name 'Total Aerosol Optical
+  Depth at 550nm'), ``duaod550`` ('Dust Aerosol Optical Depth at 550nm'), ``go3``
+  ('Ozone mass mixing ratio (full chemistry scheme)') ; le mode complet echoue
+  toujours en listant les variables reelles si l'un manque ;
+- unite AOD '~' (sans dimension) ; unite ozone 'kg kg**-1' (rapport de melange
+  massique, le mode complet echoue sinon) ;
+- dimension ``model_level`` presente, valeur 60, avec ``valid_time`` (248 pas pour
+  janvier = 31 j x 8), ``latitude`` et ``longitude`` ;
+- cle ``date`` (``2021-01-01/2021-01-31``) acceptee, ``data_format`` ``netcdf_zip`` OK ;
+- longitudes de l'ozone livrees en 0-360 (344.25, 345.0 ...) alors que l'AOD est en
+  -180..180 : ``_ouvrir`` les normalise en [-180, 180) pour tous les fichiers
+  (``normaliser_longitudes``), la garde de demi-maille reste en place.
+
+SUPPOSE :
+
+- niveau 60 = niveau le plus bas de la grille L60 d'IFS selon la documentation
+  ECMWF (non verifiable par le .nc) ;
+- date de fin EAC4 disponible : a trouver avec ``--verifier-fin AAAA-MM``, puis a
+  fournir par ``--fin``.
 
 Conversion ozone : ppb = mmr (kg/kg) x (M_air / M_O3) x 1e9, avec
 M_air = 28,9644 g/mol (air sec) et M_O3 = 47,9982 g/mol.
@@ -62,6 +73,7 @@ Monitoring Service Information <annee> ; reference methodologique Inness et al.
 
 Usage :
     uv run --group dev python scripts/preparer_seed_cams_eac4_aod_ozone.py --sonde
+    uv run --group dev python scripts/preparer_seed_cams_eac4_aod_ozone.py --verifier-fin AAAA-MM
     uv run --group dev python scripts/preparer_seed_cams_eac4_aod_ozone.py --fin AAAA-MM-JJ
     (options : --debut AAAA-MM-JJ, defaut 2004-02-01)
 
@@ -282,9 +294,32 @@ def _telecharger(requete: dict[str, Any], chemin: Path) -> None:
     cdsapi.Client(url=ADS_URL).retrieve(DATASET_EAC4, requete, str(chemin))
 
 
+def normaliser_longitudes(valeurs: Sequence[float]) -> list[float]:
+    """Ramene des longitudes en [-180, 180) : 344.25 -> -15.75, -13.5 inchange,
+    180 -> -180 (borne superieure exclue). Echoue si deux longitudes se confondent
+    apres normalisation (grille qui ferait le tour du globe en double)."""
+    resultat = [((float(v) + 180.0) % 360.0) - 180.0 for v in valeurs]
+    if len(set(resultat)) != len(resultat):
+        raise RuntimeError("Longitudes en double apres normalisation en [-180, 180).")
+    return resultat
+
+
+def _normaliser_longitudes_ds(ds: Any) -> Any:
+    """Si le fichier porte des longitudes > 180 (cas constate pour l'ozone EAC4),
+    les ramene en [-180, 180) et trie par longitude."""
+    if "longitude" not in ds.coords:
+        return ds
+    valeurs = [float(v) for v in ds["longitude"].values.reshape(-1)]
+    if not any(v > 180.0 for v in valeurs):
+        return ds
+    ds = ds.assign_coords(longitude=("longitude", normaliser_longitudes(valeurs)))
+    return ds.sortby("longitude")
+
+
 def _ouvrir(chemin: Path, aplatir: bool = True) -> Any:
-    """Ouvre le(s) .nc d'une archive ADS (fusion si plusieurs). Aplatit les
-    dimensions singleton hors temps si ``aplatir``."""
+    """Ouvre le(s) .nc d'une archive ADS (fusion si plusieurs), normalise les
+    longitudes en [-180, 180). Aplatit les dimensions singleton hors temps si
+    ``aplatir``."""
     import xarray as xr  # type: ignore[import-untyped]  # dev deps, import tardif
 
     if not zipfile.is_zipfile(chemin):
@@ -299,6 +334,7 @@ def _ouvrir(chemin: Path, aplatir: bool = True) -> Any:
             raise RuntimeError(f"Aucun .nc dans {chemin.name}.")
         dsets = [xr.open_dataset(n, engine="netcdf4") for n in ncs]
         ds = xr.merge(dsets, compat="override") if len(dsets) > 1 else dsets[0]
+    ds = _normaliser_longitudes_ds(ds)
     if not aplatir:
         return ds
     singletons = [d for d in ds.dims if ds.sizes[d] == 1 and d not in _NOMS_TEMPS]
@@ -688,6 +724,19 @@ def capture_complete(debut: date, fin: date) -> None:
         )
 
 
+def verifier_fin(mois: str) -> None:
+    """Demande UN jour (le 1er de ``mois``, famille AOD) pour savoir si le mois est
+    disponible a l'ADS. Affiche « disponible » ou l'erreur ADS ; aucun seed."""
+    jour = date.fromisoformat(f"{mois}-01")
+    chemin = REPERTOIRE_CACHE / f"verifier_fin_{FAMILLE_AOD}_{jour}.zip"
+    try:
+        _telecharger(construire_requete(FAMILLE_AOD, jour, jour), chemin)
+    except Exception as exc:
+        print(f"{mois} : non disponible ou requete refusee par l'ADS : {exc}")
+        return
+    print(f"{mois} : disponible ({jour} telecharge dans {chemin}).")
+
+
 def _date(texte: str) -> date:
     return date.fromisoformat(texte)
 
@@ -704,7 +753,16 @@ def main() -> None:
         default=None,
         help="AAAA-MM-JJ, dernier jour du dernier mois EAC4 disponible (obligatoire hors sonde).",
     )
+    parser.add_argument(
+        "--verifier-fin",
+        metavar="AAAA-MM",
+        default=None,
+        help="Demande le 1er jour du mois (AOD) pour tester sa disponibilite, aucun seed.",
+    )
     args = parser.parse_args()
+    if args.verifier_fin is not None:
+        verifier_fin(args.verifier_fin)
+        return
     if args.sonde:
         sonde()
         return

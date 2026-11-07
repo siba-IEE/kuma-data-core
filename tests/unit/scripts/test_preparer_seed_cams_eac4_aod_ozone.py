@@ -16,6 +16,7 @@ from scripts.preparer_seed_cams_eac4_aod_ozone import (
     GRANDEURS,
     HEURES_3H,
     HEURES_DIURNES,
+    _normaliser_longitudes_ds,
     agreger_annee,
     agreger_journalier,
     calendrier,
@@ -26,6 +27,7 @@ from scripts.preparer_seed_cams_eac4_aod_ozone import (
     liste_tronquee,
     mmr_vers_ppb,
     moyenne_des_heures,
+    normaliser_longitudes,
     pixel_grille_le_plus_proche,
     regrouper_par_jour,
     unite_est_rapport_massique,
@@ -230,6 +232,31 @@ def test_points_et_pixels_dans_l_emprise() -> None:
     assert pixel_grille_le_plus_proche(9.509, -13.712) == (9.75, -13.5)
     with pytest.raises(RuntimeError, match="hors emprise"):
         verifier_emprise({"hors": (14.0, -10.0)}, EMPRISE_GUINEE)
+
+
+def test_normaliser_longitudes_0_360() -> None:
+    assert normaliser_longitudes([344.25, 345.0, 352.5]) == [-15.75, -15.0, -7.5]
+    assert normaliser_longitudes([-13.5, 0.0, 179.25]) == [-13.5, 0.0, 179.25]
+    # Choix documente : 180 -> -180, intervalle [-180, 180).
+    assert normaliser_longitudes([180.0]) == [-180.0]
+
+
+def test_normaliser_longitudes_doublon_echoue() -> None:
+    with pytest.raises(RuntimeError, match="double"):
+        normaliser_longitudes([-15.75, 344.25])
+
+
+def test_normaliser_longitudes_dataset_trie() -> None:
+    xr = pytest.importorskip("xarray")
+    ds = xr.Dataset(
+        {"go3": ("longitude", [1.0, 2.0, 3.0])},
+        coords={"longitude": [344.25, 345.0, 351.75]},
+    )
+    sortie = _normaliser_longitudes_ds(ds)
+    assert sortie["longitude"].values.tolist() == [-15.75, -15.0, -8.25]
+    assert sortie["go3"].sel(longitude=-15.0).item() == 2.0
+    # Deja en [-180, 180) : inchange.
+    assert _normaliser_longitudes_ds(sortie) is sortie
 
 
 def test_intervalles_annuels() -> None:
