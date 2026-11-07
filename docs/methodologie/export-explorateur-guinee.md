@@ -102,9 +102,9 @@ de stockage :
 - `grandeurs_metier` (via `v_grandeurs_metier_courantes`) : grandeurs
   F1 stockée Kuma (`hep`, `fraction_diffuse`, `humidex`,
   `productible_specifique_theorique`, `variabilite_journaliere`,
-  `indicateur_qualite_donnees`) et 3 grandeurs F1 calculée à la volée
-  référentielles (`ecart_relatif_referentiel`,
-  `rang_referentiel_temporel`, `rang_referentiel_spatial`).
+  `indicateur_qualite_donnees`) et 3 grandeurs F1 stockée référentielles
+  (`ecart_relatif_referentiel`, `rang_referentiel_temporel`,
+  `rang_referentiel_spatial`).
 
 ### 3.3 Grandeurs exclues (énumération exhaustive)
 

@@ -1,4 +1,6 @@
-"""Calculs des 3 grandeurs F1 calculee_volee référentielles.
+"""Calculs des 3 grandeurs F1 référentielles.
+
+F1 stockée (calculée par Kuma, matérialisée dans ``grandeurs_metier``).
 
 Module de calcul et d'insertion des 3 grandeurs métier externes
 multi-référence :
@@ -247,7 +249,7 @@ def calculer_et_inserer_referentiels(
     contextes_villes: Sequence[ContexteVille],
     serie_id_par_grandeur_localite: dict[tuple[str, int], int],
 ) -> CalculReferentielsResultat:
-    """Calcule et insère les 936 lignes des 3 grandeurs F1 calculee_volee.
+    """Calcule et insère les 936 lignes des 3 grandeurs F1 stockées référentielles.
 
     Args:
         session : session SQLAlchemy active (add+flush, pas commit).

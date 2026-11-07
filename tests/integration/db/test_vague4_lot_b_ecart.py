@@ -7,7 +7,8 @@ Calcul deterministe depuis la base (aucun reseau) -> les donnees sont
 toujours presentes (pas de seed-gating). Assertions :
 
 - **Structure** : grandeur ``ecart_relatif_dni_cams`` enregistree (F1,
-  calculee_volee, unite pourcent) ; 6 series calculees kuma_calculs.
+  stockee depuis la migration 126, unite pourcent) ; 6 series calculees
+  kuma_calculs.
 - **Volume** : 1 218 lignes (203 mois communs x 6 villes).
 - **Signe (temoin, valeurs reelles)** : Labe 2010-01, ecart relu et
   recalcule depuis les DNI bruts NASA/CAMS (PAS un signe suppose).
@@ -57,7 +58,7 @@ def test_grandeur_enregistree(db_session: Session) -> None:
         {"g": _GRANDEUR},
     ).one()
     assert row.famille == "F1"
-    assert row.strategie_calcul == "calculee_volee"
+    assert row.strategie_calcul == "stockee"  # migration 126
     assert row.unite_code == "pourcent"
 
 

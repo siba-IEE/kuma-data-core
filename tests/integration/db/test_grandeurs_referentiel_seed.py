@@ -188,7 +188,15 @@ def test_010_familles_attendues(db_session: Session) -> None:
 
 
 def test_010_strategies_attendues(db_session: Session) -> None:
+    """Stratégies du seed 010, à l'écart assumé près.
+
+    Écart assumé vs seed 010 : la migration 126 aligne
+    ``ecart_relatif_referentiel`` sur ``stockee`` (valeurs persistées dans
+    ``grandeurs_metier``, lues telles quelles par l'API). Le seed, importé
+    par la migration 010, reste l'état d'origine.
+    """
     attendus = {entry["code"]: entry["strategie_calcul"] for entry in GRANDEURS_REFERENTIEL_SEED}
+    attendus["ecart_relatif_referentiel"] = "stockee"
     rows = db_session.execute(
         select(GrandeurReferentiel.code, GrandeurReferentiel.strategie_calcul).where(
             GrandeurReferentiel.code.in_(_CODES_GRANDEURS)
@@ -199,6 +207,11 @@ def test_010_strategies_attendues(db_session: Session) -> None:
 
 
 def test_010_decompte_famille_strategie(db_session: Session) -> None:
+    """Seed 010 : 8 F1 stockee, 2 F1 calculee_volee, 5 F2 calculee_volee.
+
+    Migration 126 : ``ecart_relatif_referentiel`` passe en ``stockee``
+    (9 F1 stockee, 1 F1 calculee_volee : ``rang_referentiel``, désactivée).
+    """
     f1_stockee = db_session.scalar(
         select(func.count())
         .select_from(GrandeurReferentiel)
@@ -227,8 +240,8 @@ def test_010_decompte_famille_strategie(db_session: Session) -> None:
         .where(GrandeurReferentiel.famille == "F2")
         .where(GrandeurReferentiel.strategie_calcul == "stockee")
     )
-    assert f1_stockee == 8
-    assert f1_volee == 2
+    assert f1_stockee == 9
+    assert f1_volee == 1
     assert f2_volee == 5
     assert f2_stockee == 0
 

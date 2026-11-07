@@ -929,16 +929,21 @@ Calculées à partir des grandeurs brutes, persistées dans
 | `productible_specifique_theorique` | Productible spécifique théorique | kWh/kWc | `hep × pr_theorique`, `pr_theorique = 0.8` | `hep` calculée Kuma |
 | `variabilite_journaliere` | Coefficient de variation journalier | sans dimension | CoV annuel = `σ(GHI_jour) / μ(GHI_jour)` | `ghi` NASA POWER |
 | `indicateur_qualite_donnees` | Score qualité de série (1-5) | sans dimension | `0.5·complétude + 0.3·confiance_moyenne + 0.2·fiabilité_source` | méta de la série |
-| `degenerescence_pixel` | Degénérescence de pixel | sans dimension | Nombre de localités partageant la cellule CERES | grille NASA CERES |
+| `degenerescence_pixel` | Dégénérescence de pixel | sans dimension | Nombre d'autres localités dont la série climatologique mensuelle est identique (même cellule de grille), par source et paramètre | grilles NASA POWER (CERES, MERRA-2) ; SARAH-3 et CAMS (0 par construction) |
+| `ecart_relatif_referentiel` | Écart relatif GHI NASA POWER vs SARAH-3 | % | `(NASA − SARAH-3) / SARAH-3 × 100`, par mois commun aux deux sources | GHI NASA POWER (moyenne mensuelle du journalier) + GHI SARAH-3 mensuel |
+| `ecart_relatif_dni_cams` | Écart relatif DNI NASA POWER vs CAMS | % | `(NASA − CAMS) / CAMS × 100`, par mois commun aux deux sources | DNI NASA POWER et CAMS (moyennes mensuelles) |
+| `rang_referentiel_temporel` | Rang dans la climatologie 1991-2020 | sans dimension | Percentile (0-100) d'une valeur mensuelle dans la distribution 1991-2020 du même mois calendaire | GHI NASA POWER |
+| `rang_referentiel_spatial` | Rang parmi les 6 villes pilotes | sans dimension | Rang ordinal croissant (1 à 6) parmi les 6 villes pilotes pour le même mois | GHI NASA POWER |
 
-### 4.3 Grandeurs F1 calculées à la volée (référentielles)
+### 4.3 Grandeurs F1 calculées à la volée
+
+Recalculées à chaque appel de leur route (voir 3.7.6), jamais stockées.
 
 | Code | Libellé | Unité | Calcul |
 |---|---|---|---|
-| `ecart_relatif_referentiel` | Écart relatif GHI à un référentiel | % | Écart d'une série mensuelle NASA POWER à SARAH-3, ou à la moyenne 1991-2020 stratifiée par mois calendaire |
-| `ecart_relatif_dni_cams` | Écart relatif DNI NASA vs CAMS | % | Écart mensuel de la série DNI NASA POWER à la référence CAMS |
-| `rang_referentiel_temporel` | Rang dans la climatologie 1991-2020 | sans dimension | Percentile d'une valeur mensuelle dans la distribution 1991-2020 du même mois |
-| `rang_referentiel_spatial` | Rang ordinal dans le pool des villes | sans dimension | Position dans le pool des localités pour le même mois |
+| `ghi_exceedance` | Exceedance inter-annuelle de l'irradiation annuelle | kWh/m²/an | P50 et P90 de l'irradiation annuelle sur la climatologie GHI mensuelle 1991-2020 |
+| `taux_salissure_proxy` | Proxy de salissure | % | Perte de transmission `(1 − ratio HSU) × 100`, modèle HSU sur PM2.5, PM10 et pluie |
+| `pr_realiste` | PR réaliste saisonnier | sans dimension | `PR fourni × ratio thermique × (1 − salissure)` selon le mode de correction |
 
 ### 4.4 Grandeurs F2 paramétrables
 
@@ -1092,7 +1097,7 @@ Règles :
 | `mesures_ressource` (journalier) | Grandeurs brutes journalières (GHI/DNI/DHI/T2M/RH2M/Kt, précipitation, PM, vent, albédo) |
 | `mesures_ressource_mensuelles` | GHI mensuel SARAH-3, GHI mensuel climatologie 1991-2020, DNI mensuel CAMS, ERA5-Land mensuel |
 | `mesures_ressource_horaires` | Horaire stocké validé par contrôle qualité (statut `valide_auto`, confiance B) |
-| `grandeurs_metier` | Grandeurs F1 calculées Kuma (HEP, fraction diffuse, humidex, etc.) et écarts référentiels matérialisés |
+| `grandeurs_metier` | Grandeurs F1 stockées calculées par Kuma (HEP, fraction diffuse, humidex, etc.), y compris écarts inter-sources, rangs référentiels et dégénérescence de pixel |
 | Calculé à la volée | Routes F1 (`ghi_exceedance`, `taux_salissure_proxy`, `pr_realiste`, `incertitude_inter_source`) et F2 paramétrables |
 | Passe-plat à la volée | Horaire non couvert par le stocké (relais amont) |
 

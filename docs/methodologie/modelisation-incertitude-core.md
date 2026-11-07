@@ -61,7 +61,7 @@ calculee_volee}`**, `version_formule_actuelle`, `description`. Unités candidate
 
 ### 1.5 L'écart inter-source est **déjà bâti** comme grandeur F1
 
-`ecart_relatif_referentiel` et `ecart_relatif_dni_cams` : **F1, `calculee_volee`,
+`ecart_relatif_referentiel` et `ecart_relatif_dni_cams` : **F1, `stockee`,
 unité `pourcent`**, matérialisés dans `grandeurs_metier`. Ils
 quantifient déjà la **divergence inter-source** - composante directe de
 l'« incertitude combinée » (cf. §4).
@@ -144,13 +144,13 @@ par point sur sa propre table le jour venu, **sans** charger l'horaire 6,67 M.
 
 L'« incertitude combinée » = **barre terrain (confiance A)** ⊕
 **écart inter-source (NASA/SARAH-3/CAMS)**. La composante inter-source **existe
-déjà** : `ecart_relatif_dni_cams` et les grandeurs de rang, F1 `calculee_volee`
+déjà** : `ecart_relatif_dni_cams` et les grandeurs de rang, F1 `stockee`
 dans `grandeurs_metier`.
 
 → **Réutilisation, pas recalcul** : une grandeur `incertitude_combinee` (F1)
 **consomme** l'écart inter-source existant comme l'une de ses composantes, plutôt
 que de re-mesurer la divergence. La combinaison (ex. somme quadratique des
-composantes relatives) est une formule dédiée, matérialisée/`calculee_volee`
+composantes relatives) est une formule dédiée, matérialisée (`stockee`)
 comme les écarts. La composante terrain vient en seconde brique, avec la mesure
 sol.
 
@@ -161,12 +161,12 @@ sol.
    primaire (6,67 M lignes, mutation de tables auditées, rigidité).
 2. **Épine dorsale = (b)** : les **valeurs d'incertitude** (combinée, et composante
    inter-source) → **grandeur(s) F1** `incertitude_*` dans `grandeurs_metier`
-   (`calculee_volee`, unité `pourcent` pour le relatif ; l'absolu **dérivé**
+   (`stockee`, unité `pourcent` pour le relatif ; l'absolu **dérivé**
    `relatif × valeur` à l'API), via un **orchestrateur dédié**. Pattern
    strictement identique à l'écart.
 3. **(c) - modèle en métadonnée de série : différé.** **Aucun ajout à
    `series_metadonnees`** à ce stade. Préférence affirmée : **composantes comme
-   grandeurs** + orchestrateur `calculee_volee` - tout reste en
+   grandeurs** + orchestrateur dédié (`stockee`) - tout reste en
    `grandeurs_referentiel` / `grandeurs_metier`, rien de neuf côté schéma de
    série. On n'ouvre (c) (et, le cas échéant, le choix **JSONB neuf vs
    colonnes typées**) que si un **paramètre stocké par série** non exprimable

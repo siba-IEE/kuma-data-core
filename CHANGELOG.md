@@ -86,6 +86,16 @@ le projet suit le versionnement sémantique.
   surface, sans vocabulaire de chantier, la période étant portée par chaque
   série. Les métadonnées listent les variables, conversions et périodes
   par famille de variables (migration 125).
+- Référentiel des grandeurs : `degenerescence_pixel`, `ecart_relatif_dni_cams`,
+  `ecart_relatif_referentiel`, `rang_referentiel_spatial` et
+  `rang_referentiel_temporel` étaient déclarées `calculee_volee` alors que
+  leurs valeurs sont calculées par Kuma puis stockées dans `grandeurs_metier`
+  et servies telles quelles ; elles passent en `stockee`. Leurs descriptions
+  publiques sont réécrites d'après le calcul réel, sans vocabulaire de
+  chantier ni couverture figée : `ecart_relatif_referentiel` est l'écart
+  mensuel du GHI entre NASA POWER et PVGIS-SARAH-3, et non un écart à la
+  moyenne des sites Kuma (migration 126). Référence de l'API (§4.2, §4.3,
+  §5.6) et notes méthodologiques alignées.
 
 ## 1.0.0
 

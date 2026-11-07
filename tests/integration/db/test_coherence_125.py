@@ -5,10 +5,9 @@
   identiques aux modèles ORM (ces tables sont publiées dans l'édition).
 - Source ``cams_eac4`` : la description couvre PM, AOD 550 nm et ozone,
   sans jargon ni période figée ; les métadonnées gardent leurs types.
-- Garde de régression sur ``strategie_calcul`` : l'ensemble des grandeurs
-  ``calculee_volee`` qui ont pourtant des lignes dans ``grandeurs_metier``
-  est figé (aucune nouvelle incohérence) en attendant l'arbitrage sur ces
-  cinq grandeurs.
+
+La garde sur ``strategie_calcul`` (grandeurs ``calculee_volee`` matérialisées)
+vit dans ``test_coherence_126.py`` depuis l'arbitrage de la migration 126.
 """
 
 from __future__ import annotations
@@ -105,34 +104,3 @@ def test_periodes_source_cams_eac4_conformes_aux_series(db_session: Session) -> 
         assert periodes[g] == ("2021-01-01", "2025-08-31"), g
     for g in ("aod_550", "aod_poussiere_550", "ozone_surface", "ozone_surface_diurne"):
         assert periodes[g] == ("2004-02-01", "2025-12-31"), g
-
-
-# Grandeurs déclarées ``calculee_volee`` mais matérialisées dans
-# ``grandeurs_metier`` : incohérence connue, en attente d'arbitrage (déclaration
-# à aligner sur ``stockee`` et descriptions à réécrire, ou autre sens). Le jeu
-# est figé : aucune nouvelle grandeur ne doit rejoindre ce cas.
-_CALCULEE_VOLEE_MATERIALISEES_CONNUES = frozenset(
-    {
-        "degenerescence_pixel",
-        "ecart_relatif_dni_cams",
-        "ecart_relatif_referentiel",
-        "rang_referentiel_spatial",
-        "rang_referentiel_temporel",
-    }
-)
-
-
-def test_aucune_nouvelle_grandeur_calculee_volee_materialisee(db_session: Session) -> None:
-    codes = set(
-        db_session.execute(
-            text(
-                """
-                SELECT DISTINCT gr.code
-                FROM grandeurs_referentiel gr
-                JOIN grandeurs_metier gm ON gm.grandeur_code = gr.code
-                WHERE gr.strategie_calcul = 'calculee_volee'
-                """
-            )
-        ).scalars()
-    )
-    assert codes == _CALCULEE_VOLEE_MATERIALISEES_CONNUES

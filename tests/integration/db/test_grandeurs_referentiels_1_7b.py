@@ -1,4 +1,4 @@
-"""Tests d'integration des 3 grandeurs F1 calculee_volee.
+"""Tests d'integration des 3 grandeurs F1 referentielles (stockees, migration 126).
 
 Couvre les cas de test :
 
@@ -111,8 +111,8 @@ def test_ti55_grandeurs_referentiel_post_d39(db_session: Session) -> None:
     - ecart_relatif_referentiel deja seedee, restee active
     - vent_2m, vent_10m, albedo_surface actives (migration 047)
     - ghi_exceedance active (migration 049, F1 calculee_volee)
-    - ecart_relatif_dni_cams active (migration 072, F1 calculee_volee,
-      ecart DNI NASA vs CAMS)
+    - ecart_relatif_dni_cams active (migration 072, F1 stockee depuis la
+      migration 126, ecart DNI NASA vs CAMS)
     Total : 22 + 3 + 1 + 1 = 27 entrees.
     """
     rows = db_session.execute(

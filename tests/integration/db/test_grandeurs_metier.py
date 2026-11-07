@@ -877,7 +877,7 @@ def test_ti32_kt_ingere_dans_mesures_ressource(db_session: Session) -> None:
 def test_ti39_decompte_cumule_grandeurs_kuma_hors_indicateur(db_session: Session) -> None:
     """Decompte cumule `grandeurs_metier` a 1 578 lignes
     sur la fenetre recente 2021-2025, en excluant `indicateur_qualite_donnees`
-    et les 3 grandeurs F1 calculee_volee
+    et les 3 grandeurs F1 referentielles
     (ecart_relatif_referentiel, rang_referentiel_temporel,
     rang_referentiel_spatial).
 
@@ -891,7 +891,8 @@ def test_ti39_decompte_cumule_grandeurs_kuma_hors_indicateur(db_session: Session
     - 5 grandeurs Kuma calcul_derive stockee (1 578 lignes,
       fenetre 2021-2025)
     - 1 meta-grandeur indicateur_qualite_donnees (36 lignes).
-    - 3 grandeurs F1 calculee_volee (936 lignes : 216 + 360 + 360).
+    - 3 grandeurs F1 referentielles (936 lignes : 216 + 360 + 360),
+      stockees elles aussi (migration 126) mais exclues de ce decompte.
     - 3 grandeurs Kuma climato calcul_derive (6 240 lignes : hep 1991-2020,
       productible_specifique_theorique 1991-2020, fraction_diffuse 2001-2020,
       migration 051).

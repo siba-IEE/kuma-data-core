@@ -45,7 +45,7 @@ def _distribution(db_session: Session, source: str, grandeur: str) -> dict[int, 
 
 
 def test_grandeur_declaree(db_session: Session) -> None:
-    """La grandeur est cataloguee F1 calculee_volee, unite sans_unite."""
+    """La grandeur est cataloguee F1 stockee (migration 126), unite sans_unite."""
     row = db_session.execute(
         text(
             """
@@ -59,7 +59,7 @@ def test_grandeur_declaree(db_session: Session) -> None:
     ).first()
     assert row is not None
     assert row.famille == "F1"
-    assert row.strategie_calcul == "calculee_volee"
+    assert row.strategie_calcul == "stockee"
     assert row.unite == "sans_unite"
 
 

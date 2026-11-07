@@ -3,7 +3,7 @@
 > Note méthodologique sur la sélection des atlas
 > comparatifs et les méthodologies de comparaison. Elle fixe les
 > références scientifiques mobilisables pour les 3 grandeurs F1
-> `calculee_volee` (`ecart_relatif_referentiel`, `rang_referentiel`
+> `stockee` (`ecart_relatif_referentiel`, `rang_referentiel`
 > temporel et spatial). Périmètre : 6 villes pilotes guinéennes
 > (Conakry-Kaloum, Kindia, Mamou, Labé, Kankan, Nzérékoré).
 
@@ -42,7 +42,8 @@ mesures `mesures_ressource` et 1 614 dérivées `grandeurs_metier` au
 moment de la rédaction. La source primaire de l'ingestion est NASA
 POWER NRT (climat-quality 2021-2024, NRT pour 2025).
 
-Trois grandeurs F1 `calculee_volee`
+Trois grandeurs F1 `stockee` (calculées par Kuma, matérialisées dans
+`grandeurs_metier`)
 nécessitent l'introduction d'au moins une seconde source de référence
 pour exister sémantiquement : `ecart_relatif_referentiel`,
 `rang_referentiel` temporel et `rang_referentiel` spatial. Elles marquent
