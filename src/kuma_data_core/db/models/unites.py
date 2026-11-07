@@ -1,9 +1,9 @@
 """Modèle SQLAlchemy de la table ``unites``.
 
 Référentiel des unités de mesure utilisées dans Kuma Data Core. Couvre
-30 grandeurs physiques, économiques et environnementales, avec 153
-unités validées contre plus de 20 organismes normatifs internationaux
-(BIPM, AIE, ONU, NIST, IUPAC, IEC, DIN, ISO, IPCC, IRENA, UNECE, etc.).
+des grandeurs physiques, économiques et environnementales ; chaque unité
+est rattachée à ses références normatives (BIPM, AIE, ONU, NIST, IUPAC,
+IEC, DIN, ISO, IPCC, IRENA, UNECE, etc.).
 
 Choix de précision (``Numeric(60, 30)`` pour les facteurs/décalages) :
 -----------------------------------------------------------------------
@@ -139,14 +139,14 @@ class Unite(Base):
         ),
         Index("idx_unites_code_unite_si", "code_unite_si"),
         # Commentaire de table porté sur l'ORM pour cohérence avec la
-        # migration 002 (alembic check). Le dict doit être le dernier
+        # migration 125 (alembic check). Le dict doit être le dernier
         # élément du tuple __table_args__ selon la convention SQLAlchemy.
         {
             "comment": (
-                "Référentiel des unités de mesure de Kuma Data Core. "
-                "153 unités sur 30 grandeurs, validées contre 20+ organismes "
-                "normatifs internationaux (BIPM, AIE, ONU, NIST, IUPAC, IEC, "
-                "DIN, ISO, IPCC, IRENA, UNECE, etc.)."
+                "Référentiel des unités de mesure de Kuma Data Core. Chaque unité porte "
+                "son symbole, la grandeur qu'elle mesure, son système, sa conversion vers "
+                "l'unité de référence de cette grandeur (facteur et décalage) et ses "
+                "références normatives (BIPM, ISO, IEC, NIST, etc.)."
             ),
         },
     )

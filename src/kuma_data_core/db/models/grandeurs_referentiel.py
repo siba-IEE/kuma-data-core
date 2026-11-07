@@ -1,7 +1,6 @@
 """Modèle SQLAlchemy de la table ``grandeurs_referentiel``.
 
-Référentiel statique des grandeurs solaires/climatiques traduites par
-Kuma (15 entrées prévues). Cité en aval par
+Référentiel des grandeurs traduites par Kuma. Cité en aval par
 ``series_metadonnees.grandeur_code``,
 ``mesures_ressource.grandeur_code`` et
 ``grandeurs_metier.grandeur_code`` via la clé naturelle
@@ -155,14 +154,14 @@ class GrandeurReferentiel(Base):
         ),
         Index("idx_grandeurs_referentiel_actif", "actif"),
         # Commentaire de table porté sur l'ORM pour cohérence avec la
-        # migration 007 (alembic check). Le dict doit être le dernier
+        # migration 125 (alembic check). Le dict doit être le dernier
         # élément du tuple __table_args__ selon la convention SQLAlchemy.
         {
             "comment": (
-                "Referentiel des grandeurs Kuma. 15 grandeurs traduites (1-1C) + "
-                "5 grandeurs brutes ingerees (1-2b) = 20 entrees post-1-2b. "
-                "Le lieu de stockage physique d'une F1 stockee est determine par "
-                "series_metadonnees.methode_collecte (cadrage Q7 v1.3)."
+                "Referentiel des grandeurs de Kuma Data Core : une entree par grandeur, "
+                "identifiee par un code stable, avec son libelle, son unite, sa famille "
+                "(F1 ou F2) et sa strategie de calcul. Cite par series_metadonnees et "
+                "grandeurs_metier via la cle naturelle code."
             ),
         },
     )

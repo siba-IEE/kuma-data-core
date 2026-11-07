@@ -74,6 +74,19 @@ le projet suit le versionnement sémantique.
   donnent toujours B. La constante
   `ghi_exceedance.NIVEAU_CONFIANCE_DERIVE` est retirée.
 
+### Corrigé
+
+- Commentaires des tables `unites` et `grandeurs_referentiel`, publiés dans
+  l'édition : les décomptes figés devenus faux et le vocabulaire de chantier
+  sont remplacés par une description sans décompte. La phrase qui
+  rattachait le lieu de stockage à `methode_collecte` est retirée : il
+  dépend de la source et de la granularité de la série (migration 125).
+- Source `cams_eac4` : la notice ne décrivait que les PM2.5 et PM10 ; elle
+  couvre désormais l'épaisseur optique des aérosols à 550 nm et l'ozone de
+  surface, sans vocabulaire de chantier, la période étant portée par chaque
+  série. Les métadonnées listent les variables, conversions et périodes
+  par famille de variables (migration 125).
+
 ## 1.0.0
 
 Première version publique de Kuma Data Core.
