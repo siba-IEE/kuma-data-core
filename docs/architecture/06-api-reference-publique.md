@@ -900,6 +900,8 @@ se découvre via l'API. Chaque grandeur expose :
 | `kt` | Indice de clarté (`ghi` / extraterrestre) | sans dimension | NASA POWER | `ALLSKY_KT` | CERES SYN1deg + FLASHFlux |
 | `precipitation` | Précipitation | mm/jour | NASA POWER | | MERRA-2 GMAO |
 | `pm2_5`, `pm10` | Particules fines / grossières | µg/m³ | CAMS EAC4 | | réanalyse atmosphérique |
+| `aod_550`, `aod_poussiere_550` | Épaisseur optique des aérosols / des poussières à 550 nm | sans dimension | CAMS EAC4 | | réanalyse atmosphérique |
+| `ozone_surface`, `ozone_surface_diurne` | Ozone de surface (journée entière / 09-12-15 h UTC) | ppb | CAMS EAC4 | | réanalyse atmosphérique, niveau modèle le plus bas |
 | `vent`, `albedo_surface` | Vent, albédo de surface | m/s, sans dimension | NASA POWER | | modèle satellitaire / réanalyse |
 
 Les grandeurs radiatives et météo de base sont ingérées en journalier.
@@ -908,6 +910,8 @@ Le GHI est aussi disponible en mensuel : climatologie NASA POWER
 mensuel). Le DNI dispose d'un cross-check CAMS. Une partie du substrat
 existe en horaire (voir 4.5). Les grandeurs et fenêtres exactes présentes
 se lisent via `/v1/series`.
+Les grandeurs AOD et ozone EAC4 sont déclarées au référentiel ; leurs
+séries arriveront avec la capture des données.
 
 ### 4.2 Grandeurs F1 stockée calculées par Kuma (couche éditoriale)
 

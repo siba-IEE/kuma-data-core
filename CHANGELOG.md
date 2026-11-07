@@ -7,6 +7,14 @@ le projet suit le versionnement sémantique.
 
 ### Ajouté
 
+- Référentiel : unité `partie_par_milliard` (ppb, fraction molaire) et
+  quatre grandeurs brutes de la réanalyse CAMS EAC4 : `aod_550`,
+  `aod_poussiere_550` (épaisseurs optiques à 550 nm, sans dimension),
+  `ozone_surface` et `ozone_surface_diurne` (ozone au niveau modèle le plus
+  bas, en ppb, moyenne journalière ou des pas de 09, 12 et 15 h UTC).
+  Déclarations seules (migration 122) : les séries arriveront avec la
+  capture des données, préparée hors ligne par
+  `scripts/preparer_seed_cams_eac4_aod_ozone.py`.
 - Confiance : règle de propagation P (ADR-0008). Une valeur calculée prend le
   niveau effectif le plus bas des valeurs dont elle est tirée, sur sa seule
   période, sans dépasser le plafond de sa méthode : B par défaut, A pour un

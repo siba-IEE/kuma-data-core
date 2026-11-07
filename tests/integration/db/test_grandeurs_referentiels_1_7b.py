@@ -150,8 +150,10 @@ def test_ti55_grandeurs_referentiel_post_d39(db_session: Session) -> None:
     # + 1 (taux_salissure_proxy, migration 082)
     # + 1 (pr_realiste, PR realiste saisonnier migration 083) = 33
     # + 1 (degenerescence_pixel, densification migration 090) = 34.
+    # + 4 (aod_550, aod_poussiere_550, ozone_surface, ozone_surface_diurne,
+    # migration 122) = 38.
     total = db_session.execute(text("SELECT COUNT(*) FROM grandeurs_referentiel")).scalar_one()
-    assert total == 34
+    assert total == 38
 
 
 def test_ti56_18_series_calculees_1_7b(db_session: Session) -> None:
