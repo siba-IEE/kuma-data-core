@@ -182,7 +182,7 @@ GRANDEURS: tuple[str, ...] = (
 # Fourchettes de plausibilite : hors fourchette -> echec explicite, aucune borne.
 # Ozone : 500 ppb est un seuil anti-corruption (unite ou variable erronee), pas
 # un seuil de realisme. EAC4 produit en fin de saison seche (fevrier-mai) des pics
-# locaux de surface jusqu'a ~300 ppb en moyenne diurne (2004-2019), probables
+# locaux de surface jusqu'a ~300 ppb en moyenne diurne (2006-2019), probables
 # artefacts du modele lies aux feux ; ils sont conserves tels quels (fidelite a la
 # source) et signales dans la note publique des series, pas retires ici.
 FOURCHETTES: dict[str, tuple[float, float]] = {

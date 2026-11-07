@@ -223,7 +223,10 @@ def test_ti50_exception_conakry_appliquee(db_session: Session) -> None:
 # capture gapless) = 4 512 038.
 # + 815 796 (migration 120 : GHI/DHI/DNI CAMS journalier 2004-2025 aux 34 points,
 # 7 998 jours par serie, seed dedie hors NASA_DAILY_PAYLOADS) = 5 327 834.
-_MESURES_NON_NASA_DAILY: int = 5327834
+# + 1 088 680 (migrations 123-124 : AOD 550 nm et ozone de surface EAC4 journaliers
+# 2004-2025 aux 34 points, 136 series x 8 005 jours, seed dedie hors
+# NASA_DAILY_PAYLOADS) = 6 416 514.
+_MESURES_NON_NASA_DAILY: int = 6416514
 
 
 def _mesures_ressource_attendu() -> int:
@@ -399,7 +402,9 @@ def test_ti52_decomptes_cumules_post_1_7a(db_session: Session) -> None:
     # + 238 (profondeur CAMS migrations 119-120 : 136 series mensuelles GHI/DHI +
     # 102 series journalieres GHI/DHI/DNI ; brutes hors famille referentielle) = 2 518.
     # + 68 (profondeur SARAH-3 migration 121 : 34 points x 2 grandeurs) = 2 586.
-    assert n_series_hors_calculees_ref == 2586
+    # + 136 (EAC4 migrations 123-124 : AOD 550 nm et ozone de surface, 34 points x
+    # 4 grandeurs ; brutes hors famille referentielle) = 2 722.
+    assert n_series_hors_calculees_ref == 2722
     # Exact : NASA daily offline (seed) -> deterministe.
     # Attendu derive du seed (cf. _mesures_ressource_attendu, = 162 876).
     assert n_ressource == _mesures_ressource_attendu()

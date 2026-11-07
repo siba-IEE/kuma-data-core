@@ -910,8 +910,11 @@ Le GHI est aussi disponible en mensuel : climatologie NASA POWER
 mensuel). Le DNI dispose d'un cross-check CAMS. Une partie du substrat
 existe en horaire (voir 4.5). Les grandeurs et fenêtres exactes présentes
 se lisent via `/v1/series`.
-Les grandeurs AOD et ozone EAC4 sont déclarées au référentiel ; leurs
-séries arriveront avec la capture des données.
+Les grandeurs AOD et ozone EAC4 sont disponibles en journalier aux 34
+points, du 1er février 2004 au 31 décembre 2025 (valeur au point de grille
+le plus proche, grille de 0,75°). L'ozone EAC4 présente en fin de saison
+sèche des pics probablement artificiels, signalés dans la note publique
+de chaque série et conservés tels que fournis par la source.
 
 ### 4.2 Grandeurs F1 stockée calculées par Kuma (couche éditoriale)
 

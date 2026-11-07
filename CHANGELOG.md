@@ -7,14 +7,28 @@ le projet suit le versionnement sémantique.
 
 ### Ajouté
 
+- Séries CAMS EAC4 journalières du 1er février 2004 au 31 décembre 2025 aux
+  34 points (6 villes pilotes et 28 communes chef-lieu), 8 005 jours par
+  série, confiance B : épaisseur optique des aérosols à 550 nm, totale
+  (`aod_550`) et due aux poussières (`aod_poussiere_550`), 68 séries
+  (migration 123) ; ozone de surface en ppb, moyenne journalière
+  (`ozone_surface`) et diurne des pas de 09, 12 et 15 h UTC
+  (`ozone_surface_diurne`), 68 séries (migration 124). 1 088 680 mesures au
+  total, ingérées hors ligne depuis les compagnons
+  `cams_eac4_aod_ozone_journalier_seed_data_*` ; source `cams_eac4`
+  réutilisée. Valeur au point de grille le plus proche (0,75°, environ
+  80 km). La note publique de l'ozone signale les pics de fin de saison
+  sèche (février à mai, 2006 à 2019 ; environ 300 ppb en moyenne diurne,
+  jusqu'à 340 ppb, contre une médiane de 27 ppb), artefacts probables du
+  modèle liés aux feux de végétation, conservés tels que fournis.
 - Référentiel : unité `partie_par_milliard` (ppb, fraction molaire) et
   quatre grandeurs brutes de la réanalyse CAMS EAC4 : `aod_550`,
   `aod_poussiere_550` (épaisseurs optiques à 550 nm, sans dimension),
   `ozone_surface` et `ozone_surface_diurne` (ozone au niveau modèle le plus
   bas, en ppb, moyenne journalière ou des pas de 09, 12 et 15 h UTC).
-  Déclarations seules (migration 122) : les séries arriveront avec la
-  capture des données, préparée hors ligne par
-  `scripts/preparer_seed_cams_eac4_aod_ozone.py`.
+  Déclarations (migration 122) ; les séries, capturées hors ligne par
+  `scripts/preparer_seed_cams_eac4_aod_ozone.py`, suivent en migrations
+  123 et 124.
 - Confiance : règle de propagation P (ADR-0008). Une valeur calculée prend le
   niveau effectif le plus bas des valeurs dont elle est tirée, sur sa seule
   période, sans dépasser le plafond de sa méthode : B par défaut, A pour un

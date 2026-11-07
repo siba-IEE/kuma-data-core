@@ -2,7 +2,8 @@
 
 Verifie l'etat apres ``alembic upgrade head`` (migration 122) : unite
 ``partie_par_milliard``, quatre grandeurs brutes F1 stockees avec la bonne unite,
-aucune serie encore (elles arriveront avec la capture des donnees), et des
+leurs seules series etant celles de la reanalyse EAC4 (migrations 123-124, detail
+dans ``test_eac4_aod_ozone_series.py``), et des
 libelles / descriptions publiables (tables dumpees telles quelles dans l'edition
 publique) sans vocabulaire de chantier.
 
@@ -64,12 +65,17 @@ def test_quatre_grandeurs_declarees(db_session: Session) -> None:
         assert r.unite == _UNITE_PAR_GRANDEUR[r.code], r.code
 
 
-def test_aucune_serie_encore(db_session: Session) -> None:
-    n = db_session.execute(
-        text("SELECT COUNT(*) FROM series_metadonnees WHERE grandeur_code = ANY(:codes)"),
+def test_series_uniquement_eac4(db_session: Session) -> None:
+    """Les 136 series de ces grandeurs viennent de la reanalyse EAC4 (migrations 123-124)."""
+    rows = db_session.execute(
+        text(
+            "SELECT s.code AS source, COUNT(*) AS n FROM series_metadonnees sm "
+            "JOIN sources s ON s.id = sm.source_id "
+            "WHERE sm.grandeur_code = ANY(:codes) GROUP BY s.code"
+        ),
         {"codes": list(_UNITE_PAR_GRANDEUR)},
-    ).scalar_one()
-    assert int(n) == 0
+    ).all()
+    assert [(r.source, int(r.n)) for r in rows] == [("cams_eac4", 136)]
 
 
 def test_textes_publics_sans_jargon(db_session: Session) -> None:
