@@ -20,31 +20,13 @@ période.
 
 from __future__ import annotations
 
-import re
-
 import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-pytestmark = pytest.mark.integration
+from tests.integration.db._jargon import JARGON_INTERNE as _JARGON_INTERNE
 
-# Motifs de vocabulaire de chantier interdits dans une note publique.
-_JARGON_INTERNE = re.compile(
-    r"(PR\s*#\d+"
-    r"|spec\s+\d+-\d+"
-    r"|[ée]tape\s+\d+"
-    r"|cohorte"
-    r"|vague\s+\d"
-    r"|volet\s+[A-Z]\b"
-    r"|\blot\s+[A-Z0-9]"
-    r"|\bD-\d+\b"
-    r"|\bTI-\d+\b"
-    r"|\bL-[A-Z]+-\d+\b"
-    r"|note\s+(méthodologique\s+)?amont"
-    r"|densification\s+pr[ée]fectorale"
-    r"|parit[ée]\s+[AB]\d)",
-    re.IGNORECASE,
-)
+pytestmark = pytest.mark.integration
 
 
 def test_ti_np1_note_publique_renseignee_partout(db_session: Session) -> None:

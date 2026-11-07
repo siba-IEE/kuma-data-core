@@ -121,11 +121,11 @@ class Source(Base):
         String(50),
         nullable=False,
         comment=(
-            "11 valeurs autorisees : rapport, article_scientifique, texte_legal, "
+            "Type de la source : rapport, article_scientifique, texte_legal, "
             "communique, page_web, base_donnees, livre, chapitre_livre, these, "
-            "norme_technique (10 valeurs documentaires externes initiales, "
-            "migration 004) + auteur_kuma (couche editoriale interne Kuma, "
-            "introduite en 1-5D-i pour la source synthetique kuma_calculs)."
+            "norme_technique (sources documentaires externes) ou auteur_kuma "
+            "(couche editoriale interne Kuma, source synthetique kuma_calculs). "
+            "Valeurs autorisees : contrainte CHECK ck_sources_type_source_valide."
         ),
     )
 
@@ -162,8 +162,10 @@ class Source(Base):
         String(20),
         nullable=True,
         comment=(
-            "Qualification editoriale Kuma (3 niveaux). "
-            "Voir docs/architecture/04-api.md pour le mapping editorial complet."
+            "Qualification editoriale Kuma de la fiabilite de la source : haute, "
+            "moyenne ou faible, NULL si non qualifiee (contrainte CHECK "
+            "ck_sources_fiabilite_valide). Entre dans la derivation du niveau de "
+            "confiance des mesures (regles R1 et R3)."
         ),
     )
     langue: Mapped[str | None] = mapped_column(

@@ -103,7 +103,7 @@ class ReferentielCalage(Base):
             "comment": (
                 "Referentiel de calage satellite/sol : biais saisonniers "
                 "mesures aux stations de reference, publies avec provenance "
-                "et portee de transport (ADR-0004)."
+                "et portee de transport."
             ),
         },
     )

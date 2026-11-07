@@ -166,8 +166,9 @@ class MesureRessourceHoraire(Base):
         ),
         {
             "comment": (
-                "Mesures horaires ingerees depuis sources externes (NASA POWER, "
-                "Vague 3). Pendant horaire de mesures_ressource (journalier) et "
+                "Mesures horaires ingerees depuis sources externes (la source de "
+                "chaque serie est portee par series_metadonnees). Pendant "
+                "horaire de mesures_ressource (journalier) et "
                 "mesures_ressource_mensuelles (mensuel). instant_mesure en "
                 "TIMESTAMPTZ (UTC) pour le controle qualite horaire (position "
                 "solaire sans ambiguite de fuseau). Versioning temporel par "

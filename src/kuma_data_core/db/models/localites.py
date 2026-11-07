@@ -96,9 +96,10 @@ class Localite(Base):
         String(50),
         nullable=False,
         comment=(
-            "7 valeurs : continent, region_supranationale, pays, region_administrative, "
-            "prefecture, commune, site. prefecture ajoutee en densification prefectorale "
-            "Etape 1 (niveau pays > region > prefecture > commune)."
+            "Type de localite : continent, region_supranationale, pays, "
+            "region_administrative, prefecture, commune ou site (contrainte CHECK "
+            "ck_localites_type_valide). Niveaux administratifs : pays > region > "
+            "prefecture > commune."
         ),
     )
     parent_id: Mapped[int | None] = mapped_column(

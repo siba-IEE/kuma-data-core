@@ -54,10 +54,7 @@ class GrandeurReferentiel(Base):
         String(80),
         nullable=False,
         unique=True,
-        comment=(
-            "Cle naturelle metier (ASCII pur, snake_case, citee par les FK aval). "
-            "Cf. 01-naming.md section Codes metier des referentiels."
-        ),
+        comment=("Cle naturelle metier (ASCII pur, snake_case, citee par les FK aval)."),
     )
 
     # === Métier ===

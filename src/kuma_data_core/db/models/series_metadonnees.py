@@ -109,8 +109,7 @@ class SerieMetadonnees(Base):
             "Discriminant de granularite temporelle pour le routage "
             "table-cible (journalier/mensuel/horaire). NULL pour les series "
             "kuma_calculs (routees par source vers grandeurs_metier ; "
-            "temporalite portee par grandeurs_metier.periode_type). "
-            "Resout D-36 (Vague 3 lot 1)."
+            "temporalite portee par grandeurs_metier.periode_type)."
         ),
     )
 
@@ -119,9 +118,11 @@ class SerieMetadonnees(Base):
         String(40),
         nullable=True,
         comment=(
-            "Methode dominante de collecte de la serie. "
-            "Liste indicative des 6 valeurs en spec mecaniques-transverses sec. 6.4. "
-            "CHECK formel pose en 1-2b."
+            "Methode dominante de collecte de la serie : mesure_directe, "
+            "modele_satellitaire, interpolation_geographique, "
+            "extrapolation_temporelle, calcul_derive ou expertise_humaine. "
+            "Valeurs autorisees : contrainte CHECK "
+            "ck_series_metadonnees_methode_collecte_valide (NULL admis)."
         ),
     )
     methode_collecte_doc: Mapped[str | None] = mapped_column(Text, nullable=True)

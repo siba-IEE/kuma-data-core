@@ -96,6 +96,21 @@ le projet suit le versionnement sémantique.
   mensuel du GHI entre NASA POWER et PVGIS-SARAH-3, et non un écart à la
   moyenne des sites Kuma (migration 126). Référence de l'API (§4.2, §4.3,
   §5.6) et notes méthodologiques alignées.
+- Textes publiés dans l'édition : vocabulaire de chantier interne retiré
+  (renvois de PR, de specs, d'étapes, de vagues, de lots, de dettes et de
+  caveats internes, codes d'étape, ADR, renvois vers des documents du dépôt)
+  des descriptions de dix grandeurs (`albedo_surface`, `ghi`, `pm10`,
+  `pm2_5`, `pr_realiste`, `precipitation`, `rang_referentiel`,
+  `taux_salissure_proxy`, `vent_10m`, `vent_2m`) et des commentaires du
+  catalogue (six tables, dix colonnes, deux vues, la fonction
+  `valider_hierarchie_localites`) ; un identifiant de caveat est remplacé
+  par son contenu. Erreurs de fond corrigées au passage : `vent_2m`
+  n'alimente pas la correction thermique (modèle NOCT, sans vent) ;
+  `albedo_surface` n'alimente que le POA bifacial ; `periode_type` admet
+  aussi `statique` ; les tables mensuelle et horaire ne portent pas que les
+  sources qu'elles nommaient ; le commentaire de `sources.fiabilite`
+  renvoyait à un document inexistant. Les décomptes figés sont remplacés par
+  le nom de la contrainte CHECK qui fait foi (migration 127).
 
 ## 1.0.0
 

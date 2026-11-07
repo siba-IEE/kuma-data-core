@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from kuma_data_core.db.models.grandeurs_referentiel import GrandeurReferentiel
 from kuma_data_core.db.models.unites import Unite
-from tests.integration.db.test_note_publique_series import _JARGON_INTERNE
+from tests.integration.db._jargon import JARGON_INTERNE as _JARGON_INTERNE
 
 pytestmark = pytest.mark.integration
 

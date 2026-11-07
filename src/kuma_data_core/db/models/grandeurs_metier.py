@@ -93,10 +93,11 @@ class GrandeurMetier(Base):
         String(8),
         nullable=False,
         comment=(
-            "Granularite temporelle de l'agregation : annuel (1 ligne par "
-            "(localite, grandeur, annee, version_formule), mois NULL) ou "
-            "mensuel (12 lignes par annee, mois 1-12). Cf. cadrage phase 1 "
-            "Q2 et Q6."
+            "Granularite temporelle de l'agregation : annuel (une valeur par "
+            "annee, mois NULL), mensuel (une valeur par annee et par mois, mois "
+            "de 1 a 12) ou statique (une valeur pour toute la plage annee_debut "
+            "a annee_fin, mois NULL). Valeurs autorisees : contrainte CHECK "
+            "ck_grandeurs_metier_periode_type_valide."
         ),
     )
     annee_debut: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -111,7 +112,7 @@ class GrandeurMetier(Base):
             "grandeurs_referentiel.version_formule_actuelle pour la grandeur "
             "concernee. Incremente lors de toute revision methodologique. "
             "Inclus dans l'EXCLUDE pour permettre la coexistence v1/v2 "
-            "apres upgrade (spec 1-5 sec. 3.2, cadrage Q7)."
+            "apres upgrade."
         ),
     )
 
@@ -152,9 +153,9 @@ class GrandeurMetier(Base):
         nullable=False,
         comment=(
             "Niveau de confiance derive automatiquement par la couche service "
-            "a partir des regles R1-R4 (cf. spec mecaniques-transverses-phase-1 "
-            "sec. 6.4). A = haute, B = moyenne, C = basse. Recalcule a chaque "
-            "modification de methode_collecte ou source_id de la serie."
+            "a partir des regles R1-R4. A = haute, B = moyenne, C = basse. "
+            "Recalcule a chaque modification de methode_collecte ou source_id "
+            "de la serie."
         ),
     )
     niveau_confiance_override: Mapped[str | None] = mapped_column(
@@ -272,9 +273,9 @@ class GrandeurMetier(Base):
         # migration 023 (alembic check).
         {
             "comment": (
-                "Grandeurs metier calculees par Kuma a partir des mesures brutes. "
-                "Premiere table de fabrication editoriale phase 1 (etape 1-5). "
-                "F1 stockee, agregations annuelles et mensuelles. Versioning "
+                "Grandeurs metier calculees par Kuma a partir des mesures brutes : "
+                "grandeurs F1 de strategie stockee, agregees par annee, par mois "
+                "ou sur une plage statique (cf. periode_type). Versioning "
                 "temporel par (valide_du, valide_au) + EXCLUDE BTree-GiST sur "
                 "identite metier etendue avec version_formule. Statut editorial "
                 "et niveau de confiance derive/override par couche service editoriale."

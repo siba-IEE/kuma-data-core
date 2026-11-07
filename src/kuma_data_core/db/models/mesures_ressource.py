@@ -100,9 +100,9 @@ class MesureRessource(Base):
         nullable=False,
         comment=(
             "Niveau de confiance derive automatiquement par la couche service "
-            "a partir des regles R1-R4 (cf. spec mecaniques-transverses-phase-1 "
-            "sec. 6.4). A = haute, B = moyenne, C = basse. Recalcule a chaque "
-            "modification de methode_collecte ou source_id de la serie."
+            "a partir des regles R1-R4. A = haute, B = moyenne, C = basse. "
+            "Recalcule a chaque modification de methode_collecte ou source_id "
+            "de la serie."
         ),
     )
     niveau_confiance_override: Mapped[str | None] = mapped_column(
@@ -196,9 +196,9 @@ class MesureRessource(Base):
         # migration 014 (alembic check).
         {
             "comment": (
-                "Mesures journalieres ingerees depuis sources externes. Premiere "
-                "table metier operationnelle phase 1. Versioning temporel par "
-                "(valide_du, valide_au) + EXCLUDE BTree-GiST sur identite metier "
+                "Mesures journalieres ingerees depuis sources externes. Versioning "
+                "temporel par (valide_du, valide_au) + EXCLUDE BTree-GiST sur "
+                "identite metier "
                 "(serie_id, instant_mesure). Statut editorial et niveau de "
                 "confiance derive/override par couche service editoriale."
             ),

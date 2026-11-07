@@ -82,8 +82,9 @@ class CalageCouverture(Base):
             "comment": (
                 "Domaine de couverture des referentiels de calage : "
                 "localites qualifiees pour le transport, avec justification. "
-                "Pilote la couverture geographique des consommateurs "
-                "(ADR-0004, couverture progressive)."
+                "Pilote la couverture geographique des consommateurs, limitee "
+                "aux localites ou le transport du calage est defendable et "
+                "etendue progressivement."
             ),
         },
     )

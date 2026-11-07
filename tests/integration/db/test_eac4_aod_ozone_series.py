@@ -28,7 +28,7 @@ from kuma_data_core.db.seeds.cams_eac4_aod_ozone_journalier_seed_data import (
     iter_captures_cams_eac4_aod_ozone,
 )
 from kuma_data_core.editorial.niveaux_confiance import calculer_niveau_confiance_derive
-from tests.integration.db.test_note_publique_series import _JARGON_INTERNE
+from tests.integration.db._jargon import JARGON_INTERNE as _JARGON_INTERNE
 
 pytestmark = pytest.mark.integration
 
