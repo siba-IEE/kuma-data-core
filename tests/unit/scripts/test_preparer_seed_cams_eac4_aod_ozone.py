@@ -215,7 +215,9 @@ def test_hors_fourchette_echoue_sans_borne() -> None:
     with pytest.raises(RuntimeError, match="hors"):
         verifier_fourchette("ozone_surface", "gin_kankan", {"2021-01-01": -0.1})
     with pytest.raises(RuntimeError, match="hors"):
-        verifier_fourchette("ozone_surface_diurne", "gin_kankan", {"2021-01-01": 200.5})
+        verifier_fourchette("ozone_surface_diurne", "gin_kankan", {"2021-01-01": 500.5})
+    # Pic EAC4 de fin de saison seche (~300 ppb) : conserve, pas d'echec.
+    verifier_fourchette("ozone_surface_diurne", "gin_boffa", {"2006-05-01": 298.0})
 
 
 # === Perimetre et requetes =================================================
