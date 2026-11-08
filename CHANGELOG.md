@@ -270,6 +270,17 @@ le projet suit le versionnement sémantique.
   fraction diffuse (calculée sur 2001 et après, toujours au plus 1) ne sont
   pas concernées. Correction en place, sans nouvelle version (migration
   134).
+- Données publiées dans l'édition : le libellé de `ecart_relatif_referentiel`,
+  « Écart relatif au référentiel Kuma », laissait croire à un écart à une
+  référence propre à Kuma ; la grandeur est l'écart mensuel du GHI entre
+  NASA POWER et PVGIS-SARAH-3, `(NASA POWER - SARAH-3) / SARAH-3 × 100`. Elle
+  s'intitule « Écart relatif GHI NASA POWER vs SARAH-3 ». Celui de
+  `ecart_relatif_dni_cams`, « Ecart relatif DNI CAMS vs NASA POWER », citait
+  les sources dans l'ordre inverse de la formule
+  `(NASA POWER - CAMS) / CAMS × 100` ; il devient « Écart relatif DNI NASA
+  POWER vs CAMS ». Les notes publiques des 74 séries qui reprennent le
+  libellé (34 GHI, 40 DNI) le reprennent à l'identique. Codes inchangés.
+  Correction en place, sans nouvelle version (migration 135).
 - API : codes internes (dettes « D-n », caveats « L-XXX-n », ADR, codes
   d'étape, convention de nommage « D-32 ») retirés du document OpenAPI
   (descriptions de routes, de schémas et de champs) et des avertissements
