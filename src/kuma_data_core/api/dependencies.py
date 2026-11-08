@@ -1,14 +1,4 @@
-"""Dépendances FastAPI partagées.
-
-Contient l'authentification par clé API (``verifier_cle_api``) et
-l'alias ``CleApiValidee`` à utiliser dans les signatures des endpoints
-authentifiés.
-
-Les clés valides sont lues depuis la configuration
-(``Settings.api_cle_solar_bridge``, ``Settings.api_cle_admin``). Une
-migration ultérieure est prévue vers une table ``cles_api`` avec
-révocation et rotation.
-"""
+"""Dépendances FastAPI partagées : authentification par clé API (Bearer)."""
 
 from __future__ import annotations
 
@@ -23,17 +13,10 @@ from kuma_data_core.core.config import get_settings
 
 
 def _cles_valides() -> set[str]:
-    """Retourne l'ensemble des clés API valides depuis la configuration.
-
-    Appelée à chaque requête authentifiée. Avec 1-2 clés en mémoire,
-    le coût est négligeable. À optimiser via cache TTL le jour où la
-    lecture se fera depuis une table.
-    """
+    """Clés d'environnement valides, relues à chaque requête (coût négligeable)."""
     settings = get_settings()
     cles: set[str] = set()
-    # Une clé vide (variable d'environnement présente mais vide) n'est
-    # jamais une clé valide : sans ce filtre, un Bearer vide matcherait
-    # via compare_digest("", "") et authentifierait un anonyme.
+    # Sans ce filtre, un Bearer vide égalerait une variable vide (compare_digest("", "")).
     for secret in (settings.api_cle_solar_bridge, settings.api_cle_admin):
         if secret is not None and secret.get_secret_value():
             cles.add(secret.get_secret_value())
@@ -43,16 +26,9 @@ def _cles_valides() -> set[str]:
 def verifier_cle_api(
     authorization: Annotated[str | None, Header()] = None,
 ) -> str:
-    """Valide la clé API présente dans le header ``Authorization``.
+    """Renvoie la clé si valide, sinon 401 (``AUTH_HEADER_MANQUANT``, ``AUTH_*_INVALIDE``).
 
-    Retourne la clé brute si valide. Lève une ``ExceptionKuma`` sinon,
-    avec un code parmi ``AUTH_HEADER_MANQUANT``, ``AUTH_FORMAT_INVALIDE``
-    ou ``AUTH_CLE_INVALIDE`` (toujours statut HTTP 401).
-
-    La comparaison utilise ``secrets.compare_digest`` (constant-time) sur
-    chaque clé valide, pour ne pas exposer de canal temporel même si les
-    clés (256 bits d'entropie via ``secrets.token_urlsafe(32)``) rendent
-    le risque théorique.
+    ``compare_digest`` évite tout canal temporel sur les clés d'environnement.
     """
     if authorization is None:
         raise ExceptionKuma(
@@ -70,8 +46,7 @@ def verifier_cle_api(
 
     cle_fournie = authorization.removeprefix("Bearer ").strip()
 
-    # Une clé vide ne peut jamais être valide : refus avant toute
-    # comparaison (défense redondante avec le filtrage de _cles_valides).
+    # Redondant avec _cles_valides, par défense en profondeur.
     if not cle_fournie:
         raise ExceptionKuma(
             code=CodeErreur.AUTH_CLE_INVALIDE,
@@ -82,17 +57,13 @@ def verifier_cle_api(
     if any(secrets.compare_digest(cle_fournie, cle) for cle in _cles_valides()):
         return cle_fournie
 
-    # Clés self-service (WP6) : sur un déploiement avec base de service,
-    # l'empreinte de la clé est cherchée dans ``cles_api``. La comparaison
-    # se fait sur le hash SHA-256 (index unique) : pas de canal temporel
-    # exploitable, la valeur comparée n'est pas le secret.
+    # Clés self-service : recherche par empreinte SHA-256 ; la valeur comparée
+    # n'est pas le secret, donc pas de canal temporel exploitable.
     settings = get_settings()
     if settings.meta_db is not None:
         quota = _quota_cle_self_service(cle_fournie)
         if quota is not None:
-            # Quota journalier (WP7) : appliqué aux seules clés
-            # self-service, en fenêtre fixe UTC, fail-open si Redis
-            # est injoignable (cf. services/quotas.py).
+            # Fenêtre fixe UTC, fail-open si Redis est injoignable.
             if settings.rate_limiting_actif:
                 from kuma_data_core.services.cles import hacher_cle
                 from kuma_data_core.services.quotas import consommer_quota
@@ -114,13 +85,10 @@ def verifier_cle_api(
 
 
 def _quota_cle_self_service(cle: str) -> int | None:
-    """Quota de la clé self-service active, ``None`` si inconnue/révoquée.
+    """Quota de la clé self-service active, ``None`` si inconnue ou révoquée.
 
-    Ouverture paresseuse d'une session sur la base de service : ce
-    chemin n'est atteint que si les clés d'environnement n'ont pas
-    reconnu le Bearer, et seulement quand ``META_DB`` est configurée.
-    Toute erreur d'infrastructure vaut refus (401), pas 500 : une base
-    de service injoignable ne doit pas transformer l'auth en oracle.
+    Une panne de la base de service vaut 401, pas 500 : l'authentification ne
+    doit pas devenir un oracle.
     """
     from sqlalchemy.orm import Session
 
@@ -137,13 +105,7 @@ def _quota_cle_self_service(cle: str) -> int | None:
 def verifier_cle_admin(
     authorization: Annotated[str | None, Header()] = None,
 ) -> str:
-    """Valide que le Bearer est **la clé administrateur** (et elle seule).
-
-    Réservé aux opérations d'administration (révocation de clés, WP6).
-    Une clé valide mais non-admin reçoit le même 401
-    ``AUTH_CLE_INVALIDE`` qu'une clé inconnue : pas d'oracle sur le
-    statut d'une clé.
-    """
+    """Exige la clé administrateur ; une autre clé valide reçoit le même 401 qu'une clé inconnue."""
     cle = verifier_cle_api(authorization)
     settings = get_settings()
     if settings.api_cle_admin is not None and secrets.compare_digest(
@@ -158,16 +120,7 @@ def verifier_cle_admin(
 
 
 CleApiValidee = Annotated[str, Depends(verifier_cle_api)]
-"""Type-alias à utiliser dans les signatures des endpoints authentifiés.
-
-Exemple :
-
-.. code-block:: python
-
-    @routeur.get("/secret")
-    def endpoint_protege(_cle: CleApiValidee) -> dict[str, str]:
-        return {"ok": "ok"}
-"""
+"""À mettre dans la signature d'un endpoint authentifié (``_cle: CleApiValidee``)."""
 
 CleAdminValidee = Annotated[str, Depends(verifier_cle_admin)]
 """Type-alias pour les endpoints réservés à la clé administrateur."""

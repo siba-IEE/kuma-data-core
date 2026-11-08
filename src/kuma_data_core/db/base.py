@@ -1,17 +1,7 @@
-"""Classe ``Base`` SQLAlchemy déclarative pour Kuma Data Core.
+"""``Base`` déclarative et convention de nommage (``pk_``, ``fk_``, ``uq_``, ``ck_``, ``idx_``).
 
-La ``MetaData`` est associée à une convention de nommage stricte qui
-préfixe systématiquement les contraintes et index générés par
-SQLAlchemy. Cette convention rend les noms reproductibles entre
-``Base.metadata.create_all()`` et les migrations Alembic, et reflète
-les règles consignées dans ``docs/conventions/01-naming.md``.
-
-Préfixes :
-  * ``pk_`` - clé primaire
-  * ``fk_`` - clé étrangère
-  * ``uq_`` - contrainte d'unicité
-  * ``ck_`` - contrainte de vérification (CHECK)
-  * ``idx_`` - index
+Des noms reproductibles entre ``create_all()`` et les migrations Alembic
+(``docs/conventions/01-naming.md``).
 """
 
 from __future__ import annotations

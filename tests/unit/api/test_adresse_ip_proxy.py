@@ -1,4 +1,4 @@
-"""Tests de l'extraction d'IP cliente derrière proxy (ADR-0003 D2, WP8).
+"""Tests de l'extraction d'IP cliente derrière proxy (ADR-0003).
 
 La limite d'émission de clés par IP ne vaut que si l'IP est fiable.
 Derrière un reverse proxy, ``request.client.host`` est l'IP du proxy ;

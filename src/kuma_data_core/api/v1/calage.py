@@ -1,14 +1,8 @@
-"""Endpoint ``GET /api/v1/calage/{localite}/{grandeur}``.
+"""Endpoint ``GET /v1/calage/{localite}/{grandeur}`` : calage satellite/sol (ADR-0004).
 
-Sert le référentiel de calage satellite/sol d'une station de
-référence (ADR-0004) : biais saisonniers mesurés, facteur dérivé
-k = 1/(1+biais), provenance et portée de transport. Donnée
-éditoriale de l'édition, lue telle quelle - aucun calcul amont,
-conforme au profil édition figée (D6).
-
-Codes localité complets (``gin_kankan``), alignés sur ``/v1/series``
-et ``/v1/localites``. 404 ``RESSOURCE_INTROUVABLE`` si aucun
-référentiel actif n'existe pour le couple.
+Biais saisonniers mesurés, facteur ``k = 1/(1+biais)``, provenance et
+portée, servis tels quels, sans calcul (compatible édition figée). 404
+``RESSOURCE_INTROUVABLE`` sans référentiel actif.
 """
 
 from __future__ import annotations

@@ -1,13 +1,12 @@
-"""Tests unitaires de la configuration d'édition publique (ADR-0003, WP4).
+"""Tests unitaires de la configuration d'édition publique (ADR-0003).
 
 Tests sans DB, sur ``Settings`` directement. Couvrent :
 
 1. Défauts : ``edition_db`` absent (la référence est servie),
-   ``edition_figee`` désactivé - le comportement local/dev est inchangé
-   par le chantier édition.
-2. Repointage D1 : ``edition_db`` défini prime sur ``postgres_db`` dans
+   ``edition_figee`` désactivé.
+2. Repointage : ``edition_db`` défini prime sur ``postgres_db`` dans
    ``database_url``.
-3. QO-3 tranchée : ``api_environnement`` accepte ``integration`` (doc
+3. ``api_environnement`` accepte ``integration`` (doc
    de référence §health) et refuse l'ancien ``staging``.
 """
 

@@ -1,33 +1,16 @@
-"""Calcul `humidex` (indice de confort thermique) - couche service.
+"""Humidex stocké (moyennes annuelles et mensuelles) depuis T2M et RH2M journaliers.
 
-Module orchestrant le calcul de la grandeur Kuma F1 stockée `humidex` à
-partir de deux séries amont (T2M température + RH2M humidité relative,
-ingestion NASA POWER) et l'insertion dans `grandeurs_metier`.
-
-Définition :
-
-Formule **Masterton & Richardson 1979** avec constantes Magnus standard :
+Masterton & Richardson 1979, constantes de Magnus :
 
 ```
 e = (RH/100) * 6.112 * exp((17.67 * T) / (T + 243.5))
 H = T + (5/9) * (e - 10)
 ```
 
-Avec T en °C, RH en %, e en hPa, H en °C apparents. Référence numérique :
-T = 30 °C, RH = 70 % → H ≈ 40.96 °C apparents.
-
-Agrégat annuel + mensuel : **moyenne arithmétique** des humidex journaliers.
-
-Stockage en `grandeurs_metier` : seul `humidex_moyen` annuel + mensuel
-est persisté (78 lignes attendues pour 6 villes * 5 ans). Le compteur
-`nb_jours_inconfort_modere` (seuil 40 °C) est calculé en interne et
-retourné dans `CalculHumidexResultat` pour traçabilité, mais **pas
-persisté** : sa persistance nécessiterait une nouvelle entrée du
-référentiel `humidex_nb_jours_inconfort` (à acter ultérieurement si
-besoin éditorial).
-
-Politique de complétude stricte 100% jours civils v1 sur l'intersection
-T2M ∩ RH2M.
+T en °C, RH en %, e en hPa, H en °C apparents ; T = 30 °C, RH = 70 % donne
+H ≈ 40.96. Complétude stricte sur les jours où T2M et RH2M existent tous
+deux. Le nombre de jours d'inconfort est renvoyé mais pas stocké (pas
+d'entrée de référentiel pour lui).
 """
 
 from __future__ import annotations
@@ -57,9 +40,7 @@ GRANDEUR_CODE_T2M: str = "t2m"
 GRANDEUR_CODE_RH2M: str = "rh2m"
 
 SEUIL_INCONFORT_MODERE_DEFAUT: float = 40.0
-"""Seuil humidex (°C apparents) au-delà duquel l'inconfort thermique est
-qualifié de modéré (référence Environnement Canada). Un seul seuil pour
-simplicité v1."""
+"""Seuil d'inconfort modéré (°C apparents, Environnement Canada)."""
 
 
 class CalculHumidexResultat(TypedDict):
@@ -92,22 +73,7 @@ class _AgregationResultat(TypedDict):
 
 
 def _calculer_humidex_journalier(t_celsius: float, rh_pourcent: float) -> float:
-    """Humidex journalier selon Masterton & Richardson 1979.
-
-    Constantes Magnus standard pour la pression de vapeur saturante :
-    17.67 et 243.5 (sources : Masterton & Richardson 1979, Environnement
-    Canada).
-
-    Args:
-        t_celsius : température journalière moyenne en °C.
-        rh_pourcent : humidité relative journalière moyenne en %.
-
-    Returns:
-        Humidex en °C apparents.
-
-    Example:
-        >>> _calculer_humidex_journalier(30.0, 70.0)  # ≈ 40.96
-    """
+    """Humidex (°C apparents) d'une T moyenne (°C) et d'une RH moyenne (%)."""
     e_hpa = (rh_pourcent / 100.0) * 6.112 * math.exp((17.67 * t_celsius) / (t_celsius + 243.5))
     return t_celsius + (5.0 / 9.0) * (e_hpa - 10.0)
 
@@ -117,26 +83,11 @@ def _agreger_humidex(
     mesures_rh2m: Sequence[tuple[date, float]],
     seuil_inconfort_modere: float = SEUIL_INCONFORT_MODERE_DEFAUT,
 ) -> _AgregationResultat:
-    """Agrège T2M et RH2M journaliers en humidex moyen annuel + mensuel.
-
-    Fonction pure (aucune I/O). Politique de complétude stricte 100%
-    jours civils v1 sur l'intersection T2M ∩ RH2M.
-
-    Args:
-        mesures_t2m : séquence de (date, T en °C).
-        mesures_rh2m : séquence de (date, RH en %).
-        seuil_inconfort_modere : seuil °C apparents pour le compteur
-            `nb_jours_inconfort_modere`. Défaut 40.0.
-
-    Returns:
-        :class:`_AgregationResultat` avec humidex moyen annuel + mensuel
-        et compteur nb_jours_inconfort par année.
-    """
+    """Humidex moyens annuels et mensuels complets, et jours d'inconfort par année."""
     t2m_par_date: dict[date, float] = dict(mesures_t2m)
     rh2m_par_date: dict[date, float] = dict(mesures_rh2m)
     dates_communes = sorted(set(t2m_par_date) & set(rh2m_par_date))
 
-    # Pré-calcul humidex journalier sur les dates communes
     humidex_par_date: dict[date, float] = {
         d: _calculer_humidex_journalier(t2m_par_date[d], rh2m_par_date[d]) for d in dates_communes
     }
@@ -203,30 +154,11 @@ def calculer_et_inserer_humidex(
     version_formule: int = 1,
     seuil_inconfort_modere: float = SEUIL_INCONFORT_MODERE_DEFAUT,
 ) -> CalculHumidexResultat:
-    """Calcule humidex moyen annuel + mensuel et insère dans grandeurs_metier.
+    """Calcule et insère l'humidex moyen annuel et mensuel d'une localité.
 
-    Lit T2M et RH2M de la même localité, calcule humidex journalier via
-    Masterton & Richardson 1979, agrège en moyenne annuelle/mensuelle
-    selon politique de complétude 100% jours civils, et bulk-insère dans
-    `grandeurs_metier`. Le compteur `nb_jours_inconfort_modere` est
-    calculé en interne et retourné dans le résultat (non persisté).
-
-    Args:
-        session : session SQLAlchemy active.
-        code_serie_humidex : code naturel de la série cible.
-        code_serie_t2m_amont : code naturel de la série T2M amont.
-        code_serie_rh2m_amont : code naturel de la série RH2M amont.
-        version_formule : version de formule en cours (défaut 1).
-        seuil_inconfort_modere : seuil °C apparents (défaut 40.0).
-
-    Returns:
-        :class:`CalculHumidexResultat` avec compteur
-        `nb_jours_inconfort_modere_par_annee` pour log.
-
-    Raises:
-        RuntimeError : voir docstrings symétriques du module fraction_diffuse.
+    ``RuntimeError`` si une série est introuvable ou non conforme, si les
+    localités diffèrent, ou si ``version_formule`` diffère du référentiel.
     """
-    # 1. Vérifier alignement version_formule
     version_actuelle = session.execute(
         text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
         {"code": GRANDEUR_CODE_HUMIDEX},
@@ -241,7 +173,6 @@ def calculer_et_inserer_humidex(
             f"version_formule_actuelle pour {GRANDEUR_CODE_HUMIDEX!r}={int(version_actuelle)}."
         )
 
-    # 2. Récupérer le contexte de la série cible (humidex)
     serie_cible = session.execute(
         text(
             """
@@ -273,7 +204,6 @@ def calculer_et_inserer_humidex(
             f"{serie_cible.methode_collecte!r}, attendu {METHODE_COLLECTE_HUMIDEX!r}."
         )
 
-    # 3. Récupérer les deux séries amont
     serie_t2m = session.execute(
         text(
             "SELECT id AS serie_id, localite_id, grandeur_code "
@@ -304,7 +234,6 @@ def calculer_et_inserer_humidex(
             f"{serie_rh2m.grandeur_code!r}, attendu {GRANDEUR_CODE_RH2M!r}."
         )
 
-    # 4. Cohérence localite
     localite_cible = int(serie_cible.localite_id)
     if int(serie_t2m.localite_id) != localite_cible:
         raise RuntimeError(
@@ -319,7 +248,6 @@ def calculer_et_inserer_humidex(
             f"{code_serie_rh2m_amont!r} localite_id={int(serie_rh2m.localite_id)}."
         )
 
-    # 5. Lecture mesures T2M et RH2M
     rows_t2m = session.execute(
         text(
             """
@@ -349,17 +277,14 @@ def calculer_et_inserer_humidex(
         (r.instant_mesure, float(r.valeur)) for r in rows_rh2m
     ]
 
-    # Niveaux effectifs des entrées, pour la règle de propagation P
     niveaux = NiveauxEntrees()
     for r in (*rows_t2m, *rows_rh2m):
         niveaux.ajouter(r.instant_mesure, r.niveau)
 
-    # 6. Agrégation pure
     agregation = _agreger_humidex(
         mesures_t2m, mesures_rh2m, seuil_inconfort_modere=seuil_inconfort_modere
     )
 
-    # 7. Bulk INSERT
     toutes_lignes: list[_LigneAgregeeHumidex] = list(agregation["lignes_annuelles"]) + list(
         agregation["lignes_mensuelles"]
     )

@@ -142,7 +142,7 @@ def test_ti63_filtre_source_kuma_calculs(client: TestClient, headers_auth: dict[
       + rang_referentiel_temporel aux 28 communes, fenetre recente, 3 series/commune ;
       l'indicateur ne cree pas de serie). Total : 302 + 84 = 386.
     - 28 series ecart_relatif_dni_cams climato 2004-2020 aux 28 communes
-      (migration 118, residu du cadrage densification). Total : 386 + 28 = 414.
+      (migration 118). Total : 386 + 28 = 414.
     """
     response = client.get(
         "/v1/series?source=kuma_calculs&limit=450",

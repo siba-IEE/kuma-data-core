@@ -1,28 +1,9 @@
-"""Ingestion horaire NASA POWER -> ``mesures_ressource_horaires``.
+"""Ingestion NASA POWER horaire vers ``mesures_ressource_horaires`` (instants UTC).
 
-Pendant horaire de ``nasa_power_monthly.py`` et
-``nasa_power_daily.py``. Consomme le client
-``kuma_data_core.external.nasa_power.fetch_hourly``, transforme la
-réponse en lignes ``mesures_ressource_horaires`` (instant ``TIMESTAMPTZ``
-UTC), et fait l'INSERT bulk via SQLAlchemy.
-
-Les données ingérées sont en statut **``brut``** (défaut SQL) : le
-contrôle qualité algorithmique fera passer les lignes valides en
-``valide_auto``.
-
-La fonction principale ``ingerer_serie_horaire`` boucle **par année**
-(un appel ``fetch_hourly`` par année civile, borne <= 366 jours validée
-empiriquement) et parse les clés de la réponse au format ``YYYYMMDDHH``
-en ``datetime`` UTC tz-aware.
-
-``ingerer_series_horaires_groupe`` est le pendant horaire de
-``ingerer_series_daily_groupe`` : un appel multi-paramètres par année
-civile pour N grandeurs d'une même localité (facteur N d'économie
-réseau), INSERT découpé en lots de 20 000 lignes (borne mémoire).
-
-Variable d'environnement ``KUMA_SKIP_NASA_POWER_INGESTION`` (truthy)
-court-circuite l'appel réseau et retourne 0 lignes insérées, comme les
-fonctions journalière et mensuelle. Utile pour CI sans accès réseau.
+Un appel par année civile (l'API accepte au plus 366 jours). Les lignes
+arrivent en statut ``brut`` ; le contrôle qualité les passe en
+``valide_auto``. ``KUMA_SKIP_NASA_POWER_INGESTION`` (truthy) court-circuite
+le réseau.
 """
 
 from __future__ import annotations
@@ -44,31 +25,17 @@ from kuma_data_core.external.nasa_power import (
 )
 
 _VARIABLE_ENV_SKIP_INGESTION: str = "KUMA_SKIP_NASA_POWER_INGESTION"
-"""Variable d'environnement court-circuitant l'ingestion réseau.
-
-Truthy values : '1', 'true', 'yes' (case-insensitive). Partage la même
-variable que les modules daily / monthly : un seul switch désactive
-toutes les ingestions NASA POWER (cohérence opérationnelle CI).
-"""
+"""Truthy : '1', 'true', 'yes'. Même variable que journalier et mensuel."""
 
 
 def _ingestion_doit_etre_skip() -> bool:
-    """Lit la variable d'environnement et retourne True si elle est truthy."""
+    """Vrai si ``KUMA_SKIP_NASA_POWER_INGESTION`` est truthy."""
     valeur = os.environ.get(_VARIABLE_ENV_SKIP_INGESTION, "").strip().lower()
     return valeur in ("1", "true", "yes")
 
 
 def _parse_cle_yyyymmddhh(cle: str) -> datetime | None:
-    """Parse une clé horaire NASA POWER ``YYYYMMDDHH`` en ``datetime`` UTC.
-
-    Retourne un ``datetime`` tz-aware (fuseau UTC, cohérent avec
-    ``time_standard='UTC'`` passé à ``fetch_hourly``) si la clé est
-    valide, ``None`` sinon (clé non conforme).
-
-    Args:
-        cle : chaîne de 10 caractères (ex. ``"2021060112"`` =
-            2021-06-01 12:00 UTC).
-    """
+    """``YYYYMMDDHH`` -> ``datetime`` UTC tz-aware, ``None`` si la clé est non conforme."""
     if len(cle) != 10 or not cle.isdigit():
         return None
     annee = int(cle[0:4])
@@ -91,39 +58,11 @@ def ingerer_serie_horaire(
     annee_fin: int,
     httpx_client: httpx.Client | None = None,
 ) -> int:
-    """Ingère les mesures horaires d'une série NASA POWER dans ``mesures_ressource_horaires``.
+    """Ingère une série horaire ; renvoie le nombre de lignes insérées.
 
-    Boucle par année civile (un appel ``fetch_hourly`` par année, borne
-    <= 366 jours), filtre les sentinelles ``-999.0``, et insère les
-    lignes en statut ``brut`` (défaut SQL).
-
-    Args:
-        session : session SQLAlchemy active. La fonction add+flush mais
-            ne commit pas (responsabilité du caller).
-        code_serie : code naturel de la série dans ``series_metadonnees``
-            (ex. ``gin_conakry_ghi_nasa_power_2021_2023``). Doit exister
-            sinon ``RuntimeError``.
-        parametre_nasa : code NASA POWER à ingérer (ex.
-            ``ALLSKY_SFC_SW_DWN`` pour GHI).
-        latitude, longitude : coordonnées WGS84 du point de mesure.
-        annee_debut, annee_fin : bornes inclusives (années civiles).
-        httpx_client : client httpx injectable pour tests via
-            ``httpx.MockTransport``. Si None, un client temporaire est
-            créé par ``fetch_hourly``.
-
-    Returns:
-        Nombre de lignes effectivement insérées dans
-        ``mesures_ressource_horaires`` (heures retournées par NASA POWER
-        moins les sentinelles ``-999.0`` filtrées et les clés non
-        conformes). Retourne ``0`` si ``KUMA_SKIP_NASA_POWER_INGESTION``
-        est truthy (court-circuit sans appel réseau ni INSERT).
-
-    Raises:
-        RuntimeError : si ``code_serie`` n'existe pas dans
-            ``series_metadonnees`` ou si le ``parametre_nasa`` est absent
-            d'un payload.
-        kuma_data_core.exceptions.NasaPowerError : remontée du client si
-            un appel API échoue.
+    Sentinelles ``-999.0`` et clés non conformes écartées, flush sans commit.
+    0 si court-circuité ; ``RuntimeError`` si la série est inconnue ou le
+    paramètre absent d'un payload.
     """
     if _ingestion_doit_etre_skip():
         return 0
@@ -205,12 +144,7 @@ def ingerer_serie_horaire(
 
 
 _TAILLE_LOT_INSERT: int = 20_000
-"""Taille des lots d'INSERT du chemin groupé.
-
-Une année x 9 grandeurs approche 79 000 lignes : le découpage borne la
-mémoire et la taille des statements (patron des seeds massifs, migration
-107).
-"""
+"""Une année x 9 grandeurs approche 79 000 lignes : les lots bornent mémoire et requêtes."""
 
 
 def ingerer_series_horaires_groupe(
@@ -224,42 +158,12 @@ def ingerer_series_horaires_groupe(
     annee_fin: int,
     httpx_client: httpx.Client | None = None,
 ) -> dict[str, int]:
-    """Ingère N séries horaires d'une même localité en 1 appel NASA POWER par année.
+    """Ingère N séries d'une localité, un appel multi-paramètres par année.
 
-    Pendant horaire de ``ingerer_series_daily_groupe`` : un appel
-    multi-paramètres par année civile au lieu d'un appel par (grandeur,
-    année) — économie réseau d'un facteur N, et cohérence transactionnelle
-    (même release amont CERES SYN1deg + MERRA-2 pour les N grandeurs d'une
-    année). Filtrage des sentinelles ``-999.0`` (les grandeurs diurnes
-    comme kt n'ont pas de lignes nocturnes) et des clés non conformes,
-    statut ``brut`` (défaut SQL).
-
-    Args:
-        session : session SQLAlchemy active. La fonction add+flush mais ne
-            commit pas (responsabilité du caller).
-        codes_series : codes naturels des séries dans ``series_metadonnees``.
-            Toutes doivent exister sinon ``RuntimeError`` ; toutes doivent
-            partager la même localité (latitude/longitude fournies en
-            arguments, pas re-déduites de la série).
-        mapping_grandeur_parametre_nasa : pour chaque grandeur_code d'une
-            série, le paramètre NASA POWER correspondant.
-        latitude, longitude : coordonnées WGS84 du point unique de mesure.
-        annee_debut, annee_fin : bornes inclusives (années civiles, un
-            appel par année comme ``ingerer_serie_horaire``).
-        httpx_client : client httpx injectable pour tests via
-            ``httpx.MockTransport``.
-
-    Returns:
-        dict[str, int] : pour chaque code de série en entrée, le nombre de
-        lignes insérées dans ``mesures_ressource_horaires``. Dict vide
-        ``{}`` si ``KUMA_SKIP_NASA_POWER_INGESTION`` est truthy
-        (court-circuit sans appel réseau ni INSERT).
-
-    Raises:
-        RuntimeError : série absente de ``series_metadonnees``, grandeur
-            sans entrée dans le mapping, ou paramètre absent d'un payload.
-        kuma_data_core.exceptions.NasaPowerError : remontée du client si
-            un appel API échoue.
+    Même release CERES/MERRA-2 pour toutes les grandeurs d'une année. Les
+    grandeurs diurnes (kt) n'ont pas de ligne nocturne (sentinelles). Renvoie
+    ``{code_serie: nb_lignes}`` (``{}`` si court-circuité) ; ``RuntimeError``
+    comme :func:`ingerer_series_daily_groupe`.
     """
     if _ingestion_doit_etre_skip():
         return {}

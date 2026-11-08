@@ -1,59 +1,16 @@
-"""Modèle SQLAlchemy de la table ``localites``.
+"""Modèle de la table ``localites`` : hiérarchie géographique à 7 niveaux.
 
-Référentiel des localités géographiques utilisées dans Kuma Data Core.
-Couvre 7 niveaux hiérarchiques : ``continent``, ``region_supranationale``,
-``pays``, ``region_administrative``, ``prefecture``, ``commune``, ``site``.
+``continent`` > ``region_supranationale`` > ``pays`` >
+``region_administrative`` > ``prefecture`` > ``commune`` > ``site``. Un
+continent n'a pas de parent (CHECK) ; la matrice parent-enfant est vérifiée
+par le trigger ``valider_hierarchie_localites()``, sans détection de cycle.
+Exception : une commune de Conakry a pour parent une région (pas de
+préfecture).
 
-Validation hiérarchique en deux étages
---------------------------------------
-* Migration 003 : CHECK simple - un ``continent`` ne peut pas avoir de
-  ``parent_id`` (c'est une racine de la hiérarchie).
-* Migration 084 (densification préfectorale) : trigger PL/pgSQL
-  ``valider_hierarchie_localites()`` (``BEFORE INSERT OR UPDATE``,
-  ``SECURITY DEFINER``) qui valide la matrice parent-enfant des 7 types.
-  **Clôture la dette du trigger 007** (resté « à venir » de la 003 à la 083).
-  Détection de boucles ``WITH RECURSIVE`` non incluse (différée : le seed
-  n'a pas de cycle). Exception Conakry : ``commune.parent`` peut être une
-  ``region_administrative`` (région spéciale sans préfecture).
-
-Convention pour le ``code``
----------------------------
-* ``continent`` / ``region_supranationale`` : slug ASCII
-  (``afrique``, ``uemoa``).
-* ``pays`` : code ISO 3166-1 alpha-3 en minuscule
-  (``gin``, ``sen``, ``mar``).
-* ``region_administrative`` / ``commune`` / ``site`` :
-  ``<code_pays>_<slug>`` (``gin_conakry``, ``gin_souapiti``,
-  ``mar_noor_ouarzazate``).
-
-La cohérence stricte ``code='gin'`` ⇒ ``pays_iso3='GIN'`` n'est pas
-contrainte en base (regex CHECK insuffisamment expressive). Validation
-applicative.
-
-Internationalisation différée
-------------------------------
-Le champ ``nom_local`` du brief v1 a été supprimé : Kuma publie
-exclusivement en français. Si une i18n devient nécessaire, une table
-``localites_traductions`` sera créée.
-
-Précision géographique
-----------------------
-``Numeric(11, 8)`` pour la latitude, ``Numeric(12, 8)`` pour la
-longitude. 8 décimales = 1 mm de précision à l'équateur (niveau
-levés professionnels). Bornes vérifiées par CHECK
-(``[-90, 90]`` / ``[-180, 180]``).
-
-Format ``fuseau_horaire``
--------------------------
-IANA Time Zone Database (par exemple ``Africa/Conakry``,
-``Africa/Casablanca``, ``Europe/Paris``). Pas de CHECK : la liste
-IANA évolue.
-
-FK ``localite_id`` sur ``contributeurs``
-----------------------------------------
-Reportée en migration 005 dédiée. Une migration = un changement
-logique : la 003 crée la table ``localites``, la 005 ajoutera la FK
-inverse.
+``code`` : slug ASCII pour continent et zone supranationale, ISO 3166-1
+alpha-3 en minuscules pour un pays, ``<code_pays>_<slug>`` en dessous.
+Coordonnées en ``Numeric`` à 8 décimales (1 mm à l'équateur) ;
+``fuseau_horaire`` IANA sans CHECK, car la liste évolue.
 """
 
 from __future__ import annotations
@@ -107,7 +64,7 @@ class Localite(Base):
         ForeignKey("localites.id", name="fk_localites_parent_id__localites"),
         nullable=True,
     )
-    # Code administratif officiel externe (decret guineen 2025, 3 lettres, ex. CKY).
+    # Code administratif officiel (décret guinéen de 2025, 3 lettres, ex. CKY).
     code_administratif_national: Mapped[str | None] = mapped_column(
         String(8),
         nullable=True,

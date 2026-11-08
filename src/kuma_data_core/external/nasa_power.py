@@ -1,34 +1,8 @@
-"""Client HTTP synchrone pour l'API NASA POWER.
+"""Client HTTP synchrone de l'API NASA POWER (daily, hourly, monthly).
 
-Fournit les fonctions ``fetch_daily`` et ``fetch_hourly`` retournant
-des objets pydantic typés ``NasaPowerResponse``. Conçu pour réutilisation
-directe par l'ingestion persistée Conakry GHI - pas de réécriture
-prévue.
-
-Endpoints utilisés (communauté Renewable Energy par défaut) :
-
-- Daily  : https://power.larc.nasa.gov/api/temporal/daily/point
-- Hourly : https://power.larc.nasa.gov/api/temporal/hourly/point
-
-Limites paramètres NASA POWER (cf. doc officielle) : 20 max sur daily,
-15 max sur hourly. Pas de garde-fou applicatif - sera ajouté
-si besoin observé.
-
-Sentinelle valeur manquante : ``-999.0`` (header NASA POWER
-``fill_value``). Le client expose cette valeur comme constante
-``SENTINELLE_VALEUR_MANQUANTE`` et fournit l'utilitaire
-``calculer_indice_ciel_clair`` qui la respecte.
-
-Gestion d'erreurs (cf. ``kuma_data_core.exceptions``) :
-
-- HTTP non-2xx : ``NasaPowerHttpError`` (+ sous-type
-  ``NasaPowerRateLimitError`` pour 429).
-- Payload JSON invalide ou non conforme schéma pydantic :
-  ``NasaPowerPayloadError``.
-- Timeout réseau : ``NasaPowerTimeoutError``.
-
-Le comportement rate limit a été observé empiriquement ; aucun retry
-automatique n'est implémenté dans ce client.
+La documentation NASA POWER limite une requête à 20 paramètres en daily et 15
+en hourly ; aucun garde-fou applicatif. Valeur manquante : ``-999.0``
+(``fill_value``). Erreurs : sous-types de ``NasaPowerError``.
 """
 
 from __future__ import annotations
@@ -57,24 +31,16 @@ from kuma_data_core.external._http_retry import (
 # === Constantes ============================================================
 
 BASE_URL: str = "https://power.larc.nasa.gov/api/temporal"
-"""URL racine de l'API NASA POWER. Les endpoints daily/hourly/monthly
-sont des sous-chemins."""
+"""URL racine ; daily/hourly/monthly en sont des sous-chemins."""
 
 DEFAULT_COMMUNITY: str = "RE"
-"""Communauté NASA POWER par défaut : Renewable Energy. Cohérent avec
-le focus solaire."""
+"""Communauté Renewable Energy, adaptée au solaire."""
 
 DEFAULT_TIMEOUT: float = 30.0
 """Timeout HTTP par défaut (latence P95 < 30 s)."""
 
 SENTINELLE_VALEUR_MANQUANTE: float = -999.0
-"""Valeur sentinelle utilisée par NASA POWER pour les données
-manquantes (cf. header ``fill_value`` de la réponse)."""
-
-# Note : le retry vit canoniquement dans ``external/_http_retry.py`` ;
-# le wrapper local ``_executer_get_avec_retry`` ci-dessous ne fait que
-# le brancher au défaut ``RETRY_BACKOFF_SECONDES``.
-
+"""Valeur manquante NASA POWER (``fill_value`` de l'en-tête)."""
 
 # === Schémas pydantic ======================================================
 
@@ -96,11 +62,7 @@ class NasaPowerApiInfo(_ConfigPermissive, BaseModel):
 
 
 class NasaPowerHeader(_ConfigPermissive, BaseModel):
-    """En-tête de la réponse NASA POWER.
-
-    ``sources`` peut être absent ou de structure variable selon
-    l'endpoint ; typage souple en ``list[str | dict[str, str]] | None``.
-    """
+    """En-tête de la réponse ; ``sources`` varie selon l'endpoint."""
 
     title: str
     api: NasaPowerApiInfo
@@ -117,15 +79,7 @@ class NasaPowerParameterMeta(_ConfigPermissive, BaseModel):
 
 
 class NasaPowerProperties(_ConfigPermissive, BaseModel):
-    """Conteneur des valeurs temporelles par paramètre.
-
-    Structure : ``{nom_parametre: {clé_date: valeur}}``.
-
-    - Clé date pour daily : ``"YYYYMMDD"``.
-    - Clé date pour hourly : ``"YYYYMMDDHH"``.
-    - Valeurs : ``float``. La sentinelle ``-999.0`` indique une donnée
-      manquante (cf. ``SENTINELLE_VALEUR_MANQUANTE``).
-    """
+    """``{parametre: {cle_date: valeur}}``, clé ``YYYYMMDD`` (daily) ou ``YYYYMMDDHH`` (hourly)."""
 
     parameter: dict[str, dict[str, float]]
 
@@ -150,20 +104,11 @@ def calculer_indice_ciel_clair(
     *,
     sentinelle: float = SENTINELLE_VALEUR_MANQUANTE,
 ) -> float | None:
-    """Calcule l'indice de ciel clair ``K = ALLSKY / CLRSKY``.
+    """Indice de ciel clair ``K = ALLSKY / CLRSKY`` (1 = ciel clair, 0 = masquage total).
 
-    Indicateur de masquage nuageux : ``K = 1`` indique un ciel
-    parfaitement clair, ``K = 0`` un masquage total. Sert également
-    à détecter les anomalies ``GHI > CLRSKY`` (valeurs ``K > 1``,
-    physiquement attendues uniquement en cas d'effet d'enhancement
-    nuageux ponctuel et marginal).
-
-    Retourne ``None`` si l'une des deux valeurs est la sentinelle
-    NASA POWER ou si ``clrsky`` est nul (évite la division par zéro).
-
-    Ne confond pas avec l'indice de clarté ``Kt = GHI / I_0_extraterrestre``
-    qui est demandable directement à NASA POWER via le paramètre
-    ``ALLSKY_KT``.
+    ``None`` sur sentinelle ou ``clrsky`` nul. ``K > 1`` signale un effet
+    d'enhancement nuageux ou une anomalie. À ne pas confondre avec l'indice de
+    clarté ``Kt = GHI / I0`` (paramètre ``ALLSKY_KT``).
     """
     if allsky == sentinelle or clrsky == sentinelle:
         return None
@@ -215,11 +160,9 @@ def _executer_get_avec_retry(
     timeout: float,
     retry_backoff_seconds: tuple[float, ...] = RETRY_BACKOFF_SECONDES,
 ) -> httpx.Response:
-    """Wrapper local sur le helper partagé ``external/_http_retry.py``.
+    """Branche le retry partagé et convertit ses erreurs en erreurs NASA POWER.
 
-    Rôle : rétrocompat tests (les tests T-RETRY importent ce symbole depuis
-    ce module) + conversion aux frontières des exceptions génériques
-    ``HttpRetry*Error`` vers les exceptions NASA POWER via ``raise ... from exc``.
+    Gardé ici car les tests de retry importent ce symbole depuis ce module.
     """
     try:
         return executer_get_avec_retry(
@@ -255,18 +198,7 @@ def _fetch_payload_brut(
     timeout: float,
     httpx_client: httpx.Client | None,
 ) -> dict[str, Any]:
-    """Exécute l'appel HTTP NASA POWER (avec retry) et renvoie le payload JSON brut.
-
-    Étape « fetch » isolée de :func:`_executer_requete` (avant parsing Pydantic),
-    pour exposer le payload **brut** au seam offline-seed
-    (cf. ``ingestion/nasa_power_daily.py``). Le parsing est délégué à
-    :func:`parser_reponse_nasa`.
-
-    Délègue le retry sur 429/503/timeout à ``_executer_get_avec_retry``, puis
-    gère localement les statuts >= 400 terminaux et le ``response.json()``.
-
-    Toutes les erreurs sont remontées comme sous-types de ``NasaPowerError``.
-    """
+    """Appel HTTP avec retry, renvoie le payload JSON brut (avant validation Pydantic)."""
     client_fourni = httpx_client is not None
     client = httpx_client if httpx_client is not None else httpx.Client(timeout=timeout)
     try:
@@ -300,13 +232,7 @@ def _fetch_payload_brut(
 
 
 def parser_reponse_nasa(payload: dict[str, Any], *, url: str = "") -> NasaPowerResponse:
-    """Parse et valide un payload JSON NASA POWER en ``NasaPowerResponse``.
-
-    Étape « parse » isolée de :func:`_executer_requete`, appliquée uniformément
-    aux deux chemins du seam offline-seed (live et seed committé) : le payload
-    committé est re-validé par le **même schéma** → fidélité, parsing exercé en
-    CI. ``url`` n'est utilisé que pour enrichir le message d'erreur.
-    """
+    """Valide un payload en ``NasaPowerResponse``, que le payload vienne du réseau ou d'un seed."""
     try:
         return NasaPowerResponse.model_validate(payload)
     except ValidationError as exc:
@@ -324,14 +250,7 @@ def _executer_requete(
     timeout: float,
     httpx_client: httpx.Client | None,
 ) -> NasaPowerResponse:
-    """Exécute l'appel HTTP avec retry transverse puis parse la réponse.
-
-    Composition de :func:`_fetch_payload_brut` (fetch) et
-    :func:`parser_reponse_nasa` (parse). Comportement inchangé : si
-    ``httpx_client`` est fourni (tests ``httpx.MockTransport``), il est utilisé
-    tel quel ; sinon un client temporaire est créé. Toutes les erreurs sont
-    remontées comme sous-types de ``NasaPowerError``.
-    """
+    """Fetch puis parse ; un client temporaire est créé si ``httpx_client`` est absent."""
     payload = _fetch_payload_brut(
         url=url, query_params=query_params, timeout=timeout, httpx_client=httpx_client
     )
@@ -349,29 +268,7 @@ def fetch_daily(
     timeout: float = DEFAULT_TIMEOUT,
     httpx_client: httpx.Client | None = None,
 ) -> NasaPowerResponse:
-    """Récupère des séries journalières NASA POWER pour un point.
-
-    Args:
-        latitude: latitude WGS84 en degrés décimaux (positif Nord).
-        longitude: longitude WGS84 en degrés décimaux (positif Est).
-        parameters: codes NASA POWER à demander (max 20 selon doc).
-        start: date de début (incluse).
-        end: date de fin (incluse).
-        community: communauté NASA POWER (``RE`` par défaut).
-        timeout: timeout HTTP en secondes.
-        httpx_client: client httpx injectable (utilisé en tests avec
-            ``httpx.MockTransport``). Si ``None``, un client temporaire
-            est créé.
-
-    Returns:
-        ``NasaPowerResponse`` parsé et validé.
-
-    Raises:
-        NasaPowerTimeoutError: timeout réseau.
-        NasaPowerRateLimitError: HTTP 429.
-        NasaPowerHttpError: autre HTTP non-2xx.
-        NasaPowerPayloadError: JSON invalide ou non conforme schéma.
-    """
+    """Séries journalières pour un point (bornes incluses, WGS84 en degrés décimaux)."""
     url, query_params = _construire_url_et_params(
         endpoint="daily",
         latitude=latitude,
@@ -397,18 +294,7 @@ def fetch_daily_raw(
     timeout: float = DEFAULT_TIMEOUT,
     httpx_client: httpx.Client | None = None,
 ) -> dict[str, Any]:
-    """Récupère le payload JSON **brut** des séries journalières NASA POWER.
-
-    Identique à :func:`fetch_daily` mais renvoie le payload JSON **avant**
-    parsing Pydantic. Alimente le seam offline-seed : le payload
-    brut est committé puis re-validé via :func:`parser_reponse_nasa` (parsing
-    exercé en CI, fidélité). Comportement réseau (retry, erreurs) identique à
-    :func:`fetch_daily`.
-
-    Raises:
-        NasaPowerTimeoutError, NasaPowerRateLimitError, NasaPowerHttpError,
-        NasaPowerPayloadError (JSON non parsable).
-    """
+    """Comme :func:`fetch_daily`, mais renvoie le payload brut destiné aux seeds."""
     url, query_params = _construire_url_et_params(
         endpoint="daily",
         latitude=latitude,
@@ -439,37 +325,10 @@ def fetch_monthly(
     timeout: float = DEFAULT_TIMEOUT,
     httpx_client: httpx.Client | None = None,
 ) -> NasaPowerResponse:
-    """Récupère des séries mensuelles NASA POWER pour un point.
+    """Séries mensuelles pour un point, bornes en années incluses.
 
-    Endpoint : ``https://power.larc.nasa.gov/api/temporal/monthly/point``.
-    Les paramètres ``start`` et ``end`` sont des années (format
-    ``YYYY``, 4 chiffres). La réponse retourne pour chaque paramètre
-    un dictionnaire dont les clés sont des chaînes ``YYYYMM`` pour
-    chaque mois ; certaines réponses incluent en plus une clé
-    ``YYYY13`` représentant la moyenne annuelle, à filtrer côté caller
-    si seules les valeurs mensuelles sont attendues.
-
-    Supporte l'extension temporelle 1991-2020 de la fenêtre
-    climatologique.
-
-    Args:
-        latitude: latitude WGS84 en degrés décimaux (positif Nord).
-        longitude: longitude WGS84 en degrés décimaux (positif Est).
-        parameters: codes NASA POWER à demander (max 20 selon doc).
-        annee_debut: première année incluse (ex. 1991).
-        annee_fin: dernière année incluse (ex. 2020).
-        community: communauté NASA POWER (``RE`` par défaut).
-        timeout: timeout HTTP en secondes.
-        httpx_client: client httpx injectable.
-
-    Returns:
-        ``NasaPowerResponse`` parsé et validé. Les clés de
-        ``properties.parameter[<nom>]`` sont au format ``YYYYMM``
-        (et éventuellement ``YYYY13`` pour la moyenne annuelle).
-
-    Raises:
-        NasaPowerTimeoutError, NasaPowerRateLimitError,
-        NasaPowerHttpError, NasaPowerPayloadError.
+    Clés ``YYYYMM`` ; certaines réponses ajoutent ``YYYY13`` (moyenne annuelle),
+    à filtrer par l'appelant.
     """
     url, query_params = _construire_url_et_params(
         endpoint="monthly",
@@ -496,18 +355,7 @@ def fetch_monthly_raw(
     timeout: float = DEFAULT_TIMEOUT,
     httpx_client: httpx.Client | None = None,
 ) -> dict[str, Any]:
-    """Récupère le payload JSON **brut** des séries mensuelles NASA POWER.
-
-    Identique à :func:`fetch_monthly` mais renvoie le payload JSON **avant**
-    parsing Pydantic. Alimente le seam offline-seed monthly : le
-    payload brut est committé puis re-validé via :func:`parser_reponse_nasa`
-    (parsing exercé en CI, fidélité). Comportement réseau (retry, erreurs)
-    identique à :func:`fetch_monthly`.
-
-    Raises:
-        NasaPowerTimeoutError, NasaPowerRateLimitError, NasaPowerHttpError,
-        NasaPowerPayloadError (JSON non parsable).
-    """
+    """Comme :func:`fetch_monthly`, mais renvoie le payload brut destiné aux seeds."""
     url, query_params = _construire_url_et_params(
         endpoint="monthly",
         latitude=latitude,
@@ -534,34 +382,10 @@ def fetch_hourly(
     time_standard: str = "UTC",
     httpx_client: httpx.Client | None = None,
 ) -> NasaPowerResponse:
-    """Récupère des séries horaires NASA POWER pour un point.
+    """Séries horaires pour un point, de ``start 00:00`` à ``end 23:00``.
 
-    Les paramètres ``start`` et ``end`` sont des dates (granularité jour) :
-    NASA POWER renvoie toutes les heures comprises entre ``start 00:00``
-    et ``end 23:00`` (UTC ou LST selon ``time_standard``). Constat
-    empirique : le format YYYYMMDDHH initialement testé est rejeté par
-    l'endpoint avec HTTP 422 ; YYYYMMDD est la forme acceptée.
-
-    Args:
-        latitude: latitude WGS84 en degrés décimaux (positif Nord).
-        longitude: longitude WGS84 en degrés décimaux (positif Est).
-        parameters: codes NASA POWER à demander (max 15 selon doc pour
-            la granularité horaire).
-        start: date de début (incluse, toutes heures à partir de 00:00).
-        end: date de fin (incluse, toutes heures jusqu'à 23:00).
-        community: communauté NASA POWER (``RE`` par défaut).
-        timeout: timeout HTTP en secondes.
-        time_standard: ``"UTC"`` (par défaut) ou ``"LST"`` (Local
-            Solar Time).
-        httpx_client: client httpx injectable.
-
-    Returns:
-        ``NasaPowerResponse`` parsé et validé. Les clés de
-        ``properties.parameter[<nom>]`` sont au format ``YYYYMMDDHH``.
-
-    Raises:
-        NasaPowerTimeoutError, NasaPowerRateLimitError,
-        NasaPowerHttpError, NasaPowerPayloadError.
+    Les bornes sont des dates ``YYYYMMDD`` : l'endpoint rejette ``YYYYMMDDHH``
+    (HTTP 422). ``time_standard`` vaut ``"UTC"`` ou ``"LST"`` (temps solaire local).
     """
     url, query_params = _construire_url_et_params(
         endpoint="hourly",

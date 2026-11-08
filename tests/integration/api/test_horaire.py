@@ -1,23 +1,8 @@
-"""Tests d'integration des endpoints `/api/v1/horaire/<localite>/<grandeur>`.
+"""Tests d'integration des endpoints horaires ``/v1/horaire/{localite}/{grandeur}``.
 
-Passe-plat horaire :
-
-- endpoint data (succes, erreurs auth/validation/plage).
-- format CSV + sentinelles + format Kt nocturne.
-- lever du stocke valide (dont regression series coquilles, ti111-112).
-- endpoint disponibilite (succes + format coherent).
-
-Plus 1 pre-test empirique `empirique_nasa_power` (exclu de la suite
-reguliere) qui valide empiriquement la plage max 366 jours avec un
-appel reel a l'API externe.
-
-TestClient FastAPI synchrone + fixture
-``headers_auth`` (conftest racine).
-
-Fixtures NASA POWER mockees via :func:`unittest.mock.patch` sur
-``fetch_hourly``. La reponse mockee respecte le contrat
-``NasaPowerResponse`` (cles ``YYYYMMDDHH`` -> float, sentinelles
--999.0 conservees pour declenchement de la conversion -> null).
+``fetch_hourly`` est mocké (clés ``YYYYMMDDHH``, sentinelles -999.0
+conservées). Un pré-test réel contre l'API amont est exclu de la suite
+régulière (``empirique_nasa_power``).
 """
 
 from __future__ import annotations
@@ -46,17 +31,10 @@ def _construire_payload_amont_mock(
     *,
     sentinelles: bool = False,
 ) -> Any:
-    """Construit un mock minimal de NasaPowerResponse pour la plage donnee.
+    """24 valeurs par jour sur la plage (toutes -999.0 si ``sentinelles``).
 
-    Genere 24 valeurs par jour entre debut et fin (inclusif). Si
-    ``sentinelles=True``, toutes les valeurs sont a -999.0 ; sinon des
-    valeurs croissantes deterministes.
-
-    Utilise ``SimpleNamespace`` pour exposer la seule attribute path
-    consommee par le routeur (``reponse.properties.parameter``), evitant
-    la validation complete du schema NasaPowerResponse (qui exige des
-    champs metadata header / parameters non pertinents pour les tests
-    d'integration du routeur Kuma).
+    ``SimpleNamespace`` n'expose que ``properties.parameter``, seul chemin lu
+    par le routeur, sans valider tout ``NasaPowerResponse``.
     """
     valeurs: dict[str, float] = {}
     jour = debut
@@ -124,12 +102,7 @@ def test_ti96_data_sentinelles_converties_en_null(
 
 
 def test_ti97_data_localite_invalide(client: TestClient, headers_auth: dict[str, str]) -> None:
-    """Localite hors referentiel : 404 RESSOURCE_LOCALITE_INCONNUE.
-
-    Contrat generalise (genericite pays, residu 1) : l'enumeration
-    fermee des 6 villes (422) laisse place a la resolution contre la
-    table des localites, avec erreur honnete pour un code inconnu.
-    """
+    """Localité hors référentiel : 404 RESSOURCE_LOCALITE_INCONNUE."""
     r = client.get(
         "/v1/horaire/atlantide/ghi",
         params={"periode_debut": "2026-01-01", "periode_fin": "2026-01-05"},
@@ -152,20 +125,11 @@ def test_ti98_data_grandeur_invalide(client: TestClient, headers_auth: dict[str,
 def test_ti99_data_plage_excessive_366_plus(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """plage > 366 jours -> ValidationError leve cote serveur.
+    """Plage > 366 jours rejetée (« plage maximale 366 jours »).
 
-    Comportement observe : FastAPI ne mappe pas systematiquement le
-    ValidationError leve par un ``model_validator(mode="after")``
-    Pydantic v2 dans ``Annotated[T, Depends()]`` vers un 422 standard.
-    L'exception remonte comme ``ValidationError`` non geree, ce qui
-    provoque un re-raise cote ``TestClient`` (option par defaut
-    ``raise_server_exceptions=True``).
-
-    Le test verifie que la requete est rejetee (exception levee
-    contenant le message « plage maximale 366 jours »). Affinement
-    possible ulterieur via un exception handler FastAPI dedie qui
-    mapperait ``pydantic.ValidationError`` -> 422
-    ``VALIDATION_VALEUR_INVALIDE`` enveloppee.
+    FastAPI ne traduit pas en 422 le ``ValidationError`` levé par un
+    ``model_validator`` dans ``Depends()`` : l'exception remonte jusqu'au
+    ``TestClient``.
     """
     from pydantic import ValidationError
 
@@ -181,9 +145,7 @@ def test_ti100_data_plage_hors_disponibilite(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
     """plage futur (au-delà de la borne NRT) -> 400 PLAGE_TEMPORELLE_NON_DISPONIBLE."""
-    # Periode future, relative au jour du test : toujours hors de la plage
-    # disponible (B1 statique = aujourd'hui - 5 mois - 1 jour). Une date en
-    # dur cesse d'etre hors plage des que la borne la rattrape.
+    # Relative au jour du test : une date en dur finirait dans la plage disponible.
     debut = date.today() + timedelta(days=30)
     r = client.get(
         f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
@@ -275,15 +237,11 @@ def test_ti104_data_unite_t2m_celsius(client: TestClient, headers_auth: dict[str
     assert payload["resultats"][0]["unite"] == "°C"
 
 
-# === Lever passe_plat : service du stocké validé =========================
+# === Service du stocké validé ===========================================
 
 
 def test_ti107_lever_stocke_valide_servi(client: TestClient, headers_auth: dict[str, str]) -> None:
-    """plage couverte par le stocké validé -> statut valide_auto.
-
-    Conakry GHI 2022-06 est dans la fenêtre stockée (2021-2023, QC) :
-    l'endpoint sert la donnée validée au lieu de relayer la source amont.
-    """
+    """Conakry GHI 2022-06, couvert par le stocké : servi en ``valide_auto``."""
     r = client.get(
         f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
         params={"periode_debut": "2022-06-01", "periode_fin": "2022-06-02"},
@@ -314,13 +272,7 @@ def test_ti109_edition_figee_refuse_le_repli_sans_appel_amont(
     headers_auth: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Profil édition figée (ADR-0003 D6) -> repli passe-plat refusé.
-
-    Plage 2026 non couverte par le stocké : en profil figé, l'endpoint
-    renvoie 400 PLAGE_TEMPORELLE_NON_DISPONIBLE au lieu de relayer NASA
-    POWER, et fetch_hourly n'est jamais appelé (zéro dépendance
-    sortante).
-    """
+    """Édition figée, plage non stockée : 400 PLAGE_TEMPORELLE_NON_DISPONIBLE, aucun appel amont."""
     from kuma_data_core.core.config import get_settings
 
     monkeypatch.setattr(get_settings(), "edition_figee", True)
@@ -358,15 +310,10 @@ def test_ti111_serie_coquille_ignoree_le_stocke_terrain_est_servi(
     headers_auth: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """(kankan, ghi) : la coquille est écartée, le sol ESMAP est servi.
+    """(kankan, ghi) : la série sans mesures est écartée, le sol ESMAP est servi.
 
-    Régression production 2026-07-20 : deux séries horaires actives
-    coexistent pour ce couple - la série substrat 2001-2025 sans
-    aucune mesure stockée (coquille) et la série sol terrain
-    2021-2023 (17 520 mesures valide_auto). La sélection sans garde
-    prenait la coquille et l'endpoint répondait 200 avec zéro
-    résultat. Attendu : les mesures terrain sont servies, sans appel
-    amont.
+    Régression : la série GHI 2001-2025 vide masquait la série sol 2021-2023
+    (réponse 200 sans résultat).
     """
     from kuma_data_core.core.config import get_settings
 
@@ -389,12 +336,7 @@ def test_ti124_code_complet_sert_le_stocke(
     headers_auth: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Le code complet du referentiel (gin_kankan) est le chemin nominal.
-
-    Genericite pays (residu 1) : toute localite du referentiel est
-    adressable par son code complet, sans liste codee. L'alias court
-    historique (kankan) reste couvert par ti111.
-    """
+    """Le code complet (``gin_kankan``) sert le stocké ; l'alias court est couvert par ti111."""
     from kuma_data_core.core.config import get_settings
 
     monkeypatch.setattr(get_settings(), "edition_figee", True)
@@ -414,14 +356,7 @@ def test_ti112_coquille_seule_en_figee_erreur_honnete(
     headers_auth: dict[str, str],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """(kindia, ghi) : coquille seule -> 400 honnête, pas 200 vide.
-
-    Kindia ne possède qu'une série horaire GHI sans mesures stockées
-    (métadonnées 2001-2025). En profil figé, l'endpoint doit renvoyer
-    PLAGE_TEMPORELLE_NON_DISPONIBLE plutôt que de laisser croire à
-    une donnée servie en répondant 200 avec zéro résultat. Aucun
-    appel amont.
-    """
+    """(kindia, ghi) : série sans mesures seule, en figé -> 400 et non 200 vide, sans relais."""
     from kuma_data_core.core.config import get_settings
 
     monkeypatch.setattr(get_settings(), "edition_figee", True)

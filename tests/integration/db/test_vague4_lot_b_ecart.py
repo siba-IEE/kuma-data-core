@@ -85,7 +85,7 @@ def test_6_series_calculees(db_session: Session) -> None:
 
 def test_volume_1218(db_session: Session) -> None:
     # Scope au climato 2004-2020 DES PILOTES via les codes de series : l'atlas
-    # Temps 1 (091) ajoute un ecart DNI recent 2021-2023 sous la meme grandeur,
+    # La migration 091 ajoute un ecart DNI recent 2021-2023 sous la meme grandeur,
     # et la migration 118 ajoute le climato aux 28 communes (series distinctes).
     codes = [_code_serie(loc) for loc in _LOCALITES]
     n = db_session.execute(
@@ -121,7 +121,7 @@ def test_aucun_null_et_confiance_b(db_session: Session) -> None:
 
 def test_orientation_globale_negative(db_session: Session) -> None:
     """NASA lit moins de DNI que CAMS -> ecart moyen franchement negatif."""
-    # Scope au climato 2004-2020 (l'atlas Temps 1 ajoute le recent).
+    # Climato 2004-2020 seulement (le recent est une autre fenetre).
     moyenne = db_session.execute(
         text(
             "SELECT AVG(valeur) FROM grandeurs_metier "

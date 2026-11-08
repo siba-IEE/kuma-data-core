@@ -1,20 +1,6 @@
-"""Helpers de conversion passe-plat horaire.
+"""Conversion des réponses horaires amont en ``ResultatHoraire`` (passe-plat).
 
-Logique de transformation des réponses du client externe
-(``external.nasa_power.fetch_hourly``) vers le format Kuma cohérent
-(:class:`api.v1.schemas.horaire.ResultatHoraire`).
-
-Trois conversions :
-
-- Clés temporelles ``YYYYMMDDHH`` -> ``datetime`` ISO 8601 (fuseau UTC,
-  naïf).
-- Sentinelles ``-999.0`` -> ``None`` (uniforme : nocturne / NRT
-  indisponible / autre).
-- Mapping ``grandeur_code`` Kuma <-> code paramètre amont +
-  détermination unité cible.
-
-La logique de conversion est interne au projet ; le mapping vers les
-codes de la source amont n'est pas exposé au consommateur final.
+Le code du paramètre amont n'est pas exposé au consommateur.
 """
 
 from __future__ import annotations
@@ -37,24 +23,14 @@ _MAPPING_GRANDEUR: dict[str, tuple[str, str]] = {
     "vent_10m": ("WS10M", "m/s"),
     "precipitation": ("PRECTOTCORR", "mm/h"),
 }
-"""Mapping interne : grandeur Kuma -> (code amont, unité cible Kuma).
-
-Interne au projet, ne fuite pas au consommateur. Les unités cible
-reflètent la convention horaire (par exemple Wh/m² pour les
-irradiances horaires, vs kWh/m²/jour pour le daily existant).
-"""
+"""Grandeur -> (code amont, unité cible) ; irradiances horaires en Wh/m²."""
 
 
 # === Helpers publics ======================================================
 
 
 def code_parametre_amont(grandeur: str) -> str:
-    """Renvoie le code paramètre amont pour une grandeur Kuma.
-
-    Raises:
-        KeyError : si ``grandeur`` n'est pas dans le mapping (contrôlé
-            par Pydantic Literal en amont).
-    """
+    """Code du paramètre amont ; ``KeyError`` hors mapping (filtré en amont par Pydantic)."""
     return _MAPPING_GRANDEUR[grandeur][0]
 
 
@@ -64,18 +40,7 @@ def unite_cible(grandeur: str) -> str:
 
 
 def parser_cle_horaire(cle: str) -> datetime:
-    """Parse une clé horaire amont ``YYYYMMDDHH`` en ``datetime`` (UTC naïf).
-
-    Args:
-        cle : chaîne de 10 caractères au format ``YYYYMMDDHH``
-            (ex. ``"2024060112"`` = 2024-06-01 12:00 UTC).
-
-    Returns:
-        ``datetime`` naïf (fuseau UTC implicite, pas de tzinfo).
-
-    Raises:
-        ValueError : si ``cle`` ne respecte pas le format attendu.
-    """
+    """``YYYYMMDDHH`` -> ``datetime`` naïf en UTC ; ``ValueError`` si mal formée."""
     if len(cle) != 10 or not cle.isdigit():
         raise ValueError(f"cle horaire invalide : {cle!r} (attendu YYYYMMDDHH 10 chiffres)")
     return datetime(
@@ -90,17 +55,10 @@ def convertir_valeurs_amont_en_resultats(
     valeurs_par_cle: dict[str, float],
     grandeur: str,
 ) -> list[ResultatHoraire]:
-    """Convertit le dict ``{YYYYMMDDHH: float}`` amont en liste ResultatHoraire.
+    """``{YYYYMMDDHH: valeur}`` -> ``ResultatHoraire`` triés, statut ``passe_plat_non_valide``.
 
-    Applique uniformément :
-
-    - Clés ``YYYYMMDDHH`` -> ``datetime`` (UTC naïf).
-    - Sentinelle ``-999.0`` -> ``None`` (uniforme : pas de
-      différenciation nocturne / NRT / autre en v1).
-    - Unité cible dérivée du mapping interne.
-    - Statut éditorial uniforme ``passe_plat_non_valide``.
-
-    Les résultats sont triés chronologiquement par ``instant``.
+    La sentinelle ``-999.0`` devient ``None``, sans distinguer nuit, NRT
+    indisponible ou autre cause.
     """
     unite = unite_cible(grandeur)
     resultats: list[ResultatHoraire] = []
@@ -123,9 +81,5 @@ def filtrer_resultats_par_plage(
     periode_debut: date,
     periode_fin: date,
 ) -> list[ResultatHoraire]:
-    """Filtre les résultats horaires sur la fenêtre [periode_debut, periode_fin].
-
-    La borne haute est inclusive sur le jour entier (jusqu'à 23h59 du
-    ``periode_fin``).
-    """
+    """Garde ``[periode_debut, periode_fin]``, jour de fin inclus jusqu'à 23:59."""
     return [r for r in resultats if periode_debut <= r.instant.date() <= periode_fin]

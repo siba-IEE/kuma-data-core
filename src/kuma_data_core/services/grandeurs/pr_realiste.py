@@ -1,36 +1,18 @@
-"""Calcul à la volée du PR réaliste saisonnier (grandeur F1).
+"""PR réaliste saisonnier à la volée : ``PR_fourni x ratio_T x (1 - perte_salissure/100)``.
 
-PR effectif site-spécifique ``pr_realiste`` = ``PR_fourni x ratio_T x
-(1 - perte_soiling/100)`` (ratio sans dimension). Sa **courbe mensuelle est la
-"PR saisonnière"** : le creux Harmattan (PM élevées Dec-Fev) y apparaît, la remontée
-mousson (lessivage) aussi.
+Sa courbe mensuelle montre le creux de l'Harmattan (PM élevées de décembre à
+février) et la remontée en mousson (lessivage). ``ratio_T`` reprend le
+modèle NOCT de ``productible_correction_thermique``, la perte vient de
+``calculer_taux_salissure_proxy`` (HSU).
 
-**Composition, pas de réimplémentation** :
+``PR_fourni`` doit être hors salissure et hors température : un PR plaque
+qui inclut déjà ces pertes serait compté deux fois. Les facteurs sont
+traités comme indépendants (couplage G -> T_cell ignoré). Modes
+``aucune``, ``temperature``, ``salissure``, ``temperature_salissure``
+(défaut).
 
-- facteur thermique ``ratio_T`` : réutilise la logique NOCT canonique
-  (``_temperature_cellule_noct``, Ross 1980, ``productible_correction_thermique`` ;
-  même facteur que le PR_T de ``productible_pr_fourni``) ;
-- facteur salissure : réutilise la fonction pure ``calculer_taux_salissure_proxy``
-  (modèle HSU) ; un seul appel, perte % -> ``(1 - perte/100)``.
-
-**Doctrine PR-référence (anti double-comptage)** : le ``PR_fourni`` est supposé
-**hors salissure ET hors température**. Les deux corrections se superposent en
-facteurs multiplicatifs **séparables** sur cette référence. Un PR plaque tout-compris
-(qui embarque déjà une allocation salissure/température) double-compterait : l'appelant
-qui en dispose ne doit pas activer les corrections.
-
-Modes (``correction``) :
-
-- ``aucune`` : ``pr_realiste = PR_fourni`` (écho, baseline) ;
-- ``temperature`` : ``x ratio_T`` (compagne T2M) ;
-- ``salissure`` : ``x (1 - perte/100)`` (compagnes PM2.5/PM10/pluie) ;
-- ``temperature_salissure`` : les deux (défaut).
-
-Pattern fonction publique pure (aucune dépendance SQL). v1 : facteurs
-**indépendants** (couplage 2e ordre G -> T_cell -> rendement ignoré).
-
-Référence : Dierauf et al. 2013 (PR temperature-corrected, NREL/TP-5200-57991) +
-Ross 1980 (NOCT) + Coello & Boyle 2019 (HSU).
+Références : Dierauf et al. 2013 (NREL/TP-5200-57991), Ross 1980 (NOCT),
+Coello & Boyle 2019 (HSU).
 """
 
 from __future__ import annotations
@@ -92,12 +74,7 @@ _CAVEAT_L_TR_6: str = (
 
 
 class MesureJourPRRealiste(TypedDict):
-    """Mesure journalière alignée consommée par le PR réaliste.
-
-    Champs requis **selon le mode** (None sinon) : ``ghi_kwh_par_m2_jour`` + ``t_amb_degc``
-    pour la température ; ``rainfall_mm`` + ``pm2_5`` + ``pm10`` (µg/m³) pour la
-    salissure.
-    """
+    """Mesure journalière ; GHI et T2M requis en température, pluie et PM (µg/m³) en salissure."""
 
     instant_mesure: date
     ghi_kwh_par_m2_jour: float | None
@@ -126,7 +103,7 @@ def _exiger_present(valeur: float | None, nom: str, mode: str) -> float:
 def _ratio_thermique_jour(
     ghi_kwh_par_m2_jour: float, t_amb_degc: float, noct_degc: float, gamma_pmax_pct: float
 ) -> float:
-    """Facteur de correction thermique ``ratio_T`` (NOCT Ross 1980, cf. tête de module)."""
+    """Facteur ``ratio_T`` (NOCT, Ross 1980)."""
     irradiance_w_par_m2 = ghi_kwh_par_m2_jour * _WATT_PAR_KILOWATT / _HEURES_PAR_JOUR
     t_cell = _temperature_cellule_noct(
         t_amb_degc=t_amb_degc, irradiance_w_par_m2=irradiance_w_par_m2, noct_degc=noct_degc
@@ -153,11 +130,7 @@ def calculer_pr_realiste(
     noct_degc: float | None = None,
     gamma_pmax_pct: float | None = None,
 ) -> ResultatPRRealiste:
-    """PR effectif journalier = ``PR_fourni x ratio_T x (1 - perte/100)`` selon le mode.
-
-    Compose ``_temperature_cellule_noct`` (thermique) et ``calculer_taux_salissure_proxy``
-    (salissure). Pure, idempotente. Borne basse douce à 0.
-    """
+    """PR effectif journalier selon le mode, borné à 0 par le bas."""
     if not mesures:
         return ResultatPRRealiste(mesures=[], limite=_limite(correction))
 
@@ -204,12 +177,7 @@ def calculer_pr_realiste(
 
 
 def agreger_pr_mensuel(mesures_jour: Sequence[MesureJourPR]) -> list[MesureMoisPR]:
-    """Agrège le PR réaliste journalier en **moyenne mensuelle**.
-
-    La courbe mensuelle résultante est la « PR saisonnière » (creux Harmattan). Pure,
-    triée chronologiquement (``YYYY-MM``). Chaque mois prend le niveau de confiance
-    le plus bas de ses jours (règle de propagation P).
-    """
+    """Moyenne mensuelle (``YYYY-MM``) ; chaque mois prend le niveau le plus bas de ses jours."""
     par_mois: dict[str, list[MesureJourPR]] = defaultdict(list)
     for m in mesures_jour:
         par_mois[f"{m.instant.year:04d}-{m.instant.month:02d}"].append(m)

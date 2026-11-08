@@ -1,19 +1,8 @@
-"""Fixtures pytest partagées pour Kuma Data Core.
+"""Fixtures partagées.
 
-Le sujet sensible de ce module est l'**ordre d'initialisation** des
-``Settings`` Pydantic :
-
-* ``Settings.valider_coherence_environnement`` (validateur ``mode="after"``)
-  refuserait l'instanciation si ``API_ENVIRONNEMENT=prod`` était lu sans
-  les contraintes adaptées (docs, log_format, cle_admin).
-* ``get_settings`` est ``@lru_cache`` : la première instanciation fige
-  les valeurs pour toute la session de test.
-
-D'où la fixture ``_configurer_env_test`` (``autouse=True``,
-``scope="session"``) qui pose les variables d'environnement de test
-**avant** tout import de l'application, puis vide explicitement le
-cache de ``get_settings`` pour le cas où un module aurait déjà été
-importé en amont (par un plugin pytest ou un import indirect).
+``get_settings`` est en cache et son validateur refuse une config prod
+incohérente : l'environnement de test est donc posé avant tout import de
+l'application, puis le cache est vidé.
 """
 
 from __future__ import annotations
@@ -34,9 +23,7 @@ def _configurer_env_test() -> None:
     os.environ["LOG_FORMAT"] = "json"
     os.environ["LOG_NIVEAU"] = "WARNING"
 
-    # Le cache lru_cache de get_settings doit être vidé pour que les
-    # nouvelles variables soient prises en compte si le module a déjà
-    # été importé (par exemple par un plugin pytest).
+    # Un plugin pytest a pu importer l'application avant cette fixture.
     from kuma_data_core.core.config import get_settings
 
     get_settings.cache_clear()
@@ -44,11 +31,7 @@ def _configurer_env_test() -> None:
 
 @pytest.fixture
 def client() -> Iterator[TestClient]:  # noqa: F821
-    """Client HTTP synchrone pour interagir avec l'application FastAPI.
-
-    Importé tardivement pour bénéficier des variables d'environnement
-    posées par ``_configurer_env_test``.
-    """
+    """Client HTTP de l'application, importée tard pour lire l'environnement de test."""
     from fastapi.testclient import TestClient
 
     from kuma_data_core.api.main import app

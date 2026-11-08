@@ -1,15 +1,8 @@
 """Donnée de seed de l'unité ``kwh_par_kwc_periode`` (migration 100).
 
-Résorption de la dette D-63 (option a, arbitrage du 2026-07-04) : les
-valeurs de ``productible_specifique_theorique`` sont des totaux par
-période (mensuelle ou annuelle) alors que l'unité déclarée était
-``kwh_par_kwc_jour``. Plutôt que recalculer les valeurs (option b), le
-référentiel bascule sur une unité au libellé exact : le total sur la
-période de la mesure.
-
-Pattern reproduit de ``unites_complementaires_009_seed_data.py`` :
-dict prêt pour ``op.bulk_insert``, ``cree_par``/``modifie_par`` NULL,
-``actif``/``cree_le``/``modifie_le`` aux ``server_default``.
+Les valeurs de ``productible_specifique_theorique`` sont des totaux par
+période (mois ou année), pas des valeurs journalières : l'unité dit donc
+« total sur la période de la mesure ».
 
 Dimensionnellement, kWh/kWc = heure (énergie / puissance) : mêmes
 conventions SI que ``heure_equivalente_pleine`` (facteur 3600 s).

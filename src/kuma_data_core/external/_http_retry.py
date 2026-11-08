@@ -1,29 +1,10 @@
-"""Helper HTTP avec retry transverse partagé.
+"""GET httpx avec retry exponentiel, partagé par les clients externes.
 
-Module utilitaire privé exposant un helper ``executer_get_avec_retry``
-applicable à tout client httpx synchrone. Le retry couvre les exceptions
-transitoires (HTTP 429, HTTP 503, ``httpx.TimeoutException``,
-``httpx.RemoteProtocolError``) avec backoff exponentiel (défaut 1s, 4s,
-16s).
-
-Pattern « convert exceptions at boundaries » : le helper lève des
-exceptions génériques ``HttpRetryTimeoutError``, ``HttpRetryRateLimitError``,
-``HttpRetryHttpError`` que les modules consommateurs traduisent en
-exceptions domaine-spécifiques (``NasaPower*Error``, ``Pvgis*Error``,
-etc.) via try/except + raise from.
-
-Couvre un scénario CI observé (migration 041 SARAH-3) :
-disconnect serveur PVGIS intermittent depuis les runners GitHub Actions
-manifesté comme ``httpx.RemoteProtocolError``. Inclus dans le catch
-retry au même titre que ``httpx.TimeoutException`` (deux symptômes de
-panne réseau transitoire).
-
-Le périmètre retry est strictement limité aux 2 classes d'exception
-explicitement listées (``TimeoutException``, ``RemoteProtocolError``)
-plus les statuts HTTP 429 et 503. Un catch plus large
-(``httpx.NetworkError``, ``ConnectError``) masquerait des erreurs non
-transitoires (DNS, TLS) avec 21 s de retry inutile - élargissement
-ciblé si nouveaux symptômes observés.
+Rejoue sur HTTP 429 et 503, ``TimeoutException`` et ``RemoteProtocolError``
+(déconnexions PVGIS intermittentes depuis les runners CI). Pas plus large :
+``ConnectError`` ou une erreur DNS/TLS n'est pas transitoire et coûterait
+21 s de retry inutile. Les erreurs génériques levées ici sont traduites en
+erreurs de domaine par chaque client.
 """
 
 from __future__ import annotations
@@ -36,20 +17,11 @@ import httpx
 
 
 class HttpRetryError(Exception):
-    """Base des erreurs levées à l'épuisement du retry transverse.
-
-    Les modules consommateurs catchent cette hiérarchie et la traduisent
-    en exceptions domaine-spécifiques via ``raise X from exc``.
-    """
+    """Base des erreurs levées à l'épuisement du retry."""
 
 
 class HttpRetryTimeoutError(HttpRetryError):
-    """Échec persistant de communication réseau après épuisement du retry.
-
-    Couvre les timeouts (``httpx.TimeoutException``) et les disconnects
-    serveur (``httpx.RemoteProtocolError``) répétés au-delà du nombre de
-    retries configurés.
-    """
+    """Timeout ou déconnexion serveur persistant après retry."""
 
     def __init__(self, *, url: str, timeout_seconds: float) -> None:
         super().__init__(
@@ -77,13 +49,10 @@ class HttpRetryRateLimitError(HttpRetryHttpError):
 # === Constantes module ====================================================
 
 RETRY_BACKOFF_SECONDES: tuple[float, ...] = (1.0, 4.0, 16.0)
-"""Backoffs exponentiels (1s, 4s, 16s) appliqués entre les tentatives
-de retry. Total : 1 appel initial + 3 retries = 4 tentatives max."""
+"""Attentes entre tentatives : 4 tentatives au plus."""
 
 RETRY_STATUTS_HTTP: tuple[int, ...] = (429, 503)
-"""Statuts HTTP retryables : 429 (rate limit) et 503 (service
-indisponible). Autres statuts >= 400 sont terminaux (retour immédiat
-de la response, gestion par le caller)."""
+"""Statuts rejoués ; les autres statuts >= 400 sont rendus tels quels à l'appelant."""
 
 
 # === Helper public-module =================================================
@@ -98,14 +67,7 @@ def executer_get_avec_retry(
     retry_backoff_seconds: tuple[float, ...] = RETRY_BACKOFF_SECONDES,
     retry_statuts_http: tuple[int, ...] = RETRY_STATUTS_HTTP,
 ) -> httpx.Response:
-    """Effectue un GET HTTPX avec retry exponentiel sur exceptions transitoires.
-
-    Stratégie et périmètre du retry détaillés dans le docstring de module.
-    Les statuts non retryables sont renvoyés immédiatement (gestion caller).
-
-    ``retry_backoff_seconds`` est exposé pour les tests unitaires (passage de
-    ``(0.0, 0.0, 0.0)`` pour éviter les sleeps).
-    """
+    """GET avec retry ; ``retry_backoff_seconds`` permet aux tests d'éviter les attentes."""
     nb_retries = len(retry_backoff_seconds)
     for tentative, backoff in enumerate([0.0, *retry_backoff_seconds]):
         if backoff > 0:
@@ -114,9 +76,7 @@ def executer_get_avec_retry(
             response = client.get(url, params=query_params)
         except (httpx.TimeoutException, httpx.RemoteProtocolError) as exc:
             if tentative == nb_retries:
-                # Url depuis l'exception si disponible, sinon l'url passée en
-                # paramètre : httpx lève RuntimeError si .request n'est pas
-                # défini (cas RemoteProtocolError).
+                # httpx lève RuntimeError sur .request absent (RemoteProtocolError).
                 try:
                     url_effectif = str(exc.request.url)
                 except RuntimeError:

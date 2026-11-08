@@ -1,27 +1,16 @@
-"""Génération du SQL de construction d'une édition publique (ADR-0003, WP1).
+"""SQL de construction d'une édition publique, dérivé du manifeste (ADR-0003).
 
-Le script d'export (``scripts/publication/exporter-edition.ps1``) n'encode
-aucune règle de filtre : il consomme le SQL produit ici, qui dérive
-entièrement du manifeste (``publication/manifeste.py``). Une seule source
-de vérité, testable.
+Le script d'export n'encode aucune règle : il exécute, sur la base d'édition
+intermédiaire locale, ``python -m kuma_data_core.publication.sql_edition <commande>`` :
 
-Trois commandes, exécutées dans cet ordre sur la base d'édition
-intermédiaire LOCALE (copie de la référence, cf. ADR-0003 D5) :
-
-1. ``construction`` : purge de l'audit (fonction + triggers, AVANT tout
-   UPDATE, sinon les triggers rejoueraient sur l'assainissement), drop
-   des tables exclues, puis assainissement des tables classées ainsi.
-2. ``controles`` : garde anti-fuite exécutable - un bloc ``DO`` qui lève
-   si un objet exclu subsiste ou si une règle d'assainissement n'a pas
-   été appliquée (l'expression est recalculée et comparée ligne à ligne).
-   Un échec fait échouer ``psql`` (``ON_ERROR_STOP``), donc l'export.
-3. ``metadonnees`` : table ``edition_metadonnees`` (une ligne), produite
-   au moment de la publication (ADR-0003 D7). Cette table n'existe QUE
-   dans l'édition - elle est hors schéma de référence et hors lignée
-   Alembic ; l'endpoint ``GET /v1/edition`` (WP5) la lira.
-
-Usage : ``python -m kuma_data_core.publication.sql_edition <commande>``,
-le SQL est écrit sur stdout.
+1. ``construction`` : purge de l'audit **avant** tout UPDATE (sinon les
+   triggers rejoueraient sur l'assainissement), drop des tables exclues,
+   assainissement.
+2. ``controles`` : bloc ``DO`` qui lève si un objet exclu subsiste ou si
+   une règle d'assainissement n'est pas appliquée ; ``ON_ERROR_STOP`` fait
+   alors échouer l'export.
+3. ``metadonnees`` : ``edition_metadonnees`` (une ligne), hors schéma de
+   référence et hors Alembic, lue par ``GET /v1/edition``.
 """
 
 from __future__ import annotations
@@ -46,13 +35,10 @@ _RE_REVISION_SOURCE = re.compile(r"^[0-9a-f]{7,40}$")
 
 
 def instructions_construction() -> list[str]:
-    """Instructions de purge + assainissement, une par élément.
+    """Instructions de purge et d'assainissement, une par élément.
 
-    Exposées individuellement pour les exécuteurs qui ne savent pas
-    découper un script multi-instructions (psycopg n'accepte qu'une
-    instruction par ``execute``, et le bloc ``DO`` contient des ``;``
-    internes) : le test de non-fuite (WP9) les rejoue une à une dans
-    une transaction annulée.
+    psycopg n'exécute qu'une instruction par ``execute`` et le bloc ``DO``
+    contient des ``;`` : le test de non-fuite les rejoue une à une.
     """
     morceaux: list[str] = []
 

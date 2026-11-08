@@ -250,7 +250,7 @@ def test_010_fk_unite_id_resolue_correctement(db_session: Session) -> None:
     """Pour chaque grandeur seedée, ``unite_id`` pointe bien vers le ``unite_code`` attendu.
 
     Écart assumé vs seed 010 : la migration corrective 100 (résorption
-    D-63, option a) repointe ``productible_specifique_theorique`` vers
+    option a) repointe ``productible_specifique_theorique`` vers
     ``kwh_par_kwc_periode`` (les valeurs stockées sont des totaux par
     période, pas des moyennes journalières).
     """

@@ -1,30 +1,7 @@
-"""Calcul `productible_specifique_theorique` (HEP * PR_théorique).
+"""Productible spécifique théorique stocké : ``hep(periode) * pr_theorique`` (kWh/kWc).
 
-Module orchestrant le calcul de la grandeur Kuma F1 stockée
-`productible_specifique_theorique` à partir d'une série amont `hep`
-(déjà calculée dans `grandeurs_metier`) multipliée par un coefficient
-de Performance Ratio théorique.
-
-Définition :
-
-```
-productible_specifique_theorique(periode) := hep(periode) * pr_theorique
-```
-
-`pr_theorique` par défaut = **0.8** (industry-standard conservateur,
-cohérent IEC 61724-1, NREL PVWatts 0.84).
-
-**Premier module consommant `grandeurs_metier` amont** (pas
-`mesures_ressource`) : un calcul Kuma peut consommer une grandeur Kuma
-déjà calculée. Cohérent avec le mapping
-`methode_collecte='calcul_derive'` + source `kuma_calculs`. Pas de
-relecture des mesures GHI journalières - agrégats annuels/mensuels
-hérités directement de `hep`.
-
-Pas de politique de complétude propre : la complétude est héritée de
-`hep` (filtrée par sa propre politique de complétude). Si `hep` est
-absent pour une (localite, annee), `productible_specifique_theorique`
-l'est aussi par construction.
+Lit les agrégats ``hep`` de ``grandeurs_metier``, pas les mesures GHI : la
+complétude est donc celle de ``hep``.
 """
 
 from __future__ import annotations
@@ -48,8 +25,7 @@ METHODE_COLLECTE_PRODUCTIBLE: str = "calcul_derive"
 GRANDEUR_CODE_HEP: str = "hep"
 
 PR_THEORIQUE_DEFAUT: float = 0.8
-"""Performance Ratio théorique par défaut. Valeur conservatrice cohérente
-IEC 61724-1 et pratiques bureaux d'études."""
+"""PR conservateur usuel (IEC 61724-1 ; PVWatts retient 0.84)."""
 
 
 class CalculProductibleResultat(TypedDict):
@@ -70,16 +46,7 @@ class _LigneAgregeeProductible(TypedDict):
 
 
 def _appliquer_pr_theorique(valeur_hep: float, pr_theorique: float) -> float:
-    """Applique le coefficient PR théorique à une valeur HEP.
-
-    Args:
-        valeur_hep : HEP en h_eq (numériquement équivalent kWh/m²/j * N_jours).
-        pr_theorique : Performance Ratio théorique sans dimension (typique 0.8).
-
-    Returns:
-        Productible spécifique théorique en kWh/kWc (numérique). À 1 kW/m² STC,
-        l'unité h_eq de HEP est équivalente à kWh/kWc.
-    """
+    """HEP (h_eq) x PR ; à 1 kW/m² STC, h_eq et kWh/kWc coïncident."""
     return float(valeur_hep) * float(pr_theorique)
 
 
@@ -91,28 +58,11 @@ def calculer_et_inserer_productible_specifique_theorique(
     pr_theorique: float = PR_THEORIQUE_DEFAUT,
     version_formule: int = 1,
 ) -> CalculProductibleResultat:
-    """Calcule productible_specifique_theorique annuel + mensuel et insère
-    dans grandeurs_metier.
+    """Insère le productible annuel et mensuel tiré des lignes ``hep`` courantes.
 
-    Lit les lignes `hep` courantes (annuel + mensuel) de la série amont,
-    multiplie par `pr_theorique`, et bulk-insère dans `grandeurs_metier`.
-    Pas de relecture des mesures GHI - les périodes sont héritées de `hep`.
-
-    Args:
-        session : session SQLAlchemy active.
-        code_serie_productible : code naturel de la série cible.
-        code_serie_hep_amont : code naturel de la série HEP amont
-            (typiquement gin_<ville>_hep_kuma_calculs_2021_2025).
-        pr_theorique : Performance Ratio théorique (défaut 0.8).
-        version_formule : version de formule en cours (défaut 1).
-
-    Returns:
-        :class:`CalculProductibleResultat`.
-
-    Raises:
-        RuntimeError : voir docstrings symétriques du module fraction_diffuse.
+    ``RuntimeError`` si une série est introuvable ou non conforme, si les
+    localités diffèrent, ou si ``version_formule`` diffère du référentiel.
     """
-    # 1. Vérifier alignement version_formule
     version_actuelle = session.execute(
         text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
         {"code": GRANDEUR_CODE_PRODUCTIBLE},
@@ -127,7 +77,6 @@ def calculer_et_inserer_productible_specifique_theorique(
             f"version_formule_actuelle pour {GRANDEUR_CODE_PRODUCTIBLE!r}={int(version_actuelle)}."
         )
 
-    # 2. Récupérer le contexte de la série cible
     serie_cible = session.execute(
         text(
             """
@@ -157,7 +106,6 @@ def calculer_et_inserer_productible_specifique_theorique(
             f"{serie_cible.methode_collecte!r}, attendu {METHODE_COLLECTE_PRODUCTIBLE!r}."
         )
 
-    # 3. Récupérer la série HEP amont
     serie_hep = session.execute(
         text(
             "SELECT id AS serie_id, localite_id, grandeur_code "
@@ -173,7 +121,6 @@ def calculer_et_inserer_productible_specifique_theorique(
             f"{serie_hep.grandeur_code!r}, attendu {GRANDEUR_CODE_HEP!r}."
         )
 
-    # 4. Cohérence localite
     localite_cible = int(serie_cible.localite_id)
     if int(serie_hep.localite_id) != localite_cible:
         raise RuntimeError(
@@ -182,9 +129,7 @@ def calculer_et_inserer_productible_specifique_theorique(
             f"{code_serie_hep_amont!r} localite_id={int(serie_hep.localite_id)}."
         )
 
-    # 5. Lire les lignes HEP courantes de la série amont (annuel + mensuel)
-    # Source : grandeurs_metier (pas mesures_ressource). Filtrage version
-    # courante de hep (cohérent avec la vue v_grandeurs_metier_courantes).
+    # Même filtre de version courante que v_grandeurs_metier_courantes.
     rows_hep = session.execute(
         text(
             """
@@ -213,7 +158,6 @@ def calculer_et_inserer_productible_specifique_theorique(
             "Verifier que 1-5D-iii (migration 027) a bien ete applique."
         )
 
-    # 6. Application PR théorique + construction des lignes à insérer
     lignes_a_inserer: list[_LigneAgregeeProductible] = [
         {
             "periode_type": r.periode_type,
@@ -228,7 +172,6 @@ def calculer_et_inserer_productible_specifique_theorique(
     nb_annuel = sum(1 for ligne in lignes_a_inserer if ligne["periode_type"] == "annuel")
     nb_mensuel = sum(1 for ligne in lignes_a_inserer if ligne["periode_type"] == "mensuel")
 
-    # 7. Bulk INSERT
     params: list[dict[str, Any]] = [
         {
             "grandeur_code": GRANDEUR_CODE_PRODUCTIBLE,

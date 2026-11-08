@@ -1,7 +1,6 @@
 """Données de seed pour la table ``localites`` (migration 011).
 
-20 entités hiérarchiques compilées par Siba Kalivogui en mai 2026
-(passe 2 de compilation, livrable v2 validé post-audit).
+20 entités hiérarchiques compilées par Siba Kalivogui en mai 2026.
 """
 
 from __future__ import annotations

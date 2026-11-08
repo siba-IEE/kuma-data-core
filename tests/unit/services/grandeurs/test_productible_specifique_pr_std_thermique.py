@@ -1,5 +1,5 @@
 """Tests unitaires de la grandeur `productible_specifique_pr_std_thermique_mensuel`
-(WP8 lecture climatique).
+(lecture climatique).
 """
 
 from __future__ import annotations

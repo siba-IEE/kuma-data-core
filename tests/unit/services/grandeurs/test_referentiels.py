@@ -1,8 +1,4 @@
-"""Tests unitaires du module ``services.grandeurs.referentiels``.
-
-7 tests T-1 a T-7 sur les fonctions pures.
-Orchestrateur ``calculer_et_inserer_referentiels`` teste en integration.
-"""
+"""Tests unitaires des fonctions pures de ``services.grandeurs.referentiels``."""
 
 from __future__ import annotations
 
@@ -34,11 +30,7 @@ def test_t2_agreger_mensuel_vide_rejete() -> None:
 
 
 def test_t3_calcul_ecart_relatif_signe() -> None:
-    """T-3 : ecart relatif signe (positif si kuma > sarah3, negatif sinon).
-
-    Cas typique : Kuma NASA POWER 5.5 kWh/m^2/j Conakry,
-    SARAH-3 ICDR 5.3 kWh/m^2/j. Ecart positif petit +3.8%.
-    """
+    """Écart signé : (5.5 - 5.3) / 5.3 ≈ +3.8 %, négatif si Kuma est sous SARAH-3."""
     ecart = _calcul_ecart_relatif(valeur_kuma=5.5, valeur_sarah3=5.3)
     assert ecart == pytest.approx(3.7735849, rel=1e-5)
 
@@ -57,17 +49,11 @@ def test_t4_calcul_ecart_relatif_sarah3_nul_rejete() -> None:
 
 
 def test_t5_calcul_rang_temporel_mediane_50() -> None:
-    """T-5 : valeur a la mediane d'une distribution -> percentile 50.
-
-    Distribution n=30 (climatologie 1991-2020 typique) : valeurs 1..30.
-    Mediane = 15.5. Valeur 15 ou 16 -> percentile 50.
-    """
+    """Distribution 1..30 : la valeur 15.5 est au 50ᵉ percentile."""
     distribution = list(range(1, 31))  # 1..30, mediane = 15.5
     # Valeur exactement entre rangs 15 et 16
     percentile_15_5 = _calcul_rang_temporel(15.5, distribution)
-    # rang = 15 strict_inf + 0 egal = 15 (avec demi-rang : 15 + 0.5 = 15.5)
-    # En realite valeur 15.5 n'est pas dans la distrib donc nb_egaux=0
-    # rang = 15 + (0+1)/2 = 15.5 -> percentile = 14.5 / 29 * 100 = 50%
+    # rang = 15 + (0 + 1) / 2 = 15.5 -> (15.5 - 1) / 29 x 100 = 50
     assert percentile_15_5 == pytest.approx(50.0, abs=0.01)
 
 
@@ -89,10 +75,7 @@ def test_t6_calcul_rang_temporel_capping() -> None:
 
 
 def test_t7_calcul_rang_spatial_6_villes() -> None:
-    """T-7 : rang ordinal 1-6 sur 6 villes (tri croissant).
-
-    Cas typique : 6 villes avec valeurs GHI mensuelles distinctes.
-    """
+    """Rangs 1 à 6 par valeur croissante."""
     valeurs = {
         56: 4.5,  # Conakry  -> rang 1 (le plus bas)
         51: 5.8,  # Kankan   -> rang 6 (le plus haut)

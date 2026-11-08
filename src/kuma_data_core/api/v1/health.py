@@ -39,9 +39,7 @@ class ReponseSantePublique(BaseModel):
     """
 
     statut: Literal["operationnel"]
-    # Identifiant de l'édition publiée servie par ce déploiement
-    # (ADR-0003, D7). ``None`` hors régime édition (base de dev) ou si
-    # la lecture échoue : le health ne dépend de rien, jamais de 5xx.
+    # ``None`` hors édition publiée ou si la lecture échoue : jamais de 5xx.
     edition: str | None = None
 
 

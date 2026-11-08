@@ -1,6 +1,6 @@
-"""Test de non-fuite de l'édition publique (ADR-0003, D5 / WP9).
+"""Test de non-fuite de l'édition publique (ADR-0003).
 
-Rejoue le SQL **réel** de construction d'une édition (WP1) sur la base
+Rejoue le SQL **réel** de construction d'une édition sur la base
 d'intégration, dans une transaction annulée à la fin - le DDL
 PostgreSQL est transactionnel, la base ressort intacte. Couvre :
 

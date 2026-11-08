@@ -1,4 +1,4 @@
-"""Tests unitaires du service de clés API (ADR-0003, D3 / WP6).
+"""Tests unitaires du service de clés API (ADR-0003).
 
 Tests sans DB, sur la génération et le hachage. Couvrent :
 

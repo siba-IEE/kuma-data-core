@@ -1,4 +1,4 @@
-"""Tests d'intégration des endpoints ``/v1/cles`` (ADR-0003, D3 / WP6).
+"""Tests d'intégration des endpoints ``/v1/cles`` (ADR-0003).
 
 Couvre les deux régimes :
 
@@ -123,7 +123,7 @@ def test_revocation_prefixe_inconnu_renvoie_404(
 
 
 class _FauxRedis:
-    """Compteur en mémoire, interface minimale incr/expire (WP7)."""
+    """Compteur en mémoire, interface minimale incr/expire."""
 
     def __init__(self) -> None:
         self.valeurs: dict[str, int] = {}
@@ -142,7 +142,7 @@ def test_quota_journalier_applique_de_bout_en_bout(
     monkeypatch: pytest.MonkeyPatch,
     headers_auth: dict[str, str],
 ) -> None:
-    """WP7 : au-delà du quota de la clé, 429 CLES_QUOTA_JOURNALIER_DEPASSE.
+    """Au-delà du quota de la clé, 429 CLES_QUOTA_JOURNALIER_DEPASSE.
 
     Rate limiting activé + compteur Redis remplacé par un compteur en
     mémoire (le chemin HTTP complet reste réel) ; quota réduit à 2 en

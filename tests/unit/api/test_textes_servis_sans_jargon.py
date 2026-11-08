@@ -1,4 +1,4 @@
-"""Textes servis par l'API sans vocabulaire de chantier interne (migration 129).
+"""Textes servis par l'API sans vocabulaire de chantier interne.
 
 - Le document OpenAPI construit depuis l'application (descriptions de routes,
   docstrings des schémas, descriptions de champs) ne porte aucun motif de

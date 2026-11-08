@@ -2,7 +2,7 @@
 
 ``GET /v1/grandeurs/incertitude_inter_source`` (sans path param). Les 34 fiches de
 l'atlas en un appel, enveloppe paginee ``{items, total, limit, offset}`` (identique a
-/v1/series). Chaque item = la fiche par-localite (Temps 2) + lat/lon. Lecture pure.
+/v1/series). Chaque item = la fiche par-localite + lat/lon. Lecture pure.
 """
 
 from __future__ import annotations

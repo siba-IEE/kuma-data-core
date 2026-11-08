@@ -187,9 +187,10 @@ def test_d29_kindia_mamou_dalaba_co_pixel(db_session: Session) -> None:
 
 
 def test_ghi_dni_partagent_grille_ceres(db_session: Session) -> None:
-    """Garde de l'hypothese atlas Temps 2 : la degenerescence NASA ``ghi`` == NASA ``dni``
-    pour chaque point (memes pixels CERES). L'endpoint inter-source prend la ligne ``ghi``
-    comme representative du DNI ; si une grille future casse l'egalite, ce test l'attrape."""
+    """Degenerescence NASA ``ghi`` == ``dni`` en chaque point (memes pixels CERES).
+
+    L'endpoint inter-source prend la ligne ``ghi`` comme representative du DNI.
+    """
     rows = db_session.execute(
         text(
             """

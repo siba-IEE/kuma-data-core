@@ -1,29 +1,8 @@
-"""Catalogue des codes d'erreur stables exposés par l'API Kuma.
+"""Codes d'erreur stables de l'API : un code publié ne change ni ne disparaît.
 
-Ces codes sont des identifiants techniques destinés aux outils
-consommateurs de l'API (Kuma Solar Data Bridge, futurs outils Excel /
-Streamlit, etc.). Ils sont **stables** : un code publié ne change plus,
-ne disparaît plus. Pour faire évoluer la sémantique, on crée un nouveau
-code et on déprécie l'ancien.
-
-Convention de nommage
----------------------
-``UPPER_SNAKE_CASE`` français, regroupé par préfixe métier :
-
-* ``AUTH_*``           - authentification, autorisation
-* ``VALIDATION_*``     - validation des entrées (Pydantic, contraintes)
-* ``RESSOURCE_*``      - état des ressources (existence, conflits)
-* ``GRANDEUR_F2_*``    - grandeurs F2 paramétrables
-* ``PASSE_PLAT_*``     - passe-plat horaire
-* ``PLAGE_*``          - plages temporelles non disponibles
-* ``INFRASTRUCTURE_*`` - dépendances externes (base, cache)
-* ``SERVEUR_*``        - erreurs internes non classifiées
-
-Périmètre
----------
-Seuls ``AUTH_*``, ``INFRASTRUCTURE_*`` et ``SERVEUR_ERREUR_INTERNE``
-sont effectivement utilisés. Les autres sont déclarés en avance pour
-préfigurer l'usage à venir et stabiliser le contrat dès maintenant.
+Pour changer une sémantique, créer un code et déprécier l'ancien. Nommage
+``UPPER_SNAKE_CASE`` français, préfixé par domaine (``AUTH_``,
+``VALIDATION_``, ``RESSOURCE_``, ``PLAGE_``, ``INFRASTRUCTURE_``...).
 """
 
 from __future__ import annotations

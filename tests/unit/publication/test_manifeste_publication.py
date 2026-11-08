@@ -1,4 +1,4 @@
-"""Tests unitaires du manifeste de publication (ADR-0003, D5 / WP0).
+"""Tests unitaires du manifeste de publication (ADR-0003).
 
 Tests sans DB, sur le module Python et ``Base.metadata``. Couvrent :
 

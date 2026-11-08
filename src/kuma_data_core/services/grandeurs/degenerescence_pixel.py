@@ -1,35 +1,14 @@
-"""Calcul de la grandeur F1 ``degenerescence_pixel``.
+"""Dégénérescence de pixel : nombre d'autres localités qui partagent la cellule source d'un point.
 
-2e couche d'honnêteté de l'atlas (distincte de l'écart inter-source) : pour chaque
-(localite, source, parametre), dit si ce point **partage sa cellule source** avec
-d'autres préfectures (donnée qui se répète) ou s'il est **réellement résolu**.
+Sur une grille fixe (NASA POWER), deux points d'une même cellule ont des
+séries mensuelles strictement identiques : on groupe les localités par
+vecteur identique (égalité exacte), sans supposer de définition de grille.
+Les services interpolés au point (SARAH-3, CAMS 5 km) donnent 0 par
+construction ; un caveat de résolution porte alors le sens.
 
-Méthode empirique : sur une **grille fixe** (NASA POWER), deux points dans la même
-cellule lisent **la valeur de la cellule** -> leurs séries mensuelles sont
-**strictement identiques**. On groupe les localités par vecteur de valeurs identique
-(égalité exacte) : un groupe de taille > 1 = des **jumeaux-pixel**. C'est ainsi que le
-cas Kindia/Mamou a été constaté. Aucune définition de grille n'est inventée.
-
-Nuance par type de source :
-
-- **grille fixe** (NASA radiation CERES 1deg, météo MERRA 0.5deg) : compte de
-  jumeaux **mesuré** ;
-- **service interpolé au point** (SARAH-3 / CAMS 5 km) : valeurs distinctes par
-  construction -> compte **0** naturellement ; le sens est porté par un **caveat de
-  résolution** (finesse sub-maille illusoire), pas par le compte.
-
-Sortie : 1 ligne ``grandeurs_metier`` par (localite x source x parametre),
-``periode_type='statique'``, ``valeur`` = nombre de jumeaux (0 = point résolu),
-``niveau_confiance_derive='B'`` (la confiance **A est réservée aux mesures terrain**,
-déjà tenue par le GHI/DNI sol Kankan/Tarambaly ESMAP-WAPP. La dégénérescence est
-**exacte**, mais l'échelle A/B/C classe la fiabilité d'une *mesure de substrat*, pas la
-certitude d'un fait structurel : B + caveat, jamais A). La série source (climato
-mensuelle) porte le FK ``series_metadonnees_id`` (précédent
-``indicateur_qualite_donnees``, lui-même B). Le groupe de jumeaux + les caveats vivent
-dans ``commentaire_editorial``.
-
-Pattern fonctions pures + orchestrateur I/O, miroir de ``referentiels`` /
-``ecart_dni_cams``. Calcul déterministe depuis la base, aucun réseau.
+Une ligne statique par (localité, source, paramètre), valeur = nombre de
+jumeaux. Confiance ``B`` : le fait est exact, mais A/B/C classe la
+fiabilité d'une mesure, et A est réservé aux mesures au sol.
 """
 
 from __future__ import annotations
@@ -46,15 +25,11 @@ GRANDEUR_DEGENERESCENCE: str = "degenerescence_pixel"
 NIVEAU_CONFIANCE_DERIVE: str = "B"
 VERSION_FORMULE: int = 1
 
-# Mention historique de la migration 090 (immuable), gardee a l'identique pour
-# qu'une base neuve reconstruite de 001 a la tete passe par le meme etat : la
-# migration 128 la retire ensuite des textes publies sous garde md5. Aucun
-# nouveau texte ne la porte (``texte_historique_090=False`` par defaut).
+# Texte d'origine de la migration 090, retiré ensuite des textes publiés sous
+# garde md5 ; aucun nouveau texte ne le porte.
 _MENTION_HISTORIQUE_090: str = " (D-29 generalise)"
 
-# Caveat de nature appose sur chaque ligne : dit l'exactitude SANS usurper le
-# palier A (reserve terrain). La degenerescence est un fait structurel exact, mais
-# A/B/C classe la fiabilite d'une mesure de substrat, pas la certitude d'un fait.
+# Le fait est exact, mais A reste réservé aux mesures au sol.
 _CAVEAT_CONFIANCE: str = (
     " Indicateur exact (identite structurelle observee, non modelise), tague confiance B : "
     "A est reservee aux mesures terrain et l'echelle A/B/C classe la fiabilite d'une mesure "
@@ -179,13 +154,10 @@ _CONFIG: tuple[_ConfigSource, ...] = (
 
 
 def _grouper_par_pixel(vecteurs: dict[int, tuple[float, ...]]) -> dict[int, list[int]]:
-    """Pour chaque localite, la liste des AUTRES localites au vecteur identique.
+    """``{localite_id: [autres localités au vecteur identique]}`` (vide = point résolu).
 
-    Egalite **exacte** : sur grille fixe, l'identite est binaire. Toute quasi-egalite
-    non exacte = points distincts (releve de l'ecart, pas de la degenerescence).
-
-    Returns:
-        ``{localite_id: [jumeaux_localite_id tries]}`` (liste vide = point resolu).
+    Égalité exacte : sur grille fixe, l'identité est binaire ; un quasi-égal
+    relève de l'écart inter-source.
     """
     groupes: dict[tuple[float, ...], list[int]] = defaultdict(list)
     for loc_id, vec in vecteurs.items():
@@ -204,13 +176,9 @@ def _commentaire(
     *,
     texte_historique_090: bool = False,
 ) -> str:
-    """Texte d'honnetete : groupe de jumeaux pour les grilles fixes, caveat de
-    resolution pour les sources interpolees.
+    """Groupe de jumeaux (grille fixe) ou caveat de résolution (source interpolée).
 
-    ``texte_historique_090`` reproduit a l'octet pres le texte ecrit par la
-    migration 090 (mention interne ``_MENTION_HISTORIQUE_090`` en fin de phrase
-    des jumeaux-pixel) ; il n'est utilise que par
-    :func:`calculer_et_inserer_degenerescence`, que cette migration importe.
+    ``texte_historique_090`` reproduit à l'octet le texte de la migration 090.
     """
     if not cfg["grille_fixe"]:
         base = (
@@ -238,30 +206,15 @@ def _commentaire(
 
 
 def calculer_et_inserer_degenerescence_pixel(session: Session) -> int:
-    """Calcule et insere ``degenerescence_pixel`` dans ``grandeurs_metier``.
-
-    Pour chaque (source, parametre) de l'epine radiative, lit les series climato
-    mensuelles de toutes les localites, groupe par vecteur identique (jumeaux-pixel),
-    et insere 1 ligne statique par localite (valeur = nombre de jumeaux). Le
-    commentaire editorial est le texte publie courant (sans code interne).
-
-    Args:
-        session : session SQLAlchemy active (l'appelant commit).
-
-    Returns:
-        Nombre de lignes inserees.
-    """
+    """Insère une ligne par localité et (source, paramètre) ; renvoie le nombre de lignes."""
     return _calculer_et_inserer(session, texte_historique_090=False)
 
 
 def calculer_et_inserer_degenerescence(session: Session) -> int:
-    """Variante figee pour la migration 090 (immuable), qui importe ce nom.
+    """Variante importée par la migration 090 (immuable), avec son texte d'origine.
 
-    Meme calcul que :func:`calculer_et_inserer_degenerescence_pixel`, avec le
-    commentaire historique de 090 (mention ``_MENTION_HISTORIQUE_090``), pour
-    qu'une base neuve passe par l'etat que les migrations 128 et suivantes
-    attendent. Tout nouvel appel utilise
-    :func:`calculer_et_inserer_degenerescence_pixel`.
+    Une base reconstruite doit passer par l'état que les migrations suivantes
+    attendent. Tout nouvel appel utilise :func:`calculer_et_inserer_degenerescence_pixel`.
     """
     return _calculer_et_inserer(session, texte_historique_090=True)
 

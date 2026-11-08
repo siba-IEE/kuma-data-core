@@ -1,9 +1,7 @@
-"""Schémas Pydantic de l'endpoint ``/v1/edition`` (ADR-0003, D7).
+"""Schémas Pydantic de ``/v1/edition`` (ADR-0003).
 
-La fraîcheur est une propriété affichée : chaque déploiement public sert
-une édition datée, et l'API dit laquelle. Les métadonnées sont produites
-au moment de la publication (``exporter-edition.ps1``) et injectées dans
-l'édition (table ``edition_metadonnees``), jamais devinées côté serveur.
+Les métadonnées d'édition sont produites à la publication et injectées dans
+``edition_metadonnees``, jamais devinées côté serveur.
 """
 
 from __future__ import annotations

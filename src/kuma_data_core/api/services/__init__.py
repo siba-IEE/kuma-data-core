@@ -1,8 +1,1 @@
-"""Services internes de la couche API.
-
-Fonctions utilitaires consommees par les routeurs FastAPI sous
-``src/kuma_data_core/api/v1/``. Pas de couplage SQLAlchemy direct :
-les services API restent au niveau « logique métier de l'API »
-(résolution de tables, formatage de réponses, etc.) et délèguent les
-accès DB aux dépendances FastAPI standard.
-"""
+"""Logique propre à l'API, sans accès direct à la base (résolution de tables, formatage)."""

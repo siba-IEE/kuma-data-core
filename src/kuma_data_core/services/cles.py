@@ -1,15 +1,9 @@
-"""Cycle de vie des clés API self-service (ADR-0003, D3 / WP6).
+"""Cycle de vie des clés API self-service (ADR-0003).
 
-Toute la logique vit ici, le routeur (``api/v1/cles.py``) ne fait que
-l'orchestration HTTP. Principes :
-
-- La clé complète (``kuma_`` + 43 caractères URL-safe, 256 bits
-  d'entropie) n'existe qu'au moment de l'émission : elle est renvoyée
-  une seule fois au demandeur, seule son empreinte SHA-256 est stockée.
-- Le préfixe (``kuma_`` + 8 premiers caractères) est l'identifiant
-  public : affichable, loggable, suffisant pour révoquer.
-- L'émission est la seule surface d'écriture publique du serveur (D2) :
-  elle est bornée par IP (``LIMITE_EMISSIONS_PAR_IP_24H``).
+La clé complète (``kuma_`` + 256 bits URL-safe) n'est montrée qu'une fois ;
+seule son empreinte SHA-256 est stockée. Le préfixe (``kuma_`` + 8
+caractères) est public et suffit à révoquer. L'émission, seule écriture
+publique du serveur, est bornée par IP.
 """
 
 from __future__ import annotations
@@ -26,18 +20,12 @@ from kuma_data_core.db.meta import CleApi
 PREFIXE_CLE = "kuma_"
 _LONGUEUR_PREFIXE_PUBLIC = len(PREFIXE_CLE) + 8
 
-# Émissions maximales par adresse IP sur 24 h glissantes. Volontairement
-# bas : un développeur légitime n'a besoin que d'une clé ; la limite ne
-# gêne que les robots.
+# Sur 24 h glissantes. Bas exprès : un développeur n'a besoin que d'une clé.
 LIMITE_EMISSIONS_PAR_IP_24H = 3
 
 
 def generer_cle() -> tuple[str, str, str]:
-    """Génère une clé neuve : ``(cle_complete, prefixe, empreinte)``.
-
-    La clé complète ne doit jamais être persistée ni loggée : elle
-    transite vers le demandeur puis n'existe plus que chez lui.
-    """
+    """``(cle_complete, prefixe, empreinte)`` ; la clé complète n'est jamais stockée ni loggée."""
     cle = f"{PREFIXE_CLE}{secrets.token_urlsafe(32)}"
     return cle, cle[:_LONGUEUR_PREFIXE_PUBLIC], hacher_cle(cle)
 
@@ -54,9 +42,8 @@ def nombre_emissions_recentes(session: Session, adresse_ip: str) -> int:
         .select_from(CleApi)
         .where(
             CleApi.adresse_ip_creation == adresse_ip,
-            # make_interval positionnel (years, months, weeks, days, hours) :
-            # les 4 premiers à 0, hours=24. Les kwargs Python ne sont pas
-            # traduits en named args PostgreSQL par SQLAlchemy, d'où le positionnel.
+            # make_interval(years, months, weeks, days, hours) en positionnel :
+            # SQLAlchemy ne traduit pas les kwargs en arguments nommés PostgreSQL.
             CleApi.cree_le > func.now() - func.make_interval(0, 0, 0, 0, 24),
         )
     ).scalar()
@@ -69,11 +56,7 @@ def creer_cle(
     usage_prevu: str | None,
     adresse_ip: str,
 ) -> tuple[str, CleApi]:
-    """Émet une clé : retourne ``(cle_complete, enregistrement)``.
-
-    La limite d'émission par IP est vérifiée par l'appelant (le routeur
-    la traduit en 429) : cette fonction ne fait qu'émettre.
-    """
+    """Émet une clé ; la limite par IP est vérifiée par l'appelant."""
     cle, prefixe, empreinte = generer_cle()
     enregistrement = CleApi(
         cle_hash=empreinte,
@@ -89,11 +72,7 @@ def creer_cle(
 
 
 def quota_si_active(session: Session, cle: str) -> int | None:
-    """Quota journalier si l'empreinte de ``cle`` est une clé active.
-
-    ``None`` = clé inconnue ou révoquée (l'appelant refuse). Le quota
-    retourné alimente le rate limiting (WP7).
-    """
+    """Quota journalier d'une clé active, ``None`` si inconnue ou révoquée."""
     resultat = session.execute(
         select(CleApi.quota_journalier).where(
             CleApi.cle_hash == hacher_cle(cle),
@@ -104,11 +83,7 @@ def quota_si_active(session: Session, cle: str) -> int | None:
 
 
 def revoquer_par_prefixe(session: Session, prefixe: str) -> int:
-    """Révoque (soft delete) toutes les clés actives portant ce préfixe.
-
-    Retourne le nombre de clés révoquées (0 si préfixe inconnu ou déjà
-    révoqué - l'appelant décide du 404).
-    """
+    """Révoque (soft delete) les clés actives de ce préfixe ; renvoie leur nombre."""
     cles = (
         session.execute(select(CleApi).where(CleApi.prefixe == prefixe, CleApi.actif.is_(True)))
         .scalars()

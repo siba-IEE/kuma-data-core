@@ -1,30 +1,12 @@
-"""Contrôle qualité algorithmique des séries horaires.
+"""Contrôle qualité algorithmique des séries horaires (tests BSRN §4.1-§4.3).
 
-Implémente le socle BSRN (§4.1-§4.3), seuils sourcés verbatim de
-*BSRN Global Network recommended QC tests V2.0* (Long & Dutton). Les
-tests d'aberration temporelle (§4.4, hors jeu BSRN canonique) sont
-différés.
+Seuils repris de *BSRN Global Network recommended QC tests V2.0* (Long &
+Dutton) ; S₀ = 1366,1 W/m² (défaut pvlib). Les tests sont des fonctions pures
+sur une géométrie solaire fournie ; le runner la calcule avec pvlib (UTC).
 
-Deux niveaux :
-
-- **Fonctions pures** (sans I/O ni pvlib) : les tests BSRN, qui
-  prennent en entrée la géométrie solaire déjà calculée (μ₀, SZA, Sₐ).
-- **Runner** ``executer_qc_horaire`` : lit les lignes horaires d'un jeu
-  de séries, calcule la géométrie solaire via ``pvlib`` (UTC), applique
-  les tests et renvoie un verdict par ligne. Le commit est au caller.
-
-Doctrine d'attribution (§5) :
-
-- Échec d'un seuil **« physiquement impossible »** (test dur) → ligne
-  **non validée** : statut conservé ``brut`` + trace en
-  ``commentaire_editorial``.
-- Sinon → ``valide_auto``, niveau ``B``. Les échecs **« souples »**
-  (seuil « extrêmement rare », fermeture, ratio diffus) sont **flaggés**
-  en commentaire sans déclasser (la valeur reste plausible-mais-suspecte).
-
-Référence : Long C.N., Dutton E.G., *BSRN Global Network recommended QC
-tests V2.0* ; constante solaire S₀ = 1366,1 W/m² (défaut pvlib
-``get_extra_radiation``).
+Un seuil « physiquement impossible » laisse la ligne en ``brut`` avec sa
+trace ; sinon ``valide_auto``, niveau ``B``, les échecs « extrêmement rare »,
+de fermeture ou de ratio diffus étant seulement signalés en commentaire.
 """
 
 from __future__ import annotations
@@ -44,11 +26,7 @@ VERSION_DOCTRINE_QC: str = "v1"
 """Version de la doctrine QC appliquée (tracée par ligne et au log batch)."""
 
 S0_W_PAR_M2: float = 1366.1
-"""Constante solaire à distance moyenne (W/m²), défaut pvlib.
-
-Sₐ = S₀ / AU² (ajustée distance Terre-Soleil) est calculée par le runner
-via ``pvlib.irradiance.get_extra_radiation`` ; cette constante documente
-la valeur de base S₀ retenue."""
+"""Constante solaire (W/m²) ; Sₐ = S₀ / AU² est calculée par pvlib."""
 
 # Grandeurs radiatives shortwave soumises aux bornes BSRN + tests croisés.
 _GRANDEURS_RADIATIVES: frozenset[str] = frozenset({"ghi", "dhi", "dni"})
@@ -83,11 +61,9 @@ def _borne_haute_dni(sa: float, mu0: float, *, rare: bool) -> float:
 def plausibilite_radiative(
     grandeur: str, valeur: float, sa: float, mu0: float
 ) -> VerdictPlausibilite:
-    """Verdict de plausibilité BSRN d'une grandeur radiative (ghi/dhi/dni).
+    """``"impossible"`` hors borne physique, ``"rare"`` hors borne extrêmement rare, sinon ``"ok"``.
 
-    Renvoie ``"impossible"`` si hors borne physiquement possible (rejet),
-    ``"rare"`` si dans le possible mais hors extrêmement rare (flag),
-    ``"ok"`` sinon. μ₀ = 0 la nuit réduit les bornes hautes à l'offset.
+    La nuit (μ₀ = 0), les bornes hautes se réduisent à l'offset.
     """
     min_possible, min_rare = -4.0, -2.0
     if grandeur == "ghi":
@@ -110,12 +86,7 @@ def plausibilite_radiative(
 
 
 def plausibilite_non_radiative(grandeur: str, valeur: float) -> VerdictPlausibilite:
-    """Verdict de plausibilité des variables non radiatives (t2m, rh2m, kt).
-
-    Bornes physiques larges (non BSRN-shortwave) : RH2M ∈ [0, 100] %,
-    T2M ∈ [-90, 60] °C, KT ∈ [0, 1] (marge d'enhancement à 1,2). Hors
-    borne → ``"impossible"``. Pas de niveau « rare » distinct ici.
-    """
+    """Bornes larges : RH2M ∈ [0, 100] %, T2M ∈ [-90, 60] °C, KT ∈ [0, 1,2] (enhancement)."""
     if grandeur == "rh2m":
         return "ok" if 0.0 <= valeur <= 100.0 else "impossible"
     if grandeur == "t2m":
@@ -129,11 +100,7 @@ def plausibilite_non_radiative(grandeur: str, valeur: float) -> VerdictPlausibil
 
 
 def tolerance_fermeture(sza_deg: float) -> float | None:
-    """Tolérance du test de fermeture par bande de zénith (BSRN).
-
-    ±8 % pour SZA < 75°, ±15 % pour 75° ≤ SZA < 93°, non applicable
-    au-delà (renvoie ``None``).
-    """
+    """±8 % si SZA < 75°, ±15 % si SZA < 93°, ``None`` au-delà."""
     if sza_deg < 75.0:
         return 0.08
     if sza_deg < 93.0:
@@ -142,11 +109,7 @@ def tolerance_fermeture(sza_deg: float) -> float | None:
 
 
 def fermeture_ok(ghi: float, dhi: float, dni: float, mu0: float, sza_deg: float) -> bool | None:
-    """Test de fermeture BSRN : Global / (DHI + DNI·μ₀) à ±tol de 1,0.
-
-    Renvoie ``None`` si non applicable (Sum SW ≤ 50 W/m² ou SZA ≥ 93°),
-    ``True`` si cohérent, ``False`` si hors tolérance.
-    """
+    """GHI / (DHI + DNI·μ₀) à ±tol de 1 ; ``None`` si Sum SW ≤ 50 W/m² ou SZA ≥ 93°."""
     sum_sw = dhi + dni * mu0
     if sum_sw <= 50.0:
         return None
@@ -209,12 +172,7 @@ def evaluer_instant(
     mu0: float,
     sza_deg: float,
 ) -> list[VerdictLigne]:
-    """Évalue toutes les lignes d'un même instant (géométrie solaire fournie).
-
-    Applique la plausibilité par variable, puis les tests croisés
-    (fermeture, ratio diffus) sur les composantes radiatives présentes.
-    Renvoie un :class:`VerdictLigne` par ligne d'entrée.
-    """
+    """Un verdict par ligne d'un instant : plausibilité, puis fermeture et ratio diffus."""
     par_grandeur: dict[str, MesureHoraire] = {m.grandeur: m for m in mesures}
 
     # Tests croisés (une fois par instant, si les 3 radiatives sont là).
@@ -274,23 +232,9 @@ def executer_qc_horaire(
     latitude: float,
     longitude: float,
 ) -> list[VerdictLigne]:
-    """Applique le QC BSRN aux lignes horaires courantes d'un jeu de séries.
+    """Verdicts QC des lignes courantes des séries ``{grandeur: serie_id}``, sans écriture.
 
-    Lit les lignes ``valide_au IS NULL`` des séries fournies, calcule la
-    géométrie solaire (``pvlib``, UTC) par instant, applique
-    :func:`evaluer_instant`, et renvoie un verdict par ligne. **Sans
-    effet de bord SQL** : le caller (migration) applique les verdicts.
-
-    Args:
-        session : session SQLAlchemy active.
-        serie_ids_par_grandeur : mapping ``{grandeur: serie_id}`` des
-            séries horaires à évaluer (ex. ``{"ghi": 421, ...}``).
-        latitude, longitude : coordonnées WGS84 de la localité (UTC pour
-            la position solaire).
-
-    Returns:
-        Liste de :class:`VerdictLigne`, un par ligne horaire courante.
-        Liste vide si aucune ligne.
+    L'appelant applique les verdicts.
     """
     grandeur_par_serie = {sid: g for g, sid in serie_ids_par_grandeur.items()}
     rows = session.execute(

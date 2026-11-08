@@ -1,4 +1,4 @@
-"""Tests unitaires du compteur de quota Redis (ADR-0003, WP7).
+"""Tests unitaires du compteur de quota Redis (ADR-0003).
 
 Tests sans Redis réel (client factice injecté). Couvrent :
 

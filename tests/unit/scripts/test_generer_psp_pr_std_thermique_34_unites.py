@@ -1,5 +1,5 @@
 """Tests unitaires des parties déterministes du script hors-base
-`generer_psp_pr_std_thermique_34_unites.py` (WP8 Voie 2).
+`generer_psp_pr_std_thermique_34_unites.py`.
 
 Ne touche pas à la base : ne teste que les fonctions pures (résolution alias,
 appariement GHI/T2M par date). La connexion PostgreSQL et l'exécution complète

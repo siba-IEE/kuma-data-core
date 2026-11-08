@@ -1,16 +1,8 @@
-"""Endpoint ``GET /v1/edition`` - fraîcheur affichée (ADR-0003, D7).
+"""Endpoint ``GET /v1/edition`` : date de l'édition publiée (ADR-0003).
 
-Le retard de l'édition publiée sur la base de référence est assumé,
-donc affiché : « un retard documenté est une propriété, un retard
-silencieux est un défaut ». L'endpoint est **non authentifié** (même
-statut public que ``/v1/health``) : la date des données est une
-information de confiance, pas une donnée à protéger.
-
-La table ``edition_metadonnees`` n'existe que dans une édition publiée
-(elle est injectée par le script d'export, hors schéma de référence et
-hors lignée Alembic). Sur un déploiement qui ne sert pas une édition -
-typiquement une base de développement - l'endpoint renvoie 404
-``RESSOURCE_INTROUVABLE`` : c'est l'état normal du régime local.
+Non authentifié : le retard sur la base de référence est assumé, donc
+affiché. ``edition_metadonnees`` n'existe que dans une édition publiée ;
+ailleurs (base de dev), 404 ``RESSOURCE_INTROUVABLE`` est l'état normal.
 """
 
 from __future__ import annotations

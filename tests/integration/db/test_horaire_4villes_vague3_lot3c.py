@@ -7,7 +7,7 @@ profondeur 2001-2023. L'ingestion de masse est court-circuitee en CI par
 series est inconditionnel. Les assertions portent sur la **structure**
 (invariante que l'ingestion ait tourne ou non).
 
-Cas particulier Mamou (dette D-29) : co-pixel CERES avec Kindia. Le
+Cas particulier Mamou : meme pixel CERES que Kindia. Le
 radiatif (ghi/dni/dhi/kt) est ingere quand meme (symetrie catalogue) avec
 un ``commentaire_editorial`` documentant l'identite - verifie ici.
 """
@@ -99,7 +99,7 @@ def test_3c_serie_unique_par_ville_grandeur(db_session: Session) -> None:
 
 
 def test_3c_mamou_radiatif_documente_d29(db_session: Session) -> None:
-    """Mamou (co-pixel D-29) : les 4 series radiatives portent la note d'identite Kindia."""
+    """Mamou (meme pixel CERES que Kindia) : ses 4 series radiatives portent la note d'identite."""
     for grandeur in _GRANDEURS_COPIXEL_MAMOU:
         commentaire = db_session.execute(
             text("SELECT commentaire_editorial FROM series_metadonnees WHERE code = :c"),

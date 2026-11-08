@@ -1,5 +1,5 @@
 """Tests d'intégration de ``GET /v1/edition`` et du champ ``edition`` du
-health (ADR-0003, D7 / WP5).
+health (ADR-0003).
 
 Couvre les deux régimes :
 
@@ -37,7 +37,7 @@ _REVISION_TEST = "abcdef123456"
 def edition_metadonnees_presente() -> Iterator[None]:
     """Matérialise ``edition_metadonnees`` avec le SQL réel de l'export.
 
-    Consomme ``sql_metadonnees`` (WP1) plutôt qu'un DDL dupliqué : le
+    Consomme ``sql_metadonnees`` plutôt qu'un DDL dupliqué : le
     test intègre exactement ce que le script d'export injecte dans une
     édition - un drift export/endpoint casserait ici.
     """

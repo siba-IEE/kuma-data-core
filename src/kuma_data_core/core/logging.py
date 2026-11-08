@@ -1,24 +1,8 @@
-"""Configuration du logging structuré pour Kuma Data Core.
+"""Logging structuré (structlog) : console lisible en ``texte``, une ligne JSON en ``json``.
 
-Utilise ``structlog`` avec deux formats conditionnés par
-``Settings.log_format`` :
-
-- ``texte`` (défaut en dev) : sortie console colorisée, lisible.
-- ``json`` (obligatoire en prod) : une ligne JSON par événement, parsable
-  par les agrégateurs (Loki, ELK, Datadog…).
-
-L'horodatage est en ISO 8601 UTC. Les variables de contexte attachées
-via ``structlog.contextvars`` sont automatiquement fusionnées dans
-chaque événement (utile pour propager un identifiant de requête, par
-exemple).
-
-Conventions de nommage des événements
--------------------------------------
-Les ``event`` (premier argument positionnel de ``logger.info(...)``)
-sont en snake_case français descriptif : ``api_demarrage``,
-``api_arret``, ``requete_traitee``. Les attributs structurés sont
-également en snake_case français : ``methode``, ``chemin``, ``statut``,
-``duree_ms``.
+Horodatage ISO 8601 UTC ; les ``contextvars`` sont fusionnées dans chaque
+événement. Événements et attributs en snake_case français
+(``requete_traitee``, ``duree_ms``).
 """
 
 from __future__ import annotations
@@ -34,12 +18,7 @@ from kuma_data_core.core.config import get_settings
 
 
 def configurer_logging() -> None:
-    """Configure ``structlog`` selon le format choisi (texte ou JSON).
-
-    Cette fonction est idempotente - ``structlog.configure`` peut être
-    appelée plusieurs fois sans effet de bord (par exemple, lors d'un
-    redémarrage à chaud du serveur de dev).
-    """
+    """Configure structlog selon ``log_format`` ; idempotent."""
     settings = get_settings()
 
     processeurs_partages: list[Processor] = [
@@ -68,11 +47,5 @@ def configurer_logging() -> None:
 
 
 def obtenir_logger(nom: str) -> structlog.stdlib.BoundLogger:
-    """Retourne un logger nommé, conforme à la configuration courante.
-
-    Utilisation :
-
-        log = obtenir_logger("kuma.api.requete")
-        log.info("requete_traitee", methode="GET", chemin="/v1/health")
-    """
+    """Logger nommé, ex. ``obtenir_logger("kuma.api.requete").info("requete_traitee")``."""
     return cast(structlog.stdlib.BoundLogger, structlog.get_logger(nom))

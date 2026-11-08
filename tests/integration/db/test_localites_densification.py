@@ -1,17 +1,15 @@
-"""Tests d'integration de la densification prefectorale.
-
-Migration 085. Verifie l'etat post-085 :
+"""Tests d'integration des 33 prefectures de Guinee (migration 085) :
 
 * 33 noeuds ``prefecture`` (``gin_<slug>_prefecture``) sous leur region, portant le
   ``code_administratif_national`` du decret 2025 ;
 * 28 nouvelles communes chef-lieu (``gin_<slug>``, ou ``gin_<slug>_centre`` pour
-  Boke/Faranah en collision : decision B, pas de re-signification de code) ;
+  Boke/Faranah en collision : un code existant ne change pas de sens) ;
 * re-parentage des 5 communes capitales regionales (region -> prefecture) SANS
   recreation (demographie et coordonnees conservees, donc series intactes) ;
 * ``gin_boke`` / ``gin_faranah`` restent des regions ;
-* demographie NULL sur tous les noeuds crees (D7) ;
+* demographie NULL sur tous les noeuds crees ;
 * coordonnees corrigees (Forecariah, Lola) effectivement seedees ;
-* convention Sec. 5.3 : le noeud prefecture porte les coordonnees du chef-lieu.
+* le noeud prefecture porte les coordonnees du chef-lieu.
 
 Base d'integration a head ; fixture ``db_session`` (connection-as-transaction,
 rollback en sortie de test) fournie par ``tests/integration/db/conftest.py``.

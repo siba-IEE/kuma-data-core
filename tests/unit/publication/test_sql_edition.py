@@ -1,4 +1,4 @@
-"""Tests unitaires du générateur SQL d'édition (ADR-0003, WP1).
+"""Tests unitaires du générateur SQL d'édition (ADR-0003).
 
 Tests sans DB, sur les chaînes SQL produites. Couvrent :
 

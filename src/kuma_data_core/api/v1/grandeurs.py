@@ -1958,7 +1958,7 @@ def grandeur_pr_realiste(
     )
 
 
-# === Endpoint incertitude_inter_source (atlas Temps 2, F1 lecture/assemblage) ===
+# === Endpoint incertitude_inter_source (lecture et assemblage) ===============
 
 _AN_DEBUT_ATLAS = 2021
 _AN_FIN_ATLAS = 2023
@@ -2174,7 +2174,7 @@ def _lister_points_atlas(session: Session) -> list[tuple[int, str]]:
 def _assembler_fiche_point(
     session: Session, localite_id: int, code_localite: str
 ) -> FichePointIncertitude:
-    """Assemble la fiche d'un point de l'atlas (fiche Temps 2 + coordonnées), pour la collection.
+    """Fiche d'un point de l'atlas (fiche par localité + coordonnées), pour la collection.
 
     Réutilise les mêmes helpers que l'endpoint par-localité (deux axes distincts, confiance B
     lue + assérée, limite éditoriale). Lève 500 sur incohérence (un point du périmètre sans écart ou

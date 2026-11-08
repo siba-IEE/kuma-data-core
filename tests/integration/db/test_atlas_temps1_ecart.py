@@ -1,10 +1,10 @@
-"""Tests d'integration de l'atlas Temps 1 : ecart inter-source etendu aux 33
+"""Tests d'integration de l'ecart inter-source de l'atlas, etendu aux 34 points
 (migration 091).
 
 L'ecart inter-source (donnee-coeur de l'atlas) est materialise aux 34 points sur la
 fenetre commune 2021-2023, pairwise par grandeur :
 
-- GHI : ``ecart_relatif_referentiel`` = NASA vs SARAH-3 ; 6 pilotes (1-7b, 216) + 28
+- GHI : ``ecart_relatif_referentiel`` = NASA vs SARAH-3 ; 6 pilotes (216) + 28
   communes (atlas, 1 008) = 1 224 lignes, 34 localites.
 - DNI : ``ecart_relatif_dni_cams`` fenetre RECENTE 2021-2023 = NASA vs CAMS ; 34 points
   x 36 = 1 224 lignes (le climato 2004-2020, 1 218, reste un artefact pilote distinct).

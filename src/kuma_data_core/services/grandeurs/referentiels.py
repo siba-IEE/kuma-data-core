@@ -1,43 +1,14 @@
-"""Calculs des 3 grandeurs F1 référentielles.
+"""Grandeurs référentielles stockées dans ``grandeurs_metier``.
 
-F1 stockée (calculée par Kuma, matérialisée dans ``grandeurs_metier``).
+- ``ecart_relatif_referentiel`` : ``(kuma - sarah3) / sarah3 * 100``, NASA
+  POWER journalier agrégé au mois contre PVGIS-SARAH3 ICDR, sur 2021-2023.
+- ``rang_referentiel_temporel`` : percentile de la valeur 2021-2025 dans la
+  climatologie NASA POWER 1991-2020 du même mois calendaire (n = 30).
+- ``rang_referentiel_spatial`` : rang 1-6 parmi les six villes pilotes, même mois.
 
-Module de calcul et d'insertion des 3 grandeurs métier externes
-multi-référence :
-
-- ``ecart_relatif_referentiel`` : divergence inter-source contemporaine
-  entre NASA POWER Kuma 2021-2025 (agrégé mensuel à la volée depuis
-  ``mesures_ressource``) et PVGIS-SARAH3 ICDR 2021-2023 (lookup direct
-  dans ``mesures_ressource_mensuelles``). Plage 2021-2023 = chevauchement
-  effective. Sortie : 216 lignes (36 mois x 6 villes).
-
-- ``rang_referentiel_temporel`` : percentile de la valeur Kuma 2021-2025
-  dans la climatologie NASA POWER 1991-2020 stratifiée par mois calendrier
-  (n=30 par mois). Cohérence intra-source NASA POWER. Sortie : 360 lignes.
-
-- ``rang_referentiel_spatial`` : rang ordinal 1-6 de la valeur Kuma dans
-  le pool des 6 villes Kuma pour le même mois. Cohérence intra-périmètre.
-  Sortie : 360 lignes.
-
-Total : 936 lignes ``grandeurs_metier`` insérées.
-
-Pattern fonctions pures + orchestrateur I/O.
-
-Niveau de confiance dérivé uniforme ``'B'`` sur les 936 lignes.
-Justifications :
-
-- écart relatif : signal indirect par construction (combinaison 2 sources).
-- rang temporel : caveat sur validation publique quantile mapping
-  NASA POWER limitée au longwave.
-- rang spatial : limite statistique n=6 villes.
-
-Mappings réels :
-
-- ``grandeur_code`` (VARCHAR FK vers ``grandeurs_referentiel.code``) au
-  lieu de ``grandeur_referentiel_id``.
-- Unité héritée via la FK (``grandeurs_referentiel.unite_id``).
-- Période encodée via ``(periode_type='mensuel', annee_debut=annee,
-  annee_fin=annee, mois=mois)`` au lieu de ``(periode_debut, periode_fin)``.
+Confiance ``B`` partout : l'écart combine deux sources, le quantile mapping
+NASA POWER n'est validé publiquement que pour le rayonnement de grande
+longueur d'onde, et le rang spatial repose sur n = 6.
 """
 
 from __future__ import annotations
@@ -66,19 +37,11 @@ ANNEE_CLIMATO_FIN: int = 2020
 N_VILLES_KUMA: int = 6
 
 SEUIL_SARAH3_MIN_DEFAUT: float = 0.5
-"""Seuil minimal (kWh/m²/jour) en dessous duquel la valeur SARAH-3
-mensuelle est jugée pathologique et l'écart relatif n'est pas calculé
-(stocké NULL plutôt qu'une valeur amplifiée mathématiquement absurde).
+"""SARAH-3 mensuel minimal (kWh/m²/jour) pour calculer un écart relatif.
 
-Justification : la formule ``(k - s) / s * 100`` diverge quand
-``s -> 0``. Pour le GHI Afrique tropicale ouest, toute valeur SARAH-3
-< 0.5 kWh/m²/jour est physiquement inexplicable (couverture nuageuse
-totale en plein hiver donnerait 2-3 minimum) - c'est nécessairement
-un défaut amont (sentinelle mal nettoyée, divergence d'unité dans
-l'ingestion, etc.).
-
-Le seuil est paramétrable via :func:`recalculer_ecart_relatif_referentiel`
-pour pouvoir l'ajuster sans modifier le code.
+En dessous, l'écart diverge (``s -> 0``) et la valeur est stockée NULL. En
+Afrique de l'Ouest tropicale, même un mois très couvert dépasse 2 kWh/m²/jour :
+une valeur < 0.5 trahit un défaut amont (sentinelle, unité).
 """
 
 
@@ -107,43 +70,23 @@ class CalculReferentielsResultat(TypedDict):
 
 
 def _agreger_mensuel(valeurs_journalieres: Sequence[float]) -> float:
-    """Moyenne arithmétique mensuelle (sans I/O).
-
-    Args:
-        valeurs_journalieres : 28-31 valeurs typiquement.
-
-    Returns:
-        Moyenne.
-
-    Raises:
-        ValueError : si vide.
-    """
+    """Moyenne arithmétique ; ``ValueError`` si vide."""
     if not valeurs_journalieres:
         raise ValueError("Aucune valeur journaliere a agreger")
     return sum(valeurs_journalieres) / len(valeurs_journalieres)
 
 
 def _calcul_ecart_relatif(valeur_kuma: float, valeur_sarah3: float) -> float:
-    """Écart relatif inter-source en pourcent signé.
-
-    Formule : ``(kuma - sarah3) / sarah3 * 100``.
-
-    Raises:
-        ValueError : si ``valeur_sarah3`` nulle.
-    """
+    """``(kuma - sarah3) / sarah3 * 100`` ; ``ValueError`` si SARAH-3 nul."""
     if valeur_sarah3 == 0.0:
         raise ValueError("Ecart relatif indefini : valeur SARAH-3 nulle")
     return (valeur_kuma - valeur_sarah3) / valeur_sarah3 * 100.0
 
 
 def _calcul_rang_temporel(valeur_kuma: float, distribution: Sequence[float]) -> float:
-    """Percentile dans la distribution (formule type 7 numpy/R).
+    """Percentile type 7 (numpy/R) : ``(rang - 1) / (n - 1) * 100``, borné à [0, 100].
 
-    Formule : ``p = (rang - 1) / (n - 1) * 100`` avec capping ``[0, 100]``.
-    Rang gère les ex-aequo par demi-rang (interpolation linéaire).
-
-    Raises:
-        ValueError : si n < 2.
+    Les ex-aequo prennent le demi-rang ; ``ValueError`` si n < 2.
     """
     if len(distribution) < 2:
         raise ValueError(f"Distribution insuffisante : n={len(distribution)} (>= 2 requis)")
@@ -157,17 +100,7 @@ def _calcul_rang_temporel(valeur_kuma: float, distribution: Sequence[float]) -> 
 
 
 def _calcul_rang_spatial(valeurs_par_localite: dict[int, float]) -> dict[int, int]:
-    """Rang ordinal 1-N dans le pool des N localités (tri croissant).
-
-    Ex-aequo gérées par ordre numpy.argsort (premier arrivé, premier
-    servi) - comportement déterministe par l'ordre du dict d'entrée.
-
-    Returns:
-        ``{localite_id: rang_ordinal_1_a_N}``.
-
-    Raises:
-        ValueError : si dict vide.
-    """
+    """Rang 1-N par valeur croissante ; ex-aequo départagés par l'ordre d'entrée."""
     if not valeurs_par_localite:
         raise ValueError("Aucune valeur a classer")
     items_tries = sorted(valeurs_par_localite.items(), key=lambda kv: kv[1])
@@ -249,19 +182,10 @@ def calculer_et_inserer_referentiels(
     contextes_villes: Sequence[ContexteVille],
     serie_id_par_grandeur_localite: dict[tuple[str, int], int],
 ) -> CalculReferentielsResultat:
-    """Calcule et insère les 936 lignes des 3 grandeurs F1 stockées référentielles.
+    """Calcule et insère les 936 lignes des trois grandeurs (add et flush, sans commit).
 
-    Args:
-        session : session SQLAlchemy active (add+flush, pas commit).
-        contextes_villes : séquence par localité avec clés :
-            ``localite_id``, ``code_serie_kuma_daily``, ``code_serie_sarah3``,
-            ``code_serie_power_1991_2020``.
-        serie_id_par_grandeur_localite : mapping
-            ``{(grandeur_code, localite_id): series_metadonnees_id}`` pour
-            les 18 séries calculées pré-insérées par la migration appelante.
-
-    Returns:
-        :class:`CalculReferentielsResultat`.
+    ``serie_id_par_grandeur_localite`` : ``{(grandeur_code, localite_id): serie_id}``
+    des 18 séries calculées, créées au préalable.
     """
     nb_ecart = 0
     nb_rang_temporel = 0
@@ -384,7 +308,7 @@ def calculer_et_inserer_referentiels(
     }
 
 
-# === Recalcul corrige ecart_relatif (migration 046+) ======================
+# === Recalcul de ecart_relatif avec seuil =================================
 
 
 def _calcul_ecart_relatif_avec_seuil(
@@ -392,27 +316,10 @@ def _calcul_ecart_relatif_avec_seuil(
     valeur_sarah3: float,
     seuil_sarah3_min: float,
 ) -> float | None:
-    """Variante robuste de :func:`_calcul_ecart_relatif` avec garde-fou seuil.
+    """Écart relatif signé, ou ``None`` si SARAH-3 < seuil (kWh/m²/jour).
 
-    Identique à la formule canonique ``(kuma - sarah3) / sarah3 * 100``
-    sauf que les valeurs SARAH-3 inférieures au seuil sont jugées
-    pathologiques et l'écart n'est pas calculé (retour ``None`` plutôt
-    qu'une amplification mathématiquement absurde par 1/s pour s -> 0).
-
-    Args:
-        valeur_kuma : moyenne mensuelle Kuma (kWh/m²/jour).
-        valeur_sarah3 : moyenne mensuelle SARAH-3 (kWh/m²/jour, post-044).
-        seuil_sarah3_min : seuil minimal SARAH-3 (kWh/m²/jour). En dessous,
-            la fonction retourne ``None``.
-
-    Returns:
-        Écart relatif en pourcent signé, ou ``None`` si SARAH-3 < seuil.
-
-    Notes:
-        Cette fonction est volontairement séparée de :func:`_calcul_ecart_relatif`
-        qui reste utilisée par :func:`calculer_et_inserer_referentiels` (migration
-        042) pour ne pas changer le comportement historique. Elle sert le
-        recalcul corrigé en migration 046.
+    Distinct de :func:`_calcul_ecart_relatif` pour ne pas changer le calcul
+    historique de :func:`calculer_et_inserer_referentiels`.
     """
     if valeur_sarah3 < seuil_sarah3_min:
         return None
@@ -420,22 +327,9 @@ def _calcul_ecart_relatif_avec_seuil(
 
 
 def _decouvrir_contextes_villes_depuis_db(session: Session) -> list[ContexteVille]:
-    """Reconstruit les contextes des 6 villes pilotes à partir de la base.
+    """Reconstruit depuis ``series_metadonnees`` les contextes des six villes pilotes.
 
-    Évite la duplication du dictionnaire de localités de la migration
-    042. Les codes des séries Kuma daily, SARAH-3 et power 1991-2020 suivent
-    une convention stable (helpers ``_code_serie_*`` de la migration
-    042) qu'on reconstruit ici en interrogeant ``series_metadonnees`` par
-    grandeur + source.
-
-    Args:
-        session : session SQLAlchemy active.
-
-    Returns:
-        Liste de ContexteVille pour les 6 villes Kuma pilotes.
-
-    Raises:
-        RuntimeError : si l'on ne trouve pas les 6 contextes attendus.
+    ``RuntimeError`` si les six ne sont pas trouvés.
     """
     rows = session.execute(
         text(
@@ -487,9 +381,7 @@ def _decouvrir_contextes_villes_depuis_db(session: Session) -> list[ContexteVill
 
 
 def _resoudre_serie_id_ecart_par_localite(session: Session) -> dict[int, int]:
-    """Résout ``{localite_id: series_metadonnees.id}`` pour les 6 séries
-    ``ecart_relatif_referentiel`` calculées Kuma post-migration 042.
-    """
+    """``{localite_id: serie_id}`` des séries ``ecart_relatif_referentiel`` calculées."""
     rows = session.execute(
         text(
             """
@@ -510,29 +402,11 @@ def recalculer_ecart_relatif_referentiel(
     session: Session,
     seuil_sarah3_min: float = SEUIL_SARAH3_MIN_DEFAUT,
 ) -> tuple[int, int]:
-    """Recalcule ``ecart_relatif_referentiel`` depuis la donnée brute (migration 046).
+    """Recalcule les 216 lignes d'écart relatif (6 villes x 36 mois) depuis la donnée brute.
 
-    Reconstruit les 216 lignes attendues (6 villes x 36 mois 2021-2023) en
-    relisant directement ``mesures_ressource`` (NASA POWER agrégé en
-    moyenne mensuelle) et ``mesures_ressource_mensuelles`` (SARAH-3 daily
-    post-044), avec un garde-fou ``seuil_sarah3_min``.
-
-    Quand SARAH-3 < seuil pour un (ville, mois), la ligne est insérée
-    avec ``valeur = NULL`` plutôt que d'amplifier mathématiquement la
-    division par une valeur quasi-nulle (cf. bug migration 045 amplifiant
-    +2929 % sur une ligne pathologique de CI).
-
-    Note schéma : ``grandeurs_metier.valeur`` doit être nullable pour
-    accepter les NULL. La migration 046 relâche le ``NOT NULL`` au
-    préalable.
-
-    Args:
-        session : session SQLAlchemy active. L'appelant commit.
-        seuil_sarah3_min : seuil minimal SARAH-3 (kWh/m²/jour).
-
-    Returns:
-        ``(nb_lignes_inserees, nb_lignes_null)`` - somme = 216 sur le
-        dataset sain.
+    Un mois où SARAH-3 < ``seuil_sarah3_min`` est inséré avec ``valeur = NULL``
+    plutôt qu'amplifié par une division quasi nulle. Renvoie
+    ``(nb_lignes_inserees, nb_lignes_null)`` ; l'appelant commit.
     """
     contextes = _decouvrir_contextes_villes_depuis_db(session)
     serie_id_par_loc = _resoudre_serie_id_ecart_par_localite(session)
@@ -546,8 +420,7 @@ def recalculer_ecart_relatif_referentiel(
         sarah3_mens = _lire_mensuel(session, ctx["code_serie_sarah3"])
         serie_id = serie_id_par_loc.get(loc_id)
         if serie_id is None:
-            # Pas de série ecart_relatif_referentiel pour cette localité,
-            # impossible normalement après migration 042. Garde défensive.
+            # Garde défensive : chaque ville pilote doit avoir sa série d'écart.
             continue
 
         lignes: list[dict[str, object]] = []
@@ -581,15 +454,11 @@ def recalculer_ecart_relatif_referentiel(
     return nb_total, nb_null
 
 
-# === Atlas : écart inter-source étendu aux 33 (densification) =============
+# === Atlas : écart inter-source ===========================================
 
 
 class ContexteEcartInterSource(TypedDict):
-    """Contexte par localité pour l'écart inter-source de l'atlas.
-
-    NASA daily (agrégé mensuel à la volée) vs une référence mensuelle (SARAH-3
-    pour le GHI, CAMS pour le DNI), sur la fenêtre commune.
-    """
+    """Séries d'une localité pour l'écart inter-source (SARAH-3 pour le GHI, CAMS pour le DNI)."""
 
     localite_id: int
     code_serie_nasa_daily: str
@@ -607,28 +476,11 @@ def calculer_et_inserer_ecart_inter_source(
     seuil_reference_min: float = SEUIL_SARAH3_MIN_DEFAUT,
     niveau_confiance: str = NIVEAU_CONFIANCE_DERIVE_1_7B,
 ) -> tuple[int, int]:
-    """Écart inter-source NASA-daily-agrégé vs référence mensuelle, matérialisé.
+    """Écart mensuel signé ``(nasa - ref) / ref * 100``, NASA journalier agrégé au mois.
 
-    Sert l'atlas : étend l'écart aux 33 sur la fenêtre commune.
-    GHI = NASA vs SARAH-3 (``ecart_relatif_referentiel``) ; DNI = NASA vs CAMS
-    (``ecart_relatif_dni_cams``). **Réutilise les helpers purs** (zéro physique
-    nouvelle) : agrégation daily->mensuel (``_lire_kuma_mensuel``), lecture mensuelle
-    de la référence (``_lire_mensuel``), formule signée avec garde-fou seuil
-    (``_calcul_ecart_relatif_avec_seuil``). La valeur stockée est **signée**
-    ``(nasa - ref) / ref * 100`` ; le ``|ecart|`` est le signal primaire côté
-    consommation, pas une correction de biais.
-
-    Args:
-        session : session SQLAlchemy active (l'appelant commit).
-        contextes : par localité, séries NASA daily + référence + série calculée cible.
-        grandeur_code : ``ecart_relatif_referentiel`` (GHI) ou ``ecart_relatif_dni_cams``.
-        annee_debut, annee_fin : fenêtre commune (atlas : 2021-2023).
-        seuil_reference_min : garde-fou (référence < seuil -> valeur NULL, pas une
-            amplification absurde).
-        niveau_confiance : 'B' (inter-source, pas terrain).
-
-    Returns:
-        ``(nb_lignes_inserees, nb_lignes_null)``.
+    GHI contre SARAH-3 (``ecart_relatif_referentiel``), DNI contre CAMS
+    (``ecart_relatif_dni_cams``), mêmes helpers que l'orchestrateur. Référence
+    < seuil -> NULL. Renvoie ``(nb_lignes_inserees, nb_lignes_null)``.
     """
     nb_total = 0
     nb_null = 0
@@ -669,15 +521,11 @@ def calculer_et_inserer_ecart_inter_source(
     return nb_total, nb_null
 
 
-# === Rang temporel focalisé (densification) ================================
+# === Rang temporel seul ===================================================
 
 
 class ContexteRangTemporel(TypedDict):
-    """Contexte par localité pour le rang temporel focalisé.
-
-    Percentile de la valeur Kuma (NASA daily agrégé mensuel à la volée) dans la
-    climatologie NASA POWER 1991-2020 stratifiée par mois calendrier.
-    """
+    """Séries d'une localité pour le rang temporel (climatologie NASA POWER 1991-2020 par mois)."""
 
     localite_id: int
     code_serie_kuma_daily: str
@@ -694,24 +542,11 @@ def calculer_et_inserer_rang_temporel(
     annee_fin: int = ANNEE_KUMA_FIN,
     niveau_confiance: str = NIVEAU_CONFIANCE_DERIVE_1_7B,
 ) -> int:
-    """Rang temporel seul, matérialisé (étape rang temporel extraite pour la densification).
+    """Rang temporel seul, sans écart ni rang spatial ; renvoie le nombre de lignes.
 
-    Fonction **focalisée** : ne calcule QUE le ``rang_referentiel_temporel``, jamais
-    l'écart ni le rang spatial. Permet d'étendre le rang temporel aux 28 communes sans
-    passer par :func:`calculer_et_inserer_referentiels`, qui recalculerait le rang spatial
-    sur un pool élargi et corromprait le pool-6 figé des consommateurs média. Réutilise les
-    mêmes helpers purs (``_lire_kuma_mensuel``, ``_lire_mensuel``, ``_calcul_rang_temporel``)
-    que l'orchestrateur combine : formule numériquement identique.
-
-    Args:
-        session : session SQLAlchemy active (l'appelant commit).
-        contextes : par localité, NASA daily + climato mensuelle 1991-2020 + série cible.
-        grandeur_code : ``rang_referentiel_temporel``.
-        annee_debut, annee_fin : fenêtre Kuma (2021-2025).
-        niveau_confiance : 'B' (cohérence intra-source).
-
-    Returns:
-        Nombre de lignes insérées.
+    Passer par :func:`calculer_et_inserer_referentiels` recalculerait le rang
+    spatial sur un pool élargi et casserait le pool de six villes figé. Même
+    formule que l'orchestrateur.
     """
     nb_total = 0
     for ctx in contextes:

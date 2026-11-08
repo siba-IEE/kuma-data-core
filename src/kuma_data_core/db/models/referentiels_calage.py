@@ -1,21 +1,10 @@
-"""Modèle SQLAlchemy de la table ``referentiels_calage``.
+"""Modèle de la table ``referentiels_calage`` : biais saisonniers satellite/sol (ADR-0004).
 
-Référentiel de calage satellite/sol : les biais saisonniers mesurés
-aux stations de référence, publiés comme donnée éditoriale de
-l'édition (ADR-0004). Une ligne par (station, grandeur, saison).
-
-Pourquoi une table et non une grandeur calculée à la volée : les
-biais sont des RÉSULTATS de recherche, produits par des analyses
-documentées (notes ``docs/methodologie/calage-*-terrain-lite.md``,
-scripts reproductibles) sur des appariements horaires sol/satellite
-dont les lignes satellite ne sont plus stockées en base. L'édition
-publie le résultat avec sa provenance ; le recalcul appartient à la
-chaîne de recherche, pas au serveur public (doctrine D6 : le VPS ne
-détient et ne calcule que du reconstructible).
-
-Consommateur type : Solar Bridge applique ``k = 1 / (1 + biais)`` à
-la climatologie du site étudié (méthode d'étude mini-réseau v1),
-avec statut « transporté » affiché dans le tableau des hypothèses.
+Une ligne par (station, grandeur, saison). Une table plutôt qu'un calcul :
+les biais sont des résultats de recherche sur des appariements dont les
+lignes satellite ne sont plus en base ; le serveur public ne détient et ne
+calcule que du reconstructible. Solar Bridge applique ``k = 1 / (1 + biais)``
+à la climatologie du site, avec le statut « transporté ».
 """
 
 from __future__ import annotations

@@ -1,7 +1,7 @@
-"""Tests d'integration de l'endpoint atlas Temps 2 : fiche d'incertitude inter-source.
+"""Tests d'integration de l'endpoint de fiche d'incertitude inter-source.
 
 ``GET /v1/grandeurs/incertitude_inter_source/{code_localite}``. Assemble EN LECTURE les
-deux axes d'honnetete deja materialises (ecart inter-source Temps 1 + degenerescence),
+deux axes d'honnetete deja materialises (ecart inter-source + degenerescence),
 **sans les fusionner**. Confiance B (jamais A = terrain).
 """
 

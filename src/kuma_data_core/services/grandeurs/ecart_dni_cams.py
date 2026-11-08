@@ -1,23 +1,8 @@
-"""Calcul de la grandeur d'écart inter-source ``ecart_relatif_dni_cams``.
+"""Écart relatif mensuel du DNI ``(nasa - cams) / cams x 100``, 2004-2020.
 
-Écart relatif **du DNI** entre NASA POWER (primaire) et CAMS Radiation (référence
-d'écart, DNI aérosol-corrigé), **iso-période 2004-2020**, **par (année, mois)**.
-
-Orientation arbitrée : ``(nasa - cams) / cams x 100`` - NASA primaire au
-numérateur, CAMS (référentiel d'écart) au dénominateur, miroir fidèle de l'écart
-inter-source référentiel. Réutilise **tel quel** le helper pur
-``_calcul_ecart_relatif(valeur_nasa, valeur_cams)``.
-
-Pattern fonctions pures + orchestrateur I/O : ce module **importe** les 3
-helpers de :mod:`referentiels` (``_calcul_ecart_relatif``, ``_lire_mensuel``,
-``_bulk_insert_grandeurs_metier``) **sans toucher** l'orchestrateur figé
-``calculer_et_inserer_referentiels`` ni ses constantes.
-
-Le **signe** de l'écart est un **résultat empirique** (observé -26 % en
-moyenne, NASA lit moins de DNI que CAMS), documenté dans le
-``commentaire_editorial`` des séries - pas un choix de design. Confiance
-dérivée ``B`` (signal indirect par construction). Calcul **déterministe depuis
-la base, aucun réseau**.
+CAMS Radiation (DNI corrigé des aérosols) sert de référence au dénominateur.
+Le signe est un constat (NASA lit en moyenne 26 % de DNI en moins), pas un
+choix. Confiance ``B`` : signal indirect. Calcul depuis la base, sans réseau.
 """
 
 from __future__ import annotations
@@ -66,23 +51,9 @@ def calculer_et_inserer_ecart_dni_cams(
     session: Session,
     contextes_villes: Sequence[ContexteVilleEcartDniCams],
 ) -> ResultatEcartDniCams:
-    """Calcule et insère l'écart relatif DNI CAMS dans ``grandeurs_metier``.
+    """Insère une ligne par mois commun aux deux séries (flush, sans commit).
 
-    Pour chaque ville : lit les séries DNI NASA et CAMS depuis
-    ``mesures_ressource_mensuelles`` (helper ``_lire_mensuel``), itère
-    l'**intersection** des (année, mois) communs (exclut 2004-01 absent côté
-    CAMS, et tout mois manquant), applique ``(nasa - cams) / cams x 100`` et
-    insère une ligne ``grandeurs_metier`` par mois commun
-    (``periode_type='mensuel'``, ``annee_debut = annee_fin = annee``).
-
-    Args:
-        session : session SQLAlchemy active (add+flush, l'appelant commit).
-        contextes_villes : séquence par localité avec
-            ``localite_id``, ``code_serie_nasa``, ``code_serie_cams``,
-            ``series_metadonnees_id`` (série calculée pré-insérée).
-
-    Returns:
-        :class:`ResultatEcartDniCams` - ``nb_insere`` (1 218 attendu).
+    CAMS n'a pas 2004-01 : seuls les mois présents des deux côtés sont calculés.
     """
     nb_insere = 0
 

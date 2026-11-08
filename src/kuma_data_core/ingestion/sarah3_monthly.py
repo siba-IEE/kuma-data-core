@@ -1,57 +1,12 @@
-"""Ingestion PVGIS-SARAH3 ICDR mensuel -> ``mesures_ressource_mensuelles``.
+"""Ingestion PVGIS-SARAH3 ICDR mensuelle vers ``mesures_ressource_mensuelles``.
 
-Client + ingestion combinés pour le seul usage SARAH-3 ICDR courant.
-Pendant SARAH-3 du module ``nasa_power_monthly.py``, ciblant la nouvelle
-table ``mesures_ressource_mensuelles``.
+API PVGIS MRcalc v5.3 (JRC), sans authentification (30 req/s par IP).
+``H(h)_m`` est un cumul mensuel en kWh/m²/mois, divisé par le nombre exact
+de jours du mois pour obtenir des kWh/m²/jour comparables à NASA POWER.
 
-API source : PVGIS non-interactive MRcalc (Monthly Radiation),
-endpoint v5.3, Commission européenne JRC. Accès libre intégral sans
-authentification (rate limit 30 req/s par IP, trivial pour 6 calls).
-
-Endpoint : ``https://re.jrc.ec.europa.eu/api/v5_3/MRcalc``.
-
-Paramètres :
-
-- ``lat``, ``lon`` : coordonnées WGS84 en degrés décimaux.
-- ``raddatabase=PVGIS-SARAH3`` : base de données SARAH-3 ICDR.
-- ``startyear`` / ``endyear`` : bornes inclusives.
-- ``horirrad=1`` : irradiation horizontale globale (GHI) requise.
-- ``outputformat=json`` : format de réponse structuré (recommandé).
-
-Structure de réponse JSON pressentie (validation empirique au premier
-appel) :
-
-```
-{
-  "inputs": {...},
-  "outputs": {
-    "monthly": [
-      {"year": 2021, "month": 1, "H(h)_m": 179.97},
-      ...
-    ]
-  },
-  "meta": {...}
-}
-```
-
-Champ ``H(h)_m`` : irradiation horizontale globale **cumulée mensuelle**
-en kWh/m^2/mois (somme sur le mois entier, indice ``_m`` = pas de
-temps monthly). Le pipeline convertit en kWh/m^2/jour (moyenne
-quotidienne) par division par le nombre exact de jours du mois via
-``calendar.monthrange`` pour aligner sur ``unite_code='kwh_par_m2_jour'``
-des séries brutes Kuma et permettre la comparaison directe avec NASA
-POWER. Validation empirique 2026-05 : ratio cumul-SARAH3 / cumul-NASA
-≈ 1.02 à 1.09 (ordre de grandeur identique = cumul mensuel).
-
-Variable d'environnement ``KUMA_SKIP_SARAH3_INGESTION`` (truthy) court-
-circuite l'appel réseau (séries seedées, 0 mesure). Cohérence opérationnelle
-CI avec ``KUMA_SKIP_NASA_POWER_INGESTION``.
-
-**Mode offline** : sous ``KUMA_INGESTION_MODE=offline``,
-``_fetch_sarah3_monthly_raw`` renvoie le payload PVGIS **committé** (seed
-``sarah3_monthly_seed_data``) au lieu de l'appel JRC -> réseau nul en CI,
-parse/insert inchangés (fidélité, 216 lignes identiques). Défaut ``live`` ;
-gating fail-safe (interdit en prod).
+``KUMA_SKIP_SARAH3_INGESTION`` (truthy) court-circuite le réseau. Sous
+``KUMA_INGESTION_MODE=offline`` (interdit en prod), le payload vient du seed
+committé ; parsing et insertion inchangés.
 """
 
 from __future__ import annotations
@@ -81,34 +36,19 @@ from kuma_data_core.external._http_retry import (
 from kuma_data_core.ingestion._mode import est_mode_offline
 
 PVGIS_MRCALC_URL: str = "https://re.jrc.ec.europa.eu/api/v5_3/MRcalc"
-"""URL endpoint PVGIS MRcalc (Monthly Radiation) v5.3.
-
-Version v5.3 retenue (v5.2 était disponible en alternative, mais v5.3
-est la plus récente et la legacy sans version est dépréciée depuis le
-25 septembre 2024).
-"""
+"""Endpoint MRcalc v5.3 ; l'URL sans version est dépréciée depuis le 25 septembre 2024."""
 
 PVGIS_RADDATABASE_SARAH3: str = "PVGIS-SARAH3"
-"""Identifiant de la base de données SARAH-3 côté PVGIS.
-
-Couverture : Europe, Afrique, Asie. Chaîne de retrieval MAGICSOL CM
-SAF / EUMETSAT (Heliosat modifié + gnu-MAGIC + SPECMAGIC).
-"""
+"""Base SARAH-3 côté PVGIS (CM SAF / EUMETSAT ; Europe, Afrique, Asie)."""
 
 DEFAULT_TIMEOUT: float = 30.0
 
 _VARIABLE_ENV_SKIP_INGESTION: str = "KUMA_SKIP_SARAH3_INGESTION"
-"""Variable d'environnement court-circuitant l'ingestion réseau.
-
-Truthy values : '1', 'true', 'yes' (case-insensitive). Distincte de
-KUMA_SKIP_NASA_POWER_INGESTION pour permettre de couper l'une sans
-l'autre (utile lors de l'investigation d'un drift API ciblée sur une
-source).
-"""
+"""Truthy : '1', 'true', 'yes'. Distincte de la variable NASA pour couper une seule source."""
 
 
 def _ingestion_doit_etre_skip() -> bool:
-    """Lit la variable d'environnement et retourne True si elle est truthy."""
+    """Vrai si ``KUMA_SKIP_SARAH3_INGESTION`` est truthy."""
     valeur = os.environ.get(_VARIABLE_ENV_SKIP_INGESTION, "").strip().lower()
     return valeur in ("1", "true", "yes")
 
@@ -119,18 +59,17 @@ def _ingestion_doit_etre_skip() -> bool:
 def _cle_payload_offline(
     latitude: float, longitude: float, annee_debut: int, annee_fin: int
 ) -> str:
-    """Clé du seed offline : coordonnées arrondies (4 décimales) + fenêtre."""
+    """Clé du seed : coordonnées arrondies à 4 décimales et fenêtre."""
     return f"{round(float(latitude), 4)}_{round(float(longitude), 4)}_{annee_debut}_{annee_fin}"
 
 
 def _charger_payload_offline(
     *, latitude: float, longitude: float, annee_debut: int, annee_fin: int
 ) -> dict[str, Any]:
-    """Renvoie le payload PVGIS committé (mode offline). Import du seed différé.
+    """Payload PVGIS du seed.
 
-    L'import du seed est local (pas au chargement du module) pour que le script
-    de préparation puisse tourner en live avant l'existence du seed, et pour ne
-    pas coupler le mode live au compagnon gzippé.
+    Import différé : le script qui prépare le seed tourne en live avant que le
+    seed n'existe.
     """
     from kuma_data_core.db.seeds.sarah3_monthly_seed_data import SARAH3_PAYLOADS
 
@@ -146,13 +85,10 @@ def _charger_payload_offline(
 
 
 def ecart_relatif_max_sarah3(payload_a: dict[str, Any], payload_b: dict[str, Any]) -> float:
-    """Écart relatif maximal entre deux payloads PVGIS (canari de dérive amont).
+    """Max de ``|a - b| / max(|b|, eps)`` sur les ``H(h)_m``, ``inf`` si un mois manque.
 
-    Compare les ``H(h)_m`` mensuels par (year, month). Renvoie le max de
-    ``|a - b| / max(|b|, eps)``, ou ``inf`` si un mois manque d'un côté. Utilisé
-    par le canari nightly : SARAH-3 ICDR est un jeu historique figé ; un écart
-    non nul signale un reprocessing JRC → re-seed (l'offline ne doit pas masquer
-    une dérive amont).
+    SARAH-3 ICDR est figé : tout écart signale un retraitement JRC, donc un
+    seed à refaire.
     """
 
     def _index(payload: dict[str, Any]) -> dict[tuple[int, int], float]:
@@ -180,26 +116,8 @@ def _fetch_sarah3_monthly_raw(
     timeout: float,
     httpx_client: httpx.Client | None,
 ) -> dict[str, Any]:
-    """Appelle l'API PVGIS MRcalc et retourne le payload JSON brut.
-
-    Args:
-        latitude: latitude WGS84.
-        longitude: longitude WGS84.
-        annee_debut: première année incluse.
-        annee_fin: dernière année incluse.
-        timeout: timeout HTTP en secondes.
-        httpx_client: client httpx injectable (tests via MockTransport).
-
-    Returns:
-        Le payload JSON brut (dict structuré ``inputs``/``outputs``/
-        ``meta``).
-
-    Raises:
-        RuntimeError: statut HTTP non-2xx ou JSON non parsable.
-    """
-    # Chemin offline : renvoie le payload committé, aucun réseau.
-    # Gating fail-safe dans est_mode_offline (lève si prod). Parse/insert en aval
-    # inchangés -> fidélité (mêmes lignes que le live au moment de la capture).
+    """Payload brut de PVGIS MRcalc ou du seed ; ``RuntimeError`` sur erreur HTTP ou JSON."""
+    # est_mode_offline lève en prod.
     if est_mode_offline():
         return _charger_payload_offline(
             latitude=latitude,
@@ -269,33 +187,10 @@ def _fetch_sarah3_monthly_raw(
 def _extraire_valeurs_mensuelles(
     payload: dict[str, Any],
 ) -> list[tuple[int, int, float]]:
-    """Extrait les valeurs mensuelles ``(annee, mois, valeur)`` du payload PVGIS.
+    """``(annee, mois, kWh/m²/jour)`` depuis ``outputs.monthly``.
 
-    Structure attendue :
-
-    ```
-    payload["outputs"]["monthly"] = [
-        {"year": 2021, "month": 1, "H(h)_m": 179.97},
-        ...
-    ]
-    ```
-
-    Le champ ``H(h)_m`` représente l'irradiation horizontale globale
-    **cumulée mensuelle** en kWh/m^2/mois (somme sur le mois entier).
-    Cette fonction convertit en moyenne quotidienne kWh/m^2/jour par
-    division par le nombre exact de jours du mois (``calendar.monthrange``,
-    gère les années bissextiles), afin d'aligner sur l'``unite_code``
-    ``'kwh_par_m2_jour'`` des séries Kuma et permettre la comparaison
-    directe inter-source.
-
-    Args:
-        payload: payload JSON renvoyé par PVGIS MRcalc.
-
-    Returns:
-        Liste de tuples ``(annee, mois, valeur_kwh_par_m2_jour)``.
-
-    Raises:
-        RuntimeError: si la structure attendue est absente.
+    ``H(h)_m`` (cumul mensuel) est divisé par le nombre de jours du mois,
+    bissextiles comprises. ``RuntimeError`` si la structure manque.
     """
     try:
         monthly = payload["outputs"]["monthly"]
@@ -335,26 +230,10 @@ def ingerer_serie_sarah3_monthly(
     timeout: float = DEFAULT_TIMEOUT,
     httpx_client: httpx.Client | None = None,
 ) -> int:
-    """Ingère une série SARAH-3 ICDR mensuelle dans ``mesures_ressource_mensuelles``.
+    """Ingère une série SARAH-3 mensuelle ; renvoie le nombre de lignes insérées.
 
-    Args:
-        session : session SQLAlchemy active.
-        code_serie : code naturel de la série dans ``series_metadonnees``
-            (ex. ``gin_conakry_ghi_sarah3_2021_2025``). Doit exister.
-        latitude, longitude : coordonnées WGS84.
-        annee_debut, annee_fin : bornes inclusives (ex. 2021 / 2025).
-        timeout : timeout HTTP en secondes.
-        httpx_client : client httpx injectable.
-
-    Returns:
-        Nombre de lignes effectivement insérées.
-
-        Retourne ``0`` si la variable d'env
-        ``KUMA_SKIP_SARAH3_INGESTION`` est truthy.
-
-    Raises:
-        RuntimeError : si ``code_serie`` n'existe pas ou si la réponse
-            API est mal formée.
+    0 si l'ingestion est court-circuitée ; ``RuntimeError`` si la série est
+    inconnue ou la réponse mal formée.
     """
     if _ingestion_doit_etre_skip():
         return 0

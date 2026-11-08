@@ -1,11 +1,10 @@
 """Tests d'integration structure du parc horaire NASA POWER aux 34 points.
 
-Couvre les migrations du volet horaire du chantier profondeur (lots de
-communes + pilotes) : 28 communes x 9 grandeurs en 2001-2025, extension
+Couvre : 28 communes x 9 grandeurs en 2001-2025, extension
 in-place des 36 series pilotes historiques, 18 series pilotes nouvelles
 (vents, precipitation).
 
-Discipline heritee des tests de la Vague 3 : **structure seulement**,
+**Structure seulement**,
 invariante sous ``KUMA_SKIP_INGESTION_MASSE_HORAIRE`` (les comptes de
 mesures dependent du garde-fou de masse, jamais testes ici).
 """

@@ -1,38 +1,11 @@
-"""Endpoints `/api/v1/horaire/<localite>/<grandeur>` - passe-plat horaire.
+"""Endpoints horaires ``/v1/horaire/{localite}/{grandeur}`` (données et disponibilité).
 
-Deux endpoints distincts :
+Sert la série stockée validée si elle couvre la plage, sinon relaie NASA
+POWER (passe-plat non validé), sauf en édition figée. Aucune mention de la
+source amont dans les codes et messages d'erreur exposés.
 
-- ``GET /v1/horaire/{localite}/{grandeur}`` : retourne les données
-  horaires passe-plat pour une fenêtre temporelle donnée.
-- ``GET /v1/horaire/{localite}/{grandeur}/disponibilite`` : retourne
-  la plage temporelle disponible.
-
-Architecture :
-
-1. Validation Pydantic des paramètres (schéma
-   :class:`api.v1.schemas.horaire.ParametresHoraire`).
-2. Résolution localité contre le référentiel (code complet nominal,
-   alias courts historiques des villes pilotes en compatibilité).
-3. Appel client externe via
-   :func:`external.nasa_power.fetch_hourly` (retry transverse inclus).
-4. Conversion réponse amont -> format Kuma cohérent via
-   :func:`services.horaire.convertir_valeurs_amont_en_resultats`
-   (sentinelles ``-999.0`` -> ``None``, clés ``YYYYMMDDHH`` ->
-   ``datetime``, unité cible dérivée).
-5. Filtrage sur la plage temporelle demandée, sérialisation JSON ou
-   CSV.
-
-Authentification : Bearer existante via ``CleApiValidee``.
-
-Principe « Kuma assume » : aucune mention de la source amont dans les
-codes erreur, messages, exemples JSON exposés au consommateur.
-
-Mode calcul disponibilité v1 retenu : **B1 statique** (formule
-``fin = mois_courant - 5 mois - 1 jour``). Choix justifié pour v1 par
-la simplicité (0 appel externe) et la robustesse contre les variations
-de politique amont restant à constater empiriquement. L'option B2
-(scan empirique des sentinelles) peut être adoptée ultérieurement si
-le besoin d'une borne dynamique précise est observé en production.
+Disponibilité statique : ``fin = aujourd'hui - 5 mois - 1 jour``, sans appel
+externe ; un scan des sentinelles donnerait une borne plus précise.
 """
 
 from __future__ import annotations
@@ -81,20 +54,11 @@ routeur = APIRouter(prefix="/horaire", tags=["horaire-passe-plat"])
 # === Resolution de la localite contre le referentiel ======================
 
 _PREFIXE_ALIAS_HISTORIQUE: str = "gin_"
-"""Prefixe applique aux codes courts HISTORIQUES des 6 villes pilotes
-(kankan, kindia...) pour retrouver le code complet. Compatibilite de
-contrat uniquement : le chemin nominal est le code complet de la
-table ``localites`` (genericite pays, residu 1 du brief de chantier)."""
+"""Préfixe qui transforme un code court des 6 villes pilotes (``kankan``) en code complet."""
 
 
 def _resoudre_localite(session: Session, localite: str) -> str:
-    """Resout le code de localite du path contre le referentiel.
-
-    Ordre : code complet tel quel dans la table ; sinon alias
-    historique (prefixe gin_). Localite inconnue : 404
-    ``RESSOURCE_LOCALITE_INCONNUE`` (honnete, au lieu du 422 de
-    l'ancienne enumeration fermee).
-    """
+    """Code complet : tel quel, sinon alias ``gin_`` ; 404 ``RESSOURCE_LOCALITE_INCONNUE``."""
     for candidat in (localite, f"{_PREFIXE_ALIAS_HISTORIQUE}{localite}"):
         existe = session.execute(
             text("SELECT 1 FROM localites WHERE code = :code AND actif = TRUE"),
@@ -109,29 +73,19 @@ def _resoudre_localite(session: Session, localite: str) -> str:
     )
 
 
-# === Mois de latence NRT (option B1 disponibilité) ========================
+# === Latence NRT =========================================================
 
 _LATENCE_NRT_MOIS: int = 5
-"""Latence NRT amont observée empiriquement 5 mois.
-
-Utilisée par la formule B1 statique :
-``fin_disponible = mois_courant - 5 mois - 1 jour``.
-"""
+"""Latence NRT amont observée : 5 mois."""
 
 
 # === Helpers internes =====================================================
 
 
 def _calculer_plage_disponible(aujourdhui: date | None = None) -> PlageTemporelle:
-    """Calcule la plage disponible passe-plat selon la formule B1 statique.
-
-    Returns:
-        ``PlageTemporelle`` avec ``debut = 2001-01-01`` (borne historique)
-        et ``fin = aujourd_hui - 5 mois - 1 jour``.
-    """
+    """Plage du 2001-01-01 à ``aujourdhui - 5 mois - 1 jour``."""
     reference = aujourdhui if aujourdhui is not None else date.today()
-    # Soustraction "5 mois" approximée à 5 * 30 jours pour robustesse
-    # (précision ~jours-week ; option B2 cachée adopterait scan précis).
+    # 5 mois approchés par 5 x 30 jours.
     fin = reference - timedelta(days=_LATENCE_NRT_MOIS * 30 + 1)
     return PlageTemporelle(debut=DATE_DEBUT_DISPONIBILITE, fin=fin)
 
@@ -148,13 +102,7 @@ def _serialiser_csv(resultats: list[ResultatHoraire]) -> str:
 
 
 def _gerer_erreur_amont(exc: Exception) -> None:
-    """Mappe les exceptions du client externe vers ExceptionKuma 503.
-
-    Principe « Kuma assume » : le message ne mentionne pas la source
-    amont. Le consommateur reçoit un message générique « service
-    passe-plat horaire temporairement indisponible » avec le code
-    ``PASSE_PLAT_INDISPONIBLE``.
-    """
+    """Erreur du client amont -> 503 ``PASSE_PLAT_INDISPONIBLE``, message sans nom de source."""
     if isinstance(
         exc,
         NasaPowerTimeoutError
@@ -170,30 +118,17 @@ def _gerer_erreur_amont(exc: Exception) -> None:
     raise exc
 
 
-# === Lever passe_plat : service du stocké validé =========
+# === Service du stocké validé ===========================================
 
 
 def _chercher_serie_horaire_stockee(
     session: Session, localite_code_complet: str, grandeur: str
 ) -> tuple[int, date, date] | None:
-    """Cherche la série horaire stockée au catalogue pour (localité, grandeur).
+    """``(serie_id, debut, fin)`` de la série horaire active ayant des mesures, sinon ``None``.
 
-    Renvoie ``(serie_id, periode_debut, periode_fin)`` si une série horaire
-    active **portant des mesures stockées** existe pour ce couple, ``None``
-    sinon. La jointure sur ``localites.code`` résout le couple
-    indépendamment du naming de la série (exception ``gin_conakry`` vs
-    ``gin_conakry_kaloum``).
-
-    La clause ``EXISTS`` écarte les séries « coquilles » (métadonnées
-    actives sans aucune ligne dans ``mesures_ressource_horaires``).
-    Régression observée en production (2026-07-20) : pour (kankan, ghi),
-    deux séries horaires actives coexistent - la série substrat
-    2001-2025 (métadonnées seules) et la série sol terrain 2021-2023
-    (17 520 mesures validées). Le ``LIMIT 1`` sans garde sélectionnait
-    la coquille, dont la période couvre toute fenêtre demandée, et
-    l'endpoint servait 200 avec zéro résultat au lieu de la mesure
-    terrain. Le ``ORDER BY sm.id`` rend la sélection déterministe si
-    plusieurs séries portent des mesures.
+    L'``EXISTS`` écarte les séries sans mesures : sans lui, à Kankan, une série
+    GHI 2001-2025 vide masquait la série sol 2021-2023 (réponse 200 sans
+    résultat). ``ORDER BY sm.id`` rend le choix déterministe.
     """
     row = session.execute(
         text(
@@ -227,11 +162,7 @@ def _lire_horaire_validee(
     periode_debut: date,
     periode_fin: date,
 ) -> list[ResultatHoraire]:
-    """Lit les points horaires ``valide_auto`` d'une série sur la plage.
-
-    Les lignes rejetées par le QC (statut ``brut``) sont exclues. Instant
-    renvoyé en UTC naïf, cohérent avec le passe-plat.
-    """
+    """Points ``valide_auto`` de la série sur la plage (rejets QC exclus), instants UTC naïfs."""
     rows = session.execute(
         text(
             """
@@ -323,9 +254,7 @@ def grandeur_horaire(
 
     localite_complet = _resoudre_localite(session, params.localite)
 
-    # Lever passe_plat : si une série horaire stockée couvre la plage
-    # demandée, servir la donnée validée (statut valide_auto) au lieu de
-    # relayer la source amont non validée.
+    # Le stocké validé prime sur le relais amont non validé.
     serie_stockee = _chercher_serie_horaire_stockee(session, localite_complet, params.grandeur)
     if serie_stockee is not None:
         serie_id, periode_debut_serie, periode_fin_serie = serie_stockee
@@ -335,9 +264,7 @@ def grandeur_horaire(
             )
             return _repondre_horaire(params, resultats_stockes)
 
-    # Profil édition figée (ADR-0003, D6) : jamais de relais amont. Une
-    # plage non couverte par le stocké est indisponible, point - zéro
-    # dépendance sortante sur le serveur public.
+    # Édition figée : aucun relais amont, aucune dépendance sortante du serveur public.
     if get_settings().edition_figee:
         raise ExceptionKuma(
             code=CodeErreur.PLAGE_TEMPORELLE_NON_DISPONIBLE,

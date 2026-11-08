@@ -1,30 +1,14 @@
-"""Calcul à la volée du proxy de salissure (grandeur F1).
+"""Proxy de salissure à la volée : perte de transmission ``(1 - ratio_hsu) x 100`` en %.
 
-Expose la perte de transmission par salissure des modules PV, en **% de perte**
-= ``(1 - ratio_hsu) x 100``, estimée par le modèle **HSU** (``pvlib.soiling.hsu``,
-Coello & Boyle 2019) à partir des **PM2.5/PM10** (EAC4) et de la **pluie**
-(NASA POWER). Grandeur F1 ``calculee_volee``, confiance par la règle de propagation P
-appliquée par la route (ADR-0008).
+Modèle HSU (``pvlib.soiling.hsu``, Coello & Boyle 2019) sur PM2.5/PM10
+(EAC4) et pluie (NASA POWER). pvlib attend des PM en **g/m³** : nos µg/m³
+sont multipliés par 1e-6, faute de quoi la perte serait très surestimée
+(34 % au lieu de 2 %). Pluie en mm, cumulée à la journée
+(``rain_accum_period`` = 1 jour) ; tilt en degrés.
 
-Pattern fonction publique pure (``pvlib`` / ``pandas``, aucune dépendance
-SQL). L'orchestration (résolution des séries PM2.5/PM10 + pluie, alignement) vit
-dans l'endpoint.
-
-**Unités (vérifiées contre la signature réelle pvlib 0.15.1, 2026-06-19)** :
-``pvlib.soiling.hsu`` attend les PM en **g/m3** (docstring : ``[g/m^3]``), la pluie
-en **mm**, le tilt en **degrés**, et renvoie un **ratio de salissure** (Series, 1 =
-propre, ``1 - perte de transmission``). Notre donnée PM est en **µg/m³** : on
-**convertit µg/m³ -> g/m³ (x 1e-6)** avant de la passer à hsu. Sans cette conversion,
-la salissure serait 1e6x trop forte (vérifié empiriquement : 34 % de perte au lieu
-de 2 %). C'est une divergence assumée entre la donnée Kuma (µg/m³, standard qualité
-de l'air) et l'entrée attendue par pvlib (g/m³).
-
-``rain_accum_period = 1 jour`` : la pluie est déjà cumulée à la journée ; un jour de
-pluie au-delà du seuil ``cleaning_threshold`` nettoie le module ce jour-là.
-
-Référence : Coello M. & Boyle L. 2019, "Simple Model For Predicting Time Series
-Soiling of Photovoltaic Panels", IEEE Journal of Photovoltaics, DOI :
-10.1109/JPHOTOV.2019.2919628.
+Référence : Coello M. & Boyle L. 2019, "Simple Model For Predicting Time
+Series Soiling of Photovoltaic Panels", IEEE Journal of Photovoltaics,
+DOI : 10.1109/JPHOTOV.2019.2919628.
 """
 
 from __future__ import annotations
@@ -46,20 +30,16 @@ PLAFOND_CONFIANCE: NiveauConfiance = "B"
 # === Constantes (defauts F1 "soiling de site", documentes) =================
 
 SURFACE_TILT_DEFAUT: float = 10.0
-"""Inclinaison fixe par défaut (degrés) : tilt latitude représentatif Guinée
-(9-10 deg N). F1 soiling de site ; un parc à tilt différent salit différemment.
-Une version F2 paramétrable est une refonte ultérieure consciente."""
+"""Tilt fixe (degrés) proche de la latitude guinéenne (9-10° N) ; un autre tilt salit autrement."""
 
 CLEANING_THRESHOLD_DEFAUT_MM: float = 1.0
-"""Hauteur de pluie (mm) sur une période d'accumulation suffisante à nettoyer le
-module (défaut HSU usuel)."""
+"""Pluie (mm) sur la période d'accumulation qui nettoie le module (défaut HSU usuel)."""
 
 NIVEAU_CONFIANCE: Literal["B"] = "B"
 """Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
 
 RAIN_ACCUM_PERIOD = pd.Timedelta("1D")
-"""Période d'accumulation de la pluie (1 jour : pas journalier, pluie déjà cumulée
-à la journée). Recommandé par pvlib entre 1 h et 24 h."""
+"""Pas journalier ; pvlib recommande entre 1 h et 24 h."""
 
 GRAMMES_PAR_MICROGRAMME: float = 1e-6
 """Conversion µg/m³ (donnée Kuma) -> g/m³ (entrée attendue par pvlib.soiling.hsu)."""
@@ -75,10 +55,7 @@ CAVEAT_SPIN_UP: str = (
 
 
 class MesureEntreeSoiling(TypedDict):
-    """Mesure journalière alignée consommée par le proxy de salissure.
-
-    ``pm2_5`` / ``pm10`` en **µg/m³** (donnée EAC4 Kuma), ``rainfall_mm`` en **mm**.
-    """
+    """Mesure journalière alignée : PM en µg/m³, pluie en mm."""
 
     instant_mesure: date
     rainfall_mm: float
@@ -101,18 +78,14 @@ def calculer_taux_salissure_proxy(
     surface_tilt_deg: float = SURFACE_TILT_DEFAUT,
     cleaning_threshold_mm: float = CLEANING_THRESHOLD_DEFAUT_MM,
 ) -> ResultatSoiling:
-    """Perte de salissure journalière (% = (1 - ratio_hsu) x 100, bornée [0, 100]).
-
-    Applique ``pvlib.soiling.hsu`` sur la fenêtre journalière alignée. Convertit les
-    PM µg/m³ -> g/m³ (entrée attendue par pvlib). Pure, idempotente.
-    """
+    """Perte journalière en %, bornée à [0, 100], PM convertis en g/m³ pour pvlib."""
     if not mesures:
         return ResultatSoiling(mesures=[], limite=CAVEAT_SPIN_UP)
 
     mesures_tri = sorted(mesures, key=lambda m: m["instant_mesure"])
     index = pd.DatetimeIndex([m["instant_mesure"] for m in mesures_tri])
     rainfall = pd.Series([m["rainfall_mm"] for m in mesures_tri], index=index, dtype=float)
-    # Conversion µg/m³ -> g/m³ (cf. docstring module : pvlib attend des g/m³).
+    # µg/m³ -> g/m³ : unité attendue par pvlib.
     pm2_5_g = (
         pd.Series([m["pm2_5"] for m in mesures_tri], index=index, dtype=float)
         * GRAMMES_PAR_MICROGRAMME

@@ -1,37 +1,20 @@
-"""Base de service ``kuma_api_meta`` : modèle et provisioning (ADR-0003, WP6).
+"""Base de service ``kuma_api_meta`` : modèles et provisioning (ADR-0003).
 
-La table ``cles_api`` est un **état du serveur**, pas une donnée
-éditoriale : elle vit dans la base de service ``kuma_api_meta``,
-persistante à travers les bascules d'édition (D1), et **hors lignée
-Alembic** (D3) - ``alembic check`` garantit l'alignement modèles <-> base
-de référence, une table absente de la référence casserait cet invariant.
-D'où la ``BaseMeta`` déclarative distincte : ``Base.metadata`` de
-référence ne voit jamais ``cles_api``, et le manifeste de publication
-n'a rien à en dire (elle n'existe pas côté édition).
+Ces tables sont un état du serveur, pas une donnée éditoriale : elles
+survivent aux bascules d'édition et restent hors Alembic, car ``alembic
+check`` échouerait sur une table absente de la base de référence. D'où une
+``BaseMeta`` distincte.
 
-Les clés ne sont **jamais stockées en clair** : seule l'empreinte
-SHA-256 est persistée, plus un préfixe non secret (``kuma_xxxxxxxx``)
-qui sert d'identifiant public pour la révocation.
+- ``cles_api`` : seule l'empreinte SHA-256 est stockée, plus un préfixe non
+  secret qui sert à la révocation.
+- ``licences_solclim`` : la licence, distincte de la clé, ouvre le droit au
+  bail SolClim-3 ; la retirer laisse la clé intacte.
+- ``contributions_etudes`` (ADR-0006) : fiche JSON validée à l'entrée, sans
+  colonne par module, car ``create_all`` ne migre pas une table existante.
 
-La table ``licences_solclim`` vit à côté : une clé API, qu'elle vienne du
-self-service ou non, n'ouvre pas SolClim-3 à elle seule. Il faut qu'une
-licence lui soit accordée par l'administrateur ; c'est elle qui donne
-droit au bail signé de ``POST /v1/licence/bail``. Retirer la licence ôte
-SolClim-3 sans toucher à la clé ; révoquer la clé coupe tout.
-
-La table ``contributions_etudes`` reçoit les fiches d'études que les
-utilisateurs de SolClim-3 partagent (ADR-0006) : une fiche par étude et par
-clé, remplacée à chaque envoi, retirée à la demande. Son schéma ne nomme
-pas les modules : la fiche est un document JSON validé à l'entrée, si bien
-qu'un module de plus n'exige aucune modification de table (``create_all``
-ne migre pas une table existante).
-
-Provisioning : ``python -m kuma_data_core.db.meta`` crée les tables
-(idempotent, ``create_all`` : une table déjà présente n'est pas touchée,
-une table nouvelle est créée) dans la base désignée par ``META_DB``. À
-exécuter avec le rôle administrateur après ``provisionner-serveur.sh``
-(qui crée la base et les rôles, et pose les default privileges pour
-``kuma_api_service``).
+``python -m kuma_data_core.db.meta`` crée les tables manquantes dans
+``META_DB`` (idempotent), avec le rôle administrateur, après
+``provisionner-serveur.sh``.
 """
 
 from __future__ import annotations
@@ -70,19 +53,16 @@ class CleApi(BaseMeta):
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     # Empreinte SHA-256 (hex, 64 caractères) de la clé complète.
     cle_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
-    # Préfixe non secret de la clé (``kuma_`` + 8 premiers caractères) :
-    # identifiant public pour la révocation et le support. Non unique en
-    # théorie (collision possible), la révocation opère par préfixe.
+    # ``kuma_`` + 8 caractères, non secret. Collision possible, donc non unique.
     prefixe: Mapped[str] = mapped_column(String(16), nullable=False)
 
     # === Titulaire ===
     email: Mapped[str] = mapped_column(Text, nullable=False)
     usage_prevu: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Adresse IP au moment de l'émission : support de la limite
-    # d'émission par IP (seule surface d'écriture publique, D2).
+    # Pour la limite d'émission par IP, seule surface d'écriture publique.
     adresse_ip_creation: Mapped[str] = mapped_column(String(64), nullable=False)
 
-    # === Quotas (consommés par le rate limiting, WP7) ===
+    # === Quotas (consommés par le rate limiting) ===
     quota_journalier: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("5000")
     )
@@ -122,15 +102,13 @@ class LicenceSolclim(BaseMeta):
     )
 
     # === Titulaire ===
-    # La personne qui utilise le logiciel, et son organisation : c'est ce
-    # que le bail porte et ce que le rapport pourra citer.
+    # Ce que le bail porte et que le rapport peut citer.
     titulaire: Mapped[str] = mapped_column(Text, nullable=False)
     organisation: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes_internes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # === Terme ===
-    # Fin de la licence ; ``None`` = sans terme. Le bail ne dépasse jamais
-    # cette date, quelle que soit sa durée nominale.
+    # ``None`` : sans terme. Aucun bail ne dépasse cette date.
     expire_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Dernier bail émis : dit qui se sert du logiciel, sans journal de plus.
     dernier_bail_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -169,16 +147,14 @@ class ContributionEtude(BaseMeta):
 
     # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
-    # La clé qui a déposé la fiche : la source de la donnée. Elle ne sort
-    # jamais de cette base.
+    # Source de la fiche ; ne sort jamais de cette base.
     cle_api_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey("cles_api.id", name="fk_contributions_etudes_cle_api_id"),
         nullable=False,
     )
-    # Identifiant aléatoire de l'étude, tiré par le logiciel (UUID) : jamais
-    # son nom. Unique par clé, pour qu'un envoi ne puisse remplacer que les
-    # fiches de son auteur.
+    # UUID tiré par le logiciel, jamais le nom de l'étude. Unique par clé : un
+    # envoi ne remplace que les fiches de son auteur.
     etude_uid: Mapped[str] = mapped_column(String(36), nullable=False)
 
     # === La fiche ===

@@ -1,65 +1,25 @@
-"""Calcul à la volée du productible avec correction thermique (grandeur F2).
-
-Productible PV ajusté en fonction de la température opérationnelle du
-module, qui dégrade la puissance par rapport aux conditions STC
-(1000 W/m², 25 °C, AM1.5).
-
-Modèle retenu en API : **NOCT simple** (Ross 1980) [1]. Température
-cellule estimée à partir d'une seule constante de fiche produit (NOCT,
-Nominal Operating Cell Temperature) :
+"""Productible PV à la volée corrigé de la température du module (NOCT, Ross 1980 [1]).
 
     T_cell = T_amb + (NOCT - 20) * G / 800
-
-Production électrique corrigée :
-
     P_AC = P_STC * (G / 1000) * [1 + gamma_Pmax / 100 * (T_cell - 25)]
 
-Avec G = irradiance reçue par le module (GHI ou POA),
-T_amb = température ambiante (T2M NASA POWER),
-gamma_Pmax = coefficient température (%/°C, fiche produit, valeur
-négative typique -0.4 c-Si). L'irradiance instantanée utilisée pour
-le calcul de T_cell est convertie depuis l'énergie journalière par
-``G_24h = G_jour * 1000 / 24`` (W/m² moyen 24 h) - biais de moyennage
-acté, sous-estimation midi par moyennage 24 h acceptée par
-construction.
+G : irradiance reçue (GHI ou POA) ; T_amb : T2M NASA POWER ; gamma_Pmax en
+%/°C (négatif, -0.4 typique en c-Si). En journalier, T_cell est calculée sur
+``G_jour * 1000 / 24`` (W/m² moyen sur 24 h) : le pic de midi est lissé.
 
-Limitations documentées :
-
-- NOCT simple ne prend pas en compte le vent (WS2M). Le modèle Faiman
-  2008 [2] avec coefficients U0 / U1 corrige cette limitation mais
-  relève du **régime terrain** : ses coefficients par défaut sont
-  calibrés en climat désertique et leur transposition au climat
-  guinéen tropical sans calibration locale produirait une fausse
-  confiance B. Code de calcul Faiman + tests archivés sur la branche
-  ``wip/faiman-terrain`` et le tag ``faiman-terrain-reserve``.
-- modèles Sandia SAPM (King et al. 2004 [3]) et PVsyst plus précis
-  disponibles mais nécessitent plus de paramètres entrée ou
-  calibrations site. Différés.
-- T_amb = T2M MERRA-2 NASA POWER avec biais d'altitude documenté -
-  sous-estimation possible Labé / Mamou.
-
-Niveau de confiance : le plus bas des entrées, au plus ``PLAFOND_CONFIANCE``
-(B), par la règle de propagation P que la route applique (ADR-0008).
-
-Pattern fonction publique pure
-``calculer_productible_correction_thermique`` + fonctions privées.
-Aucune dépendance SQL, testable unitairement.
-
-Références bibliographiques :
+Limites : pas de vent. Faiman 2008 [2] en tiendrait compte, mais ses
+coefficients par défaut sont calibrés en climat désertique ; sans calibration
+locale ils donneraient une fausse confiance B (code archivé sur la branche
+``wip/faiman-terrain``). SAPM [3] et PVsyst exigent une calibration de site.
+T2M MERRA-2 peut être sous-estimée en altitude (Labé, Mamou).
 
 [1] Ross R.G. Jr. 1980. "Flat-plate photovoltaic array design
-    optimization." Conference Record of the 14th IEEE Photovoltaic
-    Specialists Conference, San Diego, CA, p. 1126-1132. JPL/NASA
-    open access.
-
+    optimization." 14th IEEE PVSC, San Diego, p. 1126-1132.
 [2] Faiman D. 2008. "Assessing the outdoor operating temperature of
     photovoltaic modules." Progress in Photovoltaics 16(4), 307-315.
-    DOI : 10.1002/pip.813. (Modèle archivé régime terrain.)
-
+    DOI : 10.1002/pip.813.
 [3] King D.L., Boyson W.E., Kratochvil J.A. 2004. "Photovoltaic Array
-    Performance Model." Sandia National Laboratories Report
-    SAND2004-3535. Open OSTI (ID 919131). (Référence modèle SAPM non
-    utilisé.)
+    Performance Model." Sandia SAND2004-3535.
 """
 
 from __future__ import annotations
@@ -75,12 +35,12 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
-"""Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables (L-TR-2)."""
+"""Plafond ``B`` : modèle et paramètres déclarés par l'appelant, invérifiables."""
 
 # === Constantes module ====================================================
 
 UNITE_PRODUCTIBLE: str = "kWh"
-"""Unité de sortie : énergie cumulée journalière en kWh."""
+"""Énergie journalière en kWh."""
 
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
 """Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
@@ -102,12 +62,7 @@ IRRADIANCE_NOCT_REFERENCE_W_PAR_M2: float = 800.0
 
 
 class MesureJourThermique(TypedDict):
-    """Mesure journalière consommée par le calcul productible thermique.
-
-    Combine la température ambiante T2M (NASA POWER) et l'irradiance G
-    (GHI ou POA pré-calculé). G est exprimée en kWh/m²/jour (granularité
-    journalière NASA POWER) ou en W/m² selon le contexte d'usage.
-    """
+    """Mesure journalière : T2M (°C) et irradiance G (GHI ou POA, kWh/m²/jour)."""
 
     instant_mesure: date
     t_amb_degc: float
@@ -115,11 +70,7 @@ class MesureJourThermique(TypedDict):
 
 
 class MesureHeureThermique(TypedDict):
-    """Mesure horaire consommée par le productible thermique en intégration horaire.
-
-    ``irradiance_w_par_m2`` est l'irradiance horaire (GHI, W/m² ≈ Wh/m² par
-    heure) ; ``t_amb_degc`` la température ambiante horaire.
-    """
+    """Mesure horaire : T2M (°C) et GHI en W/m² (≈ Wh/m² sur l'heure)."""
 
     instant_mesure: datetime
     t_amb_degc: float
@@ -144,19 +95,8 @@ def _productible_jour(
     mesure: MesureJourThermique,
     parametres: ParametresProductibleCorrectionThermique,
 ) -> float:
-    """Calcule le productible journalier (kWh) avec correction thermique.
-
-    Approximation v1 : utilise l'irradiance journalière comme G de
-    référence pour le calcul de T_cell (approche midi solaire implicite
-    via la moyenne journalière). Cohérent avec biais de moyennage acté.
-
-    Étapes :
-    1. Convertir l'irradiance kWh/m²/jour en W/m² instantané équivalent
-       (en supposant 24 heures de jour moyen pour le calcul T_cell).
-    2. Calculer T_cell par NOCT simple.
-    3. Appliquer la correction thermique à la production STC.
-    """
-    # Conversion kWh/m²/jour -> W/m² moyen sur 24h (approximation pour T_cell).
+    """Productible journalier (kWh), T_cell calculée sur l'irradiance moyenne sur 24 h."""
+    # kWh/m²/jour -> W/m² moyen sur 24 h.
     irradiance_w_par_m2 = mesure["irradiance_kwh_par_m2_jour"] * 1000.0 / 24.0
 
     t_cell = _temperature_cellule_noct(
@@ -165,14 +105,11 @@ def _productible_jour(
         noct_degc=parametres.noct_degc,
     )
 
-    # Correction thermique : facteur multiplicatif sur la production STC.
     facteur_thermique = 1.0 + parametres.coeff_temp_pourcent_par_degc / 100.0 * (
         t_cell - TEMPERATURE_STC_DEGC
     )
 
-    # Productible journalier (kWh) :
-    # P_STC (Wc) x irradiance (kWh/m²/jour) / G_STC (1000 W/m²) x facteur_thermique
-    # = P_STC (kWc) x irradiance (kWh/m²/jour) x facteur_thermique
+    # kWh = P_STC (kWc) x irradiance (kWh/m²/jour) / G_STC (1 kW/m²) x facteur
     productible_kwh = (
         parametres.puissance_stc_wc
         / 1000.0
@@ -190,12 +127,9 @@ def calculer_productible_correction_thermique(
     mesures: Sequence[MesureJourThermique],
     parametres: ParametresProductibleCorrectionThermique,
 ) -> list[ResultatJournalier]:
-    """Calcule le productible PV avec correction thermique NOCT simple (Ross 1980).
+    """Productible journalier corrigé NOCT, ordonné par date.
 
-    Itère sur les mesures journalières (T2M + irradiance G, GHI ou POA
-    selon le contexte) et renvoie une liste ordonnée de
-    :class:`ResultatJournalier`.
-    Niveau de confiance provisoire ``'B'``, remplacé par la route (règle P).
+    Confiance provisoire ``'B'``, remplacée par la route (règle P).
     """
     resultats: list[ResultatJournalier] = []
     for mesure in mesures:
@@ -215,19 +149,10 @@ def calculer_productible_correction_thermique_horaire(
     mesures: Sequence[MesureHeureThermique],
     parametres: ParametresProductibleCorrectionThermique,
 ) -> list[ResultatJournalier]:
-    """Calcule le productible thermique-corrigé par **intégration horaire**.
+    """Productible NOCT calculé heure par heure, sommé par jour UTC (kWh).
 
-    Applique le modèle NOCT (Ross 1980) **heure par heure** : T_cell et
-    facteur thermique calculés sur l'irradiance horaire réelle (et non sur
-    la moyenne 24 h), puis l'énergie horaire est sommée sur la journée
-    calendaire (UTC). Lève le biais de moyennage : la moyenne 24 h
-    sous-estime le pic d'irradiance de midi, donc sous-estime T_cell et
-    **surestime** le productible (la perte thermique de midi est lissée).
-
-    Entrée : GHI + T2M horaires alignés (l'appelant n'aligne que les
-    instants complets). Sortie : un :class:`ResultatJournalier` par jour
-    (unité ``kWh``, identique à la méthode journalière). Pure arithmétique
-    (pas de géométrie solaire).
+    La moyenne sur 24 h sous-estime T_cell à midi et donc surestime le
+    productible ; l'intégration horaire lève ce biais.
     """
     energie_par_jour: dict[date, float] = {}
     for mesure in mesures:
@@ -240,8 +165,7 @@ def calculer_productible_correction_thermique_horaire(
         facteur_thermique = 1.0 + parametres.coeff_temp_pourcent_par_degc / 100.0 * (
             t_cell - TEMPERATURE_STC_DEGC
         )
-        # Énergie horaire (kWh) = P_STC (kWc) x (irradiance W/m² x 1 h /1000 -> kWh/m²)
-        #                         / G_STC (1 kW/m², implicite) x facteur_thermique.
+        # kWh = P_STC (kWc) x G (W/m² sur 1 h, /1000 -> kWh/m²) / G_STC (1 kW/m²) x facteur
         energie_heure_kwh = (
             parametres.puissance_stc_wc / 1000.0 * (irradiance_w / 1000.0) * facteur_thermique
         )

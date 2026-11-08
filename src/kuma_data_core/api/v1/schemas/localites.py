@@ -96,11 +96,7 @@ class LocaliteListeePaginee(BaseModel):
     offset: int = Field(ge=0)
 
 
-# Pour cette première itération, le détail expose les mêmes champs que
-# le listing. Si un futur cycle enrichit le détail (séries associées,
-# hiérarchie complète via WITH RECURSIVE, etc.), créer une sous-classe
-# ``LocaliteDetail(LocaliteListee)`` ajoutant les champs additionnels -
-# pattern :class:`SerieDetail`.
+# Le détail expose les mêmes champs que le listing.
 LocaliteDetail = LocaliteListee
 
 

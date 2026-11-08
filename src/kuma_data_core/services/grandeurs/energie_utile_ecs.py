@@ -1,68 +1,27 @@
-"""Calcul à la volée de l'énergie utile ECS (grandeur F2).
+"""Énergie utile à la volée d'un capteur solaire ECS, au bord du capteur.
 
-Énergie thermique utile produite par un capteur solaire eau-chaude-
-sanitaire au bord du capteur, fonction des conditions d'irradiance, de
-la température entrée fluide caloporteur, et des caractéristiques
-optiques et thermiques du capteur fournies par l'appelant.
+Hottel-Whillier-Bliss [1, 2], rendement instantané du second ordre :
 
-Modèle retenu v1 :
-
-- **Hottel-Whillier-Bliss bord-capteur** [1, 2] : équation d'efficacité
-  instantanée polynôme 2e ordre :
-
-    eta = eta0 - a1 * dT / G - a2 * dT² / G
-
-  avec :
-  - eta : rendement instantané du capteur (sans unité)
-  - eta0 : rendement optique nul-perte (fiche capteur Solar Keymark)
-  - a1 : coefficient pertes linéaires (W/(m²·K))
-  - a2 : coefficient pertes quadratiques (W/(m²·K²))
-  - dT = T_fluide_moyenne - T_amb (K)
-  - G : irradiance globale plan du capteur (W/m²)
-
-  Énergie utile par m² par pas de temps :
-
+    eta = eta0 - a1 * dT / G - a2 * dT² / G      (borné à 0)
     Q_utile = eta * G * Delta_t
 
-  Avec garde-fou eta_instantane = max(0, eta) (pas d'énergie négative).
+eta0 sans unité, a1 en W/(m²·K), a2 en W/(m²·K²) (fiche Solar Keymark,
+fournie par l'appelant), dT = T_fluide - T_amb (K), G en W/m² dans le plan
+du capteur. T_fluide est approchée par la température d'entrée (débit non
+modélisé).
 
-Limitations documentées :
-
-- pas de calcul système complet (stockage, charge, fraction solaire).
-  Méthode f-chart Klein 1976 [3] documentée pour grandeur F3
-  ultérieure.
-- pas de modulation IAM (Incidence Angle Modifier). Différé si demande
-  consommateur.
-- coefficients eta0, a1, a2 supposés via fiche Solar Keymark ou
-  équivalent (responsabilité appelant).
-- T_amb = T2M MERRA-2 avec biais altitude - sous-estimation possible
-  Labé / Mamou.
-
-Niveau de confiance : le plus bas des entrées, au plus ``PLAFOND_CONFIANCE``
-(B), par la règle de propagation P que la route applique (ADR-0008).
-
-Pattern fonction publique pure ``calculer_energie_utile_ecs`` +
-fonctions privées. Aucune dépendance SQL, testable unitairement.
-
-Approximation v1 : T_fluide_moyenne ≈ temperature_fluide_entree_degc
-(débit massique m_dot non modélisé - l'impact sur la température de
-sortie est différé).
-
-Références bibliographiques :
+Limites : pas de système complet (stockage, fraction solaire : f-chart [3]),
+pas d'IAM, T2M MERRA-2 possiblement sous-estimée en altitude (Labé, Mamou).
 
 [1] Hottel H.C., Whillier A. 1958. "Evaluation of flat-plate solar
-    collector performance." Transactions of the Conference on the Use
-    of Solar Energy, vol. 2, part 1, p. 74. University of Arizona Press.
-
+    collector performance." Trans. Conference on the Use of Solar Energy,
+    vol. 2, part 1, p. 74. University of Arizona Press.
 [2] Duffie J.A., Beckman W.A., Blair N. 2020. "Solar Engineering of
-    Thermal Processes, Photovoltaics and Wind", 5e ed. Wiley. ISBN
-    978-1-119-54028-1. (Reference standard de l'equation HWB sous forme
-    polynome 2e ordre.)
-
+    Thermal Processes, Photovoltaics and Wind", 5e éd. Wiley.
+    ISBN 978-1-119-54028-1.
 [3] Klein S.A., Beckman W.A., Duffie J.A. 1976. "A design procedure for
-    solar heating systems." Solar Energy 18(2), 113-127. DOI :
-    10.1016/0038-092X(76)90044-X. (Méthode f-chart, citée pour
-    information F3 future.)
+    solar heating systems." Solar Energy 18(2), 113-127.
+    DOI : 10.1016/0038-092X(76)90044-X.
 """
 
 from __future__ import annotations
@@ -78,12 +37,12 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
-"""Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables (L-TR-2)."""
+"""Plafond ``B`` : modèle et paramètres déclarés par l'appelant, invérifiables."""
 
 # === Constantes module ====================================================
 
 UNITE_ENERGIE_UTILE: str = "kWh/m²"
-"""Unité de sortie : énergie cumulée journalière par m² de capteur."""
+"""Énergie journalière par m² de capteur."""
 
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
 """Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
@@ -93,11 +52,7 @@ NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
 
 
 class MesureJourECS(TypedDict):
-    """Mesure journalière consommée par le calcul énergie utile ECS.
-
-    Combine la température ambiante T2M (NASA POWER) et l'irradiance G
-    (GHI ou POA pré-calculé). G est exprimée en kWh/m²/jour.
-    """
+    """Mesure journalière : T2M (°C) et irradiance G (GHI ou POA, kWh/m²/jour)."""
 
     instant_mesure: date
     t_amb_degc: float
@@ -105,11 +60,7 @@ class MesureJourECS(TypedDict):
 
 
 class MesureHeureECS(TypedDict):
-    """Mesure horaire consommée par l'énergie utile ECS en intégration horaire.
-
-    ``irradiance_w_par_m2`` est l'irradiance horaire (GHI, W/m² ≈ Wh/m² par
-    heure) ; ``t_amb_degc`` la température ambiante horaire.
-    """
+    """Mesure horaire : T2M (°C) et GHI en W/m² (≈ Wh/m² sur l'heure)."""
 
     instant_mesure: datetime
     t_amb_degc: float
@@ -126,11 +77,7 @@ def _rendement_instantane_hwb(
     dt_kelvin: float,
     irradiance_w_par_m2: float,
 ) -> float:
-    """Rendement instantané HWB (formule en tête de module).
-
-    Renvoie 0 si irradiance ≤ 0 (capteur inactif) ou si le rendement
-    calculé est négatif (stagnation thermique, pas d'énergie utile).
-    """
+    """Rendement HWB ; 0 sans irradiance ou en stagnation (rendement négatif)."""
     if irradiance_w_par_m2 <= 0:
         return 0.0
     eta = eta0 - a1 * dt_kelvin / irradiance_w_par_m2 - a2 * (dt_kelvin**2) / irradiance_w_par_m2
@@ -141,15 +88,8 @@ def _energie_utile_jour(
     mesure: MesureJourECS,
     parametres: ParametresEnergieUtileECS,
 ) -> float:
-    """Calcule l'énergie utile journalière ECS par m² de capteur (kWh/m²).
-
-    Approche : applique le rendement HWB sur l'irradiance journalière
-    en utilisant la température ambiante moyenne du jour. L'approximation
-    midi solaire local (W/m² moyen 24h) est utilisée pour le calcul du
-    rendement (cohérent biais de moyennage acté).
-    """
-    # Conversion kWh/m²/jour -> W/m² moyen sur 24h (pour le calcul du rendement
-    # qui dépend de G en W/m²). Approximation : répartition uniforme sur 24h.
+    """Énergie utile journalière (kWh/m²), rendement calculé sur G moyen sur 24 h."""
+    # kWh/m²/jour -> W/m² moyen sur 24 h : le rendement dépend de G en W/m².
     irradiance_w_par_m2 = mesure["irradiance_kwh_par_m2_jour"] * 1000.0 / 24.0
 
     dt_kelvin = parametres.temperature_fluide_entree_degc - mesure["t_amb_degc"]
@@ -162,7 +102,6 @@ def _energie_utile_jour(
         irradiance_w_par_m2=irradiance_w_par_m2,
     )
 
-    # Énergie utile (kWh/m²/jour) = rendement x irradiance journalière.
     return eta * mesure["irradiance_kwh_par_m2_jour"]
 
 
@@ -173,11 +112,9 @@ def calculer_energie_utile_ecs(
     mesures: Sequence[MesureJourECS],
     parametres: ParametresEnergieUtileECS,
 ) -> list[ResultatJournalier]:
-    """Calcule l'énergie utile ECS bord-capteur par jour (Hottel-Whillier-Bliss).
+    """Énergie utile journalière (kWh/m² de capteur), ordonnée par date.
 
-    Itère sur les mesures journalières (T2M + irradiance) et renvoie une
-    liste ordonnée de :class:`ResultatJournalier` (unité kWh/m² de
-    capteur). Niveau de confiance provisoire ``'B'``, remplacé par la route (règle P).
+    Confiance provisoire ``'B'``, remplacée par la route (règle P).
     """
     resultats: list[ResultatJournalier] = []
     for mesure in mesures:
@@ -197,18 +134,10 @@ def calculer_energie_utile_ecs_horaire(
     mesures: Sequence[MesureHeureECS],
     parametres: ParametresEnergieUtileECS,
 ) -> list[ResultatJournalier]:
-    """Calcule l'énergie utile ECS par **intégration horaire** (Hottel-Whillier-Bliss).
+    """Énergie utile calculée heure par heure, sommée par jour UTC (kWh/m²).
 
-    Applique le rendement HWB **heure par heure** sur l'irradiance horaire
-    réelle, puis somme l'énergie utile sur la journée calendaire (UTC).
-    Contrairement à la méthode journalière (rendement calculé sur la moyenne
-    24 h), l'intégration horaire lève le biais de Jensen : le rendement HWB
-    ``eta = eta0 - a1 dT/G - a2 dT²/G`` est **non-linéaire** en G, donc le
-    rendement de la moyenne 24 h ne reproduit pas la somme horaire.
-
-    Entrée : GHI + T2M horaires alignés par l'appelant. Sortie : un
-    :class:`ResultatJournalier` par jour (unité ``kWh/m²``). Pure arithmétique
-    (pas de géométrie solaire).
+    Le rendement HWB n'est pas linéaire en G : le rendement de la moyenne sur
+    24 h ne reproduit pas la somme horaire (biais de Jensen).
     """
     energie_par_jour: dict[date, float] = {}
     for mesure in mesures:
@@ -221,7 +150,7 @@ def calculer_energie_utile_ecs_horaire(
             dt_kelvin=dt_kelvin,
             irradiance_w_par_m2=irradiance_w,
         )
-        # Énergie utile horaire (kWh/m²) = eta x (irradiance W/m² x 1 h /1000 -> kWh/m²).
+        # kWh/m² = eta x G (W/m² sur 1 h, /1000)
         energie_heure = eta * (irradiance_w / 1000.0)
         jour = mesure["instant_mesure"].date()
         energie_par_jour[jour] = energie_par_jour.get(jour, 0.0) + energie_heure

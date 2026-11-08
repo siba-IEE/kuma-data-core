@@ -1,14 +1,8 @@
-"""Endpoints ``/v1/cles`` - émission self-service et révocation (WP6).
+"""Endpoints ``/v1/cles`` : émission self-service et révocation (ADR-0003).
 
-L'émission est **non authentifiée** (c'est l'inscription) et constitue
-la seule surface d'écriture publique du serveur (ADR-0003, D2) : elle
-est bornée par adresse IP. La révocation est réservée à la clé
-administrateur.
-
-Sur un déploiement sans base de service (``META_DB`` absente, régime
-local), l'émission renvoie 404 ``CLES_EMISSION_NON_ACTIVEE`` : le
-self-service est une capacité du serveur public, pas du poste de
-développement.
+L'émission, non authentifiée, est la seule écriture publique du serveur,
+d'où la limite par IP ; la révocation est réservée à l'administrateur. Sans
+base de service (local), l'émission renvoie 404 ``CLES_EMISSION_NON_ACTIVEE``.
 """
 
 from __future__ import annotations
@@ -49,16 +43,12 @@ def _session_meta() -> Session:
 
 
 def _adresse_ip(request: Request) -> str:
-    """Adresse du client pour la limite d'émission par IP (ADR-0003 D2).
+    """IP cliente pour la limite d'émission.
 
-    Derrière un reverse proxy de confiance (Caddy, WP8), l'adresse réelle
-    du client vit dans ``X-Forwarded-For`` ; ``request.client.host`` est
-    alors l'IP du proxy (une seule, la limite s'effondrerait). On lit donc
-    la **dernière** entrée de la chaîne - celle ajoutée par notre proxy,
-    la seule non falsifiable (un client peut préfixer des IP fictives,
-    jamais en ajouter après le proxy). Sans proxy de confiance déclaré,
-    l'en-tête est ignoré : un client le forgerait pour contourner la
-    limite.
+    Derrière le proxy de confiance, on prend la **dernière** entrée de
+    ``X-Forwarded-For``, celle ajoutée par le proxy : un client peut préfixer
+    de fausses IP, jamais en ajouter après lui. Sans proxy déclaré, l'en-tête
+    est ignoré.
     """
     if get_settings().derriere_proxy_confiance:
         transmis = request.headers.get("x-forwarded-for")

@@ -1,11 +1,10 @@
-"""Données de seed pour la densification préfectorale (migration 085).
+"""Données de seed des 33 préfectures de Guinée (migration 085).
 
 Référentiel administratif complet des **33 préfectures de Guinée** (la zone
 spéciale de Conakry n'est pas une préfecture : elle a des communes directement,
 hors périmètre densification). Source des codes 3-lettres : décret guinéen de
 codification administrative 2025. Coordonnées : chef-lieu (ville éponyme),
-Wikidata P625 recoupée GeoNames/OSM, compilation 2026-06-20 (recherche par
-région, recoupement par point, vérification superviseur des 3 corrections).
+Wikidata P625 recoupée GeoNames/OSM, compilation 2026-06-20.
 
 Modélisation tranchée : chaque préfecture porte DEUX nœuds localités :
 
@@ -447,14 +446,11 @@ for _p in PREFECTURES_GUINEE:
 del _p
 
 
-# Textes historiques de la migration 085 (immuable), qui importe
-# ``PREFECTURE_NODES`` et ``NOUVELLES_COMMUNES`` : ils sont gardés à l'octet près
-# pour qu'une base neuve reconstruite de 001 à la tête passe par le même état.
-# Leurs codes internes (« Sec. 5.3 », « (D7) », « Densification prefectorale
-# Etape 1 ») et ceux des champs ``coord`` (« migration 011 », « superviseur »)
-# sont retirés des notes publiées par les migrations 128 et 129 sous garde md5.
-# Aucun autre code ne lit ces notes ; ne pas les réutiliser pour un nouveau texte.
-# Leur sortie est figée par ``tests/unit/db/test_seeds_textes_historiques.py``.
+# Textes d'origine de la migration 085 (immuable), qui importe
+# ``PREFECTURE_NODES`` et ``NOUVELLES_COMMUNES`` : gardés à l'octet pour qu'une
+# base reconstruite passe par le même état ; des migrations ultérieures les
+# nettoient sous garde md5. Ne pas les réutiliser pour un nouveau texte. Figés
+# par ``tests/unit/db/test_seeds_textes_historiques.py``.
 
 
 def _note_prefecture_historique_085(p: dict[str, Any]) -> str:

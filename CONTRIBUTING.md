@@ -71,6 +71,25 @@ Commits atomiques, message à l'impératif. Le code se lit comme le code
 alentour : mêmes idiomes, commentaires sur le pourquoi non évident, pas de
 remplissage.
 
+### Commentaires et docstrings
+
+- Un commentaire dit **pourquoi** (contrainte non évidente, piège, référence
+  à une source ou une norme), pas **ce que** fait le code.
+- Docstring d'une ligne par défaut ; trois à cinq lignes quand le contrat
+  n'est pas évident (unités, invariants, exceptions levées). Plus long
+  seulement pour un texte servi (docstrings de routes et modèles Pydantic,
+  qui alimentent le document OpenAPI) ou un module dont la méthode
+  scientifique doit être énoncée (formule et référence bibliographique).
+- Pas d'historique du projet : ni phase, lot, vague, identifiant de dette,
+  numéro de PR, ni récit de revue. Cela relève de l'historique git, du
+  CHANGELOG et des ADR.
+- Pas de paraphrase des annotations de type, pas de bloc « Args: /
+  Returns: » qui ne fait que répéter noms et types.
+- À garder : références scientifiques (auteur et année, norme), unités,
+  conventions de signe, raison d'une valeur numérique.
+- Les migrations mergées sont immuables ; la règle vaut pour le code neuf et
+  pour `src/` et `tests/`.
+
 ## Accord de licence de contribution (CLA)
 
 Toute contribution est soumise à l'[accord de licence de contribution

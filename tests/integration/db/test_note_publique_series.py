@@ -12,7 +12,7 @@ Verrouille trois invariants :
 - TI-NP-3 : le journal interne ``commentaire_editorial`` n'a pas été
   altéré par la bascule (il reste renseigné sur tout le parc seedé).
 
-La migration 100 (D-63, option a) est verrouillée par TI-NP-4 :
+La migration 100 est verrouillée par TI-NP-4 :
 ``productible_specifique_theorique`` pointe l'unité
 ``kwh_par_kwc_periode`` et sa note publique annonce des totaux par
 période.
@@ -56,7 +56,7 @@ def test_ti_np2_note_publique_sans_jargon_interne(db_session: Session) -> None:
 
 
 def test_ti_np3_journal_interne_intact(db_session: Session) -> None:
-    """TI-NP-3 : la bascule n'a pas touché le journal de chantier."""
+    """TI-NP-3 : la bascule n'a pas touché le journal interne."""
     vides = db_session.execute(
         text(
             "SELECT COUNT(*) FROM series_metadonnees "
@@ -67,7 +67,7 @@ def test_ti_np3_journal_interne_intact(db_session: Session) -> None:
 
 
 def test_ti_np4_psp_unite_periode_et_note_coherente(db_session: Session) -> None:
-    """TI-NP-4 : D-63 résorbée (option a) : étiquette et note alignées."""
+    """TI-NP-4 : unité et note publique de ``productible_specifique_theorique`` alignées."""
     unite = db_session.execute(
         text(
             "SELECT u.code, u.symbole FROM grandeurs_referentiel gr "

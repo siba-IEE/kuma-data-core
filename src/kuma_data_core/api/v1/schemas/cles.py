@@ -1,4 +1,4 @@
-"""Schémas Pydantic des endpoints ``/v1/cles`` (ADR-0003, D3 / WP6)."""
+"""Schémas Pydantic des endpoints ``/v1/cles`` (ADR-0003)."""
 
 from __future__ import annotations
 

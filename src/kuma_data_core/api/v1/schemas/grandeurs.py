@@ -573,7 +573,7 @@ class ReponseGrandeurF2(BaseModel):
     )
 
 
-# === Atlas Temps 2 : fiche d'incertitude inter-source (F1 lecture/assemblage) ===
+# === Fiche d'incertitude inter-source ===================================
 
 
 class EcartPaireInterSource(BaseModel):

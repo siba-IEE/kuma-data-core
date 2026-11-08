@@ -1,17 +1,4 @@
-"""Tests d'intégration de la table ``grandeurs_metier``.
-
-Couvre les cas de test :
-
-- DDL, contraintes, EXCLUDE, audit.
-- vue ``v_grandeurs_metier_courantes``.
-- seed source ``kuma_calculs`` + 6 séries HEP.
-- ingestion HEP 6 villes.
-- roundtrip Alembic (marker regression).
-
-Pattern hérité de ``test_mesures_ressource.py`` : ``db_session``
-fixture conftest.py + ``session.begin_nested()`` pour isoler les tests
-d'erreur sans casser la transaction extérieure.
-"""
+"""Table ``grandeurs_metier`` : DDL, contraintes, vue des courantes, seeds et calculs stockés."""
 
 from __future__ import annotations
 
@@ -44,9 +31,7 @@ CODES_SERIES_HEP: tuple[str, ...] = (
     "gin_nzerekore_hep_kuma_calculs_2021_2025",
 )
 
-# Les 6 villes pilotes. La parite A1 (migration 092) etend hep/psp/fd aux 28
-# communes -> les tests de livrable pilote se scopent a ces 6 (les 28 ont leur propre
-# test de densification/parite + anti-regression).
+# Les 28 communes ont leurs propres tests : ceux-ci se limitent aux 6 pilotes.
 _LOCALITES_PILOTES: tuple[str, ...] = (
     "gin_conakry_kaloum",
     "gin_kankan",
@@ -102,9 +87,7 @@ def _construire_ligne_hep(
     niveau_confiance_derive: str = "B",
     statut: str | None = None,
 ) -> GrandeurMetier:
-    """Construit une instance GrandeurMetier en utilisant la série HEP Conakry
-    et l'année 2050 par défaut (hors plage 2021-2025 seedée pour éviter les
-    conflits EXCLUDE avec les 390 lignes existantes)."""
+    """Ligne HEP de Conakry en 2050, hors des années seedées pour éviter l'EXCLUDE."""
     kwargs: dict[str, object] = {
         "grandeur_code": "hep",
         "localite_id": _id_localite_conakry(db_session),
@@ -128,9 +111,7 @@ def _construire_ligne_hep(
 
 
 def test_ti1_ddl_table_colonnes_et_contraintes(db_session: Session) -> None:
-    """Colonnes typées correctement, FK posées, CHECK nommés
-    (suffixe `_valide` pour catégoriels), EXCLUDE et index partiel et
-    trigger posés."""
+    """Colonnes, CHECK nommés, EXCLUDE, index partiel et trigger d'audit présents."""
     cols = db_session.execute(
         text(
             """
@@ -232,8 +213,7 @@ def test_ti3_insert_valide_mensuel(db_session: Session) -> None:
 
 
 def test_ti4_insert_invalide_annuel_avec_mois(db_session: Session) -> None:
-    """periode_type='annuel' avec mois=3 rejeté par
-    ck_grandeurs_metier_periode_coherente."""
+    """Un annuel avec mois est rejeté (``ck_grandeurs_metier_periode_coherente``)."""
     with db_session.begin_nested():
         ligne = _construire_ligne_hep(db_session, periode_type="annuel", annee_debut=2050, mois=3)
         db_session.add(ligne)
@@ -242,8 +222,7 @@ def test_ti4_insert_invalide_annuel_avec_mois(db_session: Session) -> None:
 
 
 def test_ti5_insert_invalide_mensuel_sans_mois(db_session: Session) -> None:
-    """periode_type='mensuel' sans mois rejeté par
-    ck_grandeurs_metier_periode_coherente."""
+    """Un mensuel sans mois est rejeté (``ck_grandeurs_metier_periode_coherente``)."""
     with db_session.begin_nested():
         ligne = _construire_ligne_hep(
             db_session, periode_type="mensuel", annee_debut=2050, mois=None
@@ -254,8 +233,7 @@ def test_ti5_insert_invalide_mensuel_sans_mois(db_session: Session) -> None:
 
 
 def test_ti6_conflit_exclude_meme_identite_courante(db_session: Session) -> None:
-    """Deux INSERT avec même identité métier (incluant
-    version_formule) et valide_au IS NULL → second rejeté par EXCLUDE."""
+    """Deux lignes courantes de même identité (version comprise) : la seconde est rejetée."""
     ligne_a = _construire_ligne_hep(
         db_session,
         periode_type="annuel",
@@ -280,8 +258,7 @@ def test_ti6_conflit_exclude_meme_identite_courante(db_session: Session) -> None
 
 
 def test_ti7_coexistence_v1_v2_courantes(db_session: Session) -> None:
-    """INSERT v1 puis v2 même identité métier → tous deux acceptés
-    (extension orthogonale : version_formule dans EXCLUDE)."""
+    """Deux versions de formule de même identité coexistent."""
     ligne_v1 = _construire_ligne_hep(
         db_session,
         periode_type="annuel",
@@ -336,8 +313,7 @@ def test_ti9_niveau_confiance_derive_obligatoire(db_session: Session) -> None:
 
 
 def test_ti10_trigger_audit_declenche(db_session: Session) -> None:
-    """INSERT puis lecture audit_log → entrée présente avec
-    type_operation='I' et auteur_applicatif propagé via set_config."""
+    """Un INSERT écrit dans ``audit_log`` (``I``, auteur propagé par ``set_config``)."""
     db_session.execute(
         text("SELECT set_config('kuma.auteur_applicatif', :v, true)"),
         {"v": "test_ti10"},
@@ -364,8 +340,7 @@ def test_ti10_trigger_audit_declenche(db_session: Session) -> None:
 
 
 def test_ti11_vue_filtre_version_courante(db_session: Session) -> None:
-    """INSERT v1 puis basculement version_formule_actuelle de hep à
-    2 → ligne v1 invisible dans la vue mais présente dans la table."""
+    """Après bascule de la version actuelle de hep, la ligne v1 sort de la vue."""
     ligne_v1 = _construire_ligne_hep(
         db_session, periode_type="annuel", annee_debut=2054, mois=None, version_formule=1
     )
@@ -419,8 +394,7 @@ def test_ti12_vue_filtre_statut_deprecie(db_session: Session) -> None:
 
 
 def test_ti13_vue_filtre_valide_au_non_null(db_session: Session) -> None:
-    """Ligne avec valide_au posé (ligne historique) → invisible
-    dans la vue."""
+    """Une ligne clôturée (``valide_au`` posé) sort de la vue."""
     ligne = _construire_ligne_hep(db_session, periode_type="annuel", annee_debut=2056, mois=None)
     db_session.add(ligne)
     db_session.flush()
@@ -437,8 +411,7 @@ def test_ti13_vue_filtre_valide_au_non_null(db_session: Session) -> None:
 
 
 def test_ti14_niveau_effectif_via_vue(db_session: Session) -> None:
-    """INSERT avec niveau_confiance_override='A' → la vue retourne
-    niveau_effectif='A'. INSERT sans override → retourne niveau_confiance_derive."""
+    """``niveau_effectif`` vaut l'override s'il existe, sinon le niveau dérivé."""
     ligne_override = _construire_ligne_hep(
         db_session,
         periode_type="annuel",
@@ -479,8 +452,7 @@ def test_ti14_niveau_effectif_via_vue(db_session: Session) -> None:
 
 
 def test_ti15_source_kuma_calculs_presente(db_session: Session) -> None:
-    """Source kuma_calculs présente avec type_source='auteur_kuma'
-    et fiabilite='haute'."""
+    """Source ``kuma_calculs`` : ``auteur_kuma``, fiabilité haute."""
     row = db_session.execute(
         text("SELECT type_source, fiabilite FROM sources WHERE code = :code"),
         {"code": "kuma_calculs"},
@@ -491,11 +463,7 @@ def test_ti15_source_kuma_calculs_presente(db_session: Session) -> None:
 
 
 def test_ti16_check_refuse_valeur_invalide(db_session: Session) -> None:
-    """ck_sources_type_source_valide rejette une valeur hors des
-    11 valeurs autorisées.
-
-    L'acceptation de ``'auteur_kuma'`` est déjà validée par la présence
-    de la source ``kuma_calculs``."""
+    """``ck_sources_type_source_valide`` rejette un type inconnu."""
     with pytest.raises(IntegrityError):
         db_session.execute(
             text(
@@ -508,13 +476,7 @@ def test_ti16_check_refuse_valeur_invalide(db_session: Session) -> None:
 
 
 def test_ti17_six_series_hep_presentes(db_session: Session) -> None:
-    """6 entrées series_metadonnees calcul_derive sur la fenêtre
-    récente 2021-2025.
-
-    6 nouvelles series climato HEP 1991-2020 (kuma_calculs) ont ete
-    ajoutees par migration 051. Le test reste cantonne a sa fenetre
-    d'origine via filtre explicite sur les codes ``..._2021_2025``
-    (preserve la semantique « 6 series HEP seedees »)."""
+    """Les 6 séries HEP 2021-2025 existent, en ``calcul_derive``."""
     codes_1_5 = list(CODES_SERIES_HEP)
     n = db_session.execute(
         text(
@@ -541,8 +503,7 @@ def test_ti17_six_series_hep_presentes(db_session: Session) -> None:
 
 
 def test_ti18_commentaire_editorial_series_hep_renseigne(db_session: Session) -> None:
-    """commentaire_editorial non NULL pour les 6 séries HEP
-    (discipline éditoriale, pas contrainte DDL)."""
+    """Les 6 séries HEP ont un ``commentaire_editorial``."""
     rows = db_session.execute(
         text("SELECT code, commentaire_editorial FROM series_metadonnees WHERE code = ANY(:codes)"),
         {"codes": list(CODES_SERIES_HEP)},
@@ -559,17 +520,7 @@ def test_ti18_commentaire_editorial_series_hep_renseigne(db_session: Session) ->
 
 
 def test_ti19_decompte_lignes_hep(db_session: Session) -> None:
-    """SELECT COUNT(*) FROM grandeurs_metier WHERE grandeur_code='hep'
-    retourne 390 (6 villes * 65 = 1 annuel + 12 mensuels * 5 ans) sur la
-    fenetre 2021-2025.
-
-    Filtre explicite sur grandeur_code='hep' (la table
-    `grandeurs_metier` contient désormais d'autres grandeurs Kuma).
-    Restriction `annee_debut >= 2021` pour preserver la semantique
-    (l'ingestion climato 1991-2020 ajoutee par migration 051 reside
-    hors fenetre).
-    Tolérance possible (350-390) si politique de complétude a skipé des
-    périodes ; constat factuel : 390/390."""
+    """390 lignes HEP 2021-2025 aux pilotes : 6 villes x 5 ans x (1 + 12)."""
     total = db_session.scalar(
         select(func.count())
         .select_from(GrandeurMetier)
@@ -580,18 +531,11 @@ def test_ti19_decompte_lignes_hep(db_session: Session) -> None:
     )
     assert total is not None
     assert 350 <= total <= 390
-    # Constat factuel : aucun skip → 390/390 (6 pilotes ; A1 etend aux 28, scope ici)
     assert total == 390
 
 
 def test_ti20_toutes_lignes_niveau_b(db_session: Session) -> None:
-    """SELECT DISTINCT niveau_confiance_derive sur ``grandeurs_metier`` -> {'B'}.
-
-    Invariant tenu **y compris** pour ``degenerescence_pixel`` : la confiance A
-    reste reservee aux mesures terrain (06-api-reference-publique.md:682, deja tenue par
-    le sol Kankan/Tarambaly) ; un indicateur structurel exact est B + caveat, jamais une
-    remontee en A. A vit dans mesures_ressource_horaires (terrain), pas
-    dans grandeurs_metier."""
+    """Tout ``grandeurs_metier`` est en B ; A est réservé aux mesures au sol."""
     niveaux = {
         r[0]
         for r in db_session.execute(select(GrandeurMetier.niveau_confiance_derive).distinct()).all()
@@ -600,14 +544,7 @@ def test_ti20_toutes_lignes_niveau_b(db_session: Session) -> None:
 
 
 def test_ti21_coherence_sum_mensuel_egale_annuel(db_session: Session) -> None:
-    """Pour chaque (localite_id, annee_debut) ayant 13 entrées
-    (1 annuel + 12 mensuels) sur la fenetre 2021-2025, sum(valeur mensuel)
-    ≈ valeur annuel à rel=1e-9 près.
-
-    Restriction `annee_debut >= 2021` pour preserver la semantique
-    (les series climato 1991-2020 migration 051 ne sont pas verifiees
-    ici, la coherence sum=annuel y est garantie nativement par
-    `_calculer_hep_climato`)."""
+    """Pour chaque année 2021-2025 complète, somme des mois = annuel (rel=1e-9)."""
     rows = db_session.execute(
         text(
             """
@@ -638,14 +575,7 @@ def test_ti21_coherence_sum_mensuel_egale_annuel(db_session: Session) -> None:
 
 
 def test_ti22_plage_tropicale_hep_annuel(db_session: Session) -> None:
-    """Pour chaque ligne periode_type='annuel' sur la fenetre
-    2021-2025, valeur entre 1700 et 2100 h_eq/an (plage resserrée
-    empiriquement : observée [1727, 2060], cf. fiche méthodo).
-
-    Restriction `annee_debut >= 2021` pour preserver la semantique
-    (la plage climato 1991-2020 migration 051 reste tropicale par
-    construction mais releve d'une validation distincte au moment de
-    l'ingestion)."""
+    """HEP annuelle 2021-2025 entre 1700 et 2100 h_eq (observé 1727-2060)."""
     rows = db_session.execute(
         select(GrandeurMetier.valeur).where(
             GrandeurMetier.periode_type == "annuel",
@@ -661,12 +591,7 @@ def test_ti22_plage_tropicale_hep_annuel(db_session: Session) -> None:
 
 
 def test_ti23_commentaire_editorial_null_a_insert_initial(db_session: Session) -> None:
-    """Les lignes seedées par migration 027 ont commentaire_editorial
-    IS NULL (pattern symétrique mesures_ressource).
-
-    Exception : ``degenerescence_pixel`` porte intentionnellement un
-    commentaire (groupe de jumeaux / caveat de résolution, canal d'honnêteté).
-    L'invariant reste vérifié pour toutes les autres grandeurs."""
+    """Pas de commentaire à l'insertion, sauf ``degenerescence_pixel`` qui en porte un exprès."""
     n_non_null = db_session.scalar(
         select(func.count())
         .select_from(GrandeurMetier)
@@ -683,19 +608,7 @@ def test_ti23_commentaire_editorial_null_a_insert_initial(db_session: Session) -
 
 
 def test_ti25_decompte_par_grandeur_1_6(db_session: Session) -> None:
-    """Décompte par grandeur sur la fenetre 2021-2025.
-
-    Décompte réel observé (78 par grandeur était par année ; sur 5 ans
-    = 390 par grandeur multi-périodes, 30 pour variabilite annuel seul).
-
-    Tolérance fraction_diffuse : 378 (1 jour DHI manquant en 2024 → 1 année
-    + 1 mois skip * 6 villes = 12 lignes skip ; 390 - 12 = 378).
-
-    Restriction `annee_debut >= 2021` pour preserver la semantique
-    (les series climato 1991-2020 / 2001-2020 sur hep,
-    productible_specifique_theorique, fraction_diffuse ajoutees
-    par migration 051 sont volontairement exclues du decompte ici).
-    """
+    """Décompte 2021-2025 par grandeur aux pilotes (390, variabilité annuelle seule : 30)."""
     rows = db_session.execute(
         text(
             "SELECT grandeur_code, COUNT(*) FROM grandeurs_metier "
@@ -710,10 +623,7 @@ def test_ti25_decompte_par_grandeur_1_6(db_session: Session) -> None:
         )
     ).all()
     decompte = {r[0]: r[1] for r in rows}
-    # Exact : le DHI daily est servi depuis le seed offline
-    # committe (nasa_power_daily) -> deterministe. fraction_diffuse = 390 (0 skip,
-    # max theorique 6 villes x 65 : le snapshot a la DHI 2021-2025 entierement
-    # muree). Bornes tolerantes retirees.
+    # DHI servi par le seed offline, complet : aucune période écartée.
     assert decompte["fraction_diffuse"] == 390
     assert decompte["humidex"] == 390
     assert decompte["productible_specifique_theorique"] == 390
@@ -721,8 +631,7 @@ def test_ti25_decompte_par_grandeur_1_6(db_session: Session) -> None:
 
 
 def test_ti26_niveau_b_uniforme_grandeurs_1_6(db_session: Session) -> None:
-    """niveau_confiance_derive='B' sur 100% des lignes
-    (catch-all calcul_derive + fiabilite haute)."""
+    """Niveau dérivé B sur toutes les lignes de ces grandeurs."""
     niveaux = {
         r[0]
         for r in db_session.execute(
@@ -744,14 +653,7 @@ def test_ti26_niveau_b_uniforme_grandeurs_1_6(db_session: Session) -> None:
 
 
 def test_ti27_coherence_productible_egale_hep_fois_pr(db_session: Session) -> None:
-    """Pour chaque (localite, annee, mois) ayant hep ET
-    productible_specifique_theorique sur la fenetre 2021-2025,
-    productible ≈ hep * 0.8 à ε près.
-
-    Restriction `annee_debut >= 2021` pour preserver la semantique.
-    La coherence PR = 0.8 est egalement appliquee aux series climato
-    1991-2020 migration 051 par construction (cf. _calculer_psp_climato
-    qui consomme directement la serie HEP climato compagne)."""
+    """Productible théorique = HEP x 0.8 pour chaque période 2021-2025."""
     rows = db_session.execute(
         text(
             """
@@ -780,14 +682,7 @@ def test_ti27_coherence_productible_egale_hep_fois_pr(db_session: Session) -> No
 
 
 def test_ti28_fraction_diffuse_dans_zero_un(db_session: Session) -> None:
-    """Toutes les valeurs fraction_diffuse ∈ [0, 1] (invariance
-    physique DHI ≤ GHI) sur la fenetre 2021-2025.
-
-    Restriction `annee_debut >= 2021` pour preserver la semantique.
-    L'invariance reste verifiee pour les series climato 2001-2020
-    ajoutees par migration 051 par construction (cf.
-    _calculer_fraction_diffuse_climato : ratio DHI / GHI mensuel mois
-    par mois, intrinsequement dans [0, 1])."""
+    """Fraction diffuse 2021-2025 dans [0, 1] (DHI ≤ GHI)."""
     rows = db_session.execute(
         select(GrandeurMetier.valeur).where(
             GrandeurMetier.grandeur_code == "fraction_diffuse",
@@ -802,8 +697,7 @@ def test_ti28_fraction_diffuse_dans_zero_un(db_session: Session) -> None:
 
 
 def test_ti29_plage_humidex_tropical(db_session: Session) -> None:
-    """humidex moyen annuel ∈ [25, 45] °C apparents sur les
-    6 villes pilotes (plage tropicale large, observée [29.0, 38.6])."""
+    """Humidex annuel des pilotes dans [25, 45] °C apparents (observé 29.0-38.6)."""
     rows = db_session.execute(
         select(GrandeurMetier.valeur).where(
             GrandeurMetier.grandeur_code == "humidex",
@@ -812,14 +706,13 @@ def test_ti29_plage_humidex_tropical(db_session: Session) -> None:
             GrandeurMetier.localite_id.in_(_ids_pilotes(db_session)),
         )
     ).all()
-    assert len(rows) == 30  # 6 pilotes (A2 etend aux 28, scope ici) ; plage verifiee en parite A2
+    assert len(rows) == 30  # 6 pilotes
     for r in rows:
         assert 25.0 <= r[0] <= 45.0
 
 
 def test_ti30_plage_cov_tropical(db_session: Session) -> None:
-    """variabilite_journaliere CoV ∈ [0.10, 0.40] sur les
-    6 villes pilotes (plage tropicale, observée [0.156, 0.269])."""
+    """CoV des pilotes dans [0.10, 0.40] (observé 0.156-0.269)."""
     rows = db_session.execute(
         select(GrandeurMetier.valeur).where(
             GrandeurMetier.grandeur_code == "variabilite_journaliere",
@@ -827,7 +720,7 @@ def test_ti30_plage_cov_tropical(db_session: Session) -> None:
             GrandeurMetier.localite_id.in_(_ids_pilotes(db_session)),
         )
     ).all()
-    assert len(rows) == 30  # 6 pilotes (A2 etend aux 28, scope ici) ; plage verifiee en parite A2
+    assert len(rows) == 30  # 6 pilotes
     for r in rows:
         assert 0.10 <= r[0] <= 0.40
 
@@ -841,13 +734,7 @@ def test_ti31_productible_mensuel_desactive(db_session: Session) -> None:
 
 
 def test_ti32_kt_ingere_dans_mesures_ressource(db_session: Session) -> None:
-    """10 956 lignes kt dans mesures_ressource (6 villes * 1826 jours).
-
-    Scope localite aux 6 pilotes : la densification (migration 086) ajoute kt
-    pour 28 communes ; ce test reste cantonne aux pilotes (les 28 sont couvertes
-    par test_densification_daily_b1). Scope periode 2021-01-01 : le backfill
-    journalier profondeur (migration 107) est un millesime distinct.
-    """
+    """10 956 lignes kt 2021-2025 aux pilotes (6 x 1 826)."""
     n = db_session.execute(
         text(
             """
@@ -862,10 +749,6 @@ def test_ti32_kt_ingere_dans_mesures_ressource(db_session: Session) -> None:
         )
     ).scalar_one()
     assert 10_900 <= n <= 10_956
-    # Constat actualise 2026-06-19 : 10 956 lignes (6 * 1826). kt est ingere en
-    # LIVE depuis NASA POWER (migration 029) ; les dernieres journees
-    # 2025 jadis sentinelle (1/ville) ont ete finalisees cote NASA -> 0 sentinelle,
-    # kt atteint son maximum 6 * 1826 (verifie ALLSKY_KT : 1826 jours valides/ville).
     assert n == 10_956
 
 
@@ -875,32 +758,7 @@ def test_ti32_kt_ingere_dans_mesures_ressource(db_session: Session) -> None:
 
 
 def test_ti39_decompte_cumule_grandeurs_kuma_hors_indicateur(db_session: Session) -> None:
-    """Decompte cumule `grandeurs_metier` a 1 578 lignes
-    sur la fenetre recente 2021-2025, en excluant `indicateur_qualite_donnees`
-    et les 3 grandeurs F1 referentielles
-    (ecart_relatif_referentiel, rang_referentiel_temporel,
-    rang_referentiel_spatial).
-
-    Exclusion etendue pour preserver la semantique initiale du test :
-    « total des 5 grandeurs Kuma F1 stockee calcul_derive » (390 hep +
-    378 fraction_diffuse + 390 humidex + 390
-    productible_specifique_theorique + 30
-    variabilite_journaliere = 1 578).
-
-    Frontiere tracee :
-    - 5 grandeurs Kuma calcul_derive stockee (1 578 lignes,
-      fenetre 2021-2025)
-    - 1 meta-grandeur indicateur_qualite_donnees (36 lignes).
-    - 3 grandeurs F1 referentielles (936 lignes : 216 + 360 + 360),
-      stockees elles aussi (migration 126) mais exclues de ce decompte.
-    - 3 grandeurs Kuma climato calcul_derive (6 240 lignes : hep 1991-2020,
-      productible_specifique_theorique 1991-2020, fraction_diffuse 2001-2020,
-      migration 051).
-
-    Restriction `annee_debut >= 2021` pour cantonner le test a la
-    fenetre recente et preserver la cible 1 578. Le total cumule global
-    (recent + climato + meta) est valide separement (8 790 lignes).
-    """
+    """Lignes 2021-2025 des grandeurs calculées, hors méta-indicateurs et référentielles."""
     n_hors_meta = db_session.scalar(
         select(func.count())
         .select_from(GrandeurMetier)
@@ -920,11 +778,7 @@ def test_ti39_decompte_cumule_grandeurs_kuma_hors_indicateur(db_session: Session
             )
         )
     )
-    # Exact : DHI daily depuis seed offline -> deterministe.
-    # 1590 = 1578 + 12 (fraction_diffuse au max 390, seed entierement muri).
-    # Exclues : meta-grandeurs d'honnetete (indicateur_qualite_donnees,
-    # degenerescence_pixel) et grandeurs referentielles inter-source (ecart_relatif_*,
-    # rang_*) - dont l'ecart DNI recent 2021-2023 ajoute par l'atlas Temps 1 (091).
+    # 390 hep + 390 fraction_diffuse + 390 humidex + 390 productible + 30 variabilité
     assert n_hors_meta == 1590
 
 
@@ -935,9 +789,7 @@ def test_ti39_decompte_cumule_grandeurs_kuma_hors_indicateur(db_session: Session
 
 @pytest.mark.regression
 def test_ti24_roundtrip_alembic_023_a_027() -> None:
-    """downgrade Alembic jusqu'à 022 puis upgrade head.
-    Vérifie reproductibilité totale : décompte grandeurs_metier identique
-    après ré-upgrade. Marker regression (lent, lance hors run normal)."""
+    """Downgrade jusqu'à 022 puis upgrade : mêmes décomptes (lent, marqueur regression)."""
     cfg = Config("alembic.ini")
 
     command.downgrade(cfg, "022")
