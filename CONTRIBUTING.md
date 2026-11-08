@@ -49,6 +49,9 @@ uv run pytest -m "integration and not regression"
 Si vous touchez au schéma : ajoutez une migration Alembic, puis vérifiez
 `uv run alembic upgrade head` et `uv run alembic check`. Une migration
 mergée est immuable ; toute correction passe par une nouvelle migration.
+Les allers-retours Alembic (`uv run pytest -m regression`, nightly) créent
+puis suppriment chacun une base `kuma_regr_<hex>` : le rôle PostgreSQL doit
+avoir le droit `CREATEDB`.
 
 `pre-commit` est configuré (ruff, gitleaks, ...) :
 `uv run pre-commit run --all-files`.

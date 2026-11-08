@@ -5,15 +5,13 @@ from __future__ import annotations
 from datetime import UTC, datetime
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from kuma_data_core.db.models.audit_log import AuditLog
 from kuma_data_core.db.models.grandeurs_metier import GrandeurMetier
-from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
+from tests._migrations import BaseEphemere, verifier_aller_retour
 
 pytestmark = pytest.mark.integration
 
@@ -789,24 +787,55 @@ def test_ti39_decompte_cumule_grandeurs_kuma_hors_indicateur(db_session: Session
 
 
 @pytest.mark.regression
-@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
-def test_ti24_roundtrip_alembic_023_a_027() -> None:
-    """Downgrade jusqu'à 022 puis upgrade : mêmes décomptes (lent, marqueur regression)."""
-    from kuma_data_core.db.session import get_engine
+def test_ti24_roundtrip_alembic_023_a_027(base_ephemere: BaseEphemere) -> None:
+    """022 → 027 → 022 → 027 sur base éphémère : table, vue, source, séries et calculs HEP.
 
-    sql_hep = text(
-        "SELECT COUNT(*) FROM grandeurs_metier WHERE grandeur_code = 'hep' AND valide_au IS NULL"
+    À 027, seules les 6 villes pilotes existent : 65 lignes HEP chacune
+    (390 au total, toutes les lignes courantes de ``grandeurs_metier``).
+    """
+
+    def controler_022(base: BaseEphemere) -> None:
+        assert base.scalar("SELECT to_regclass('grandeurs_metier')") is None
+        assert base.scalar("SELECT to_regclass('v_grandeurs_metier_courantes')") is None
+        assert base.scalar("SELECT count(*) FROM sources WHERE code = 'kuma_calculs'") == 0
+        assert (
+            base.scalar(
+                "SELECT count(*) FROM series_metadonnees WHERE code = ANY(:c)",
+                c=list(CODES_SERIES_HEP),
+            )
+            == 0
+        )
+
+    def controler_027(base: BaseEphemere) -> None:
+        assert base.scalar("SELECT count(*) FROM sources WHERE code = 'kuma_calculs'") == 1
+        assert (
+            base.scalar(
+                "SELECT count(*) FROM series_metadonnees WHERE code = ANY(:c)",
+                c=list(CODES_SERIES_HEP),
+            )
+            == 6
+        )
+        assert (
+            base.scalar(
+                "SELECT count(*) FROM grandeurs_metier "
+                "WHERE grandeur_code = 'hep' AND valide_au IS NULL"
+            )
+            == 390
+        )
+        assert base.scalar("SELECT count(*) FROM grandeurs_metier WHERE valide_au IS NULL") == 390
+        assert base.scalar("SELECT count(*) FROM v_grandeurs_metier_courantes") == 390
+        for code in _LOCALITES_PILOTES:
+            n = base.scalar(
+                "SELECT count(*) FROM grandeurs_metier gm JOIN localites l "
+                "ON l.id = gm.localite_id WHERE l.code = :c AND gm.grandeur_code = 'hep'",
+                c=code,
+            )
+            assert n == 65, code
+
+    verifier_aller_retour(
+        base_ephemere,
+        cible="022",
+        testee="027",
+        controler_cible=controler_022,
+        controler_testee=controler_027,
     )
-    sql_total = text("SELECT COUNT(*) FROM grandeurs_metier WHERE valide_au IS NULL")
-    engine = get_engine()
-    with engine.connect() as conn:
-        n_hep_avant = conn.execute(sql_hep).scalar_one()
-        n_total_avant = conn.execute(sql_total).scalar_one()
-
-    cfg = Config("alembic.ini")
-    command.downgrade(cfg, "022")
-    command.upgrade(cfg, "head")
-
-    with engine.connect() as conn:
-        assert conn.execute(sql_hep).scalar_one() == n_hep_avant
-        assert conn.execute(sql_total).scalar_one() == n_total_avant

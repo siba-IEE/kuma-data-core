@@ -1,9 +1,12 @@
 name: CI nocturne (regression)
 
-# Workflow nocturne dedie aux tests marques `regression` (typiquement
-# le roundtrip Alembic 023 a head qui re-frappe les APIs externes
-# JRC + NASA POWER, ~5 min par cycle). Extrait de la suite integration
-# standard pour stabilite.
+# Workflow nocturne dedie aux tests marques `regression` : les 7 allers-
+# retours Alembic (008-010, 011, 012, 018, 020, 022, 023-027). Chacun cree sa
+# propre base vide `kuma_regr_<hex>` (CREATE DATABASE : le role du service
+# postgres, POSTGRES_USER de l'image officielle, est superutilisateur), la monte
+# jusqu'a la revision cible, fait upgrade/downgrade/upgrade puis la supprime.
+# La base partagee n'est pas touchee : la migration 046 interdit d'y
+# redescendre. Ingestion offline (seeds), ~30 s pour les 7.
 #
 # Schedule cron `0 3 * * *` UTC = 3h UTC chaque nuit, hors heures de
 # pointe API JRC (l'API PVGIS MRcalc est typiquement moins sollicitee
@@ -26,14 +29,13 @@ env:
 
 jobs:
   tests-regression:
-    name: Tests regression (TI-24 roundtrip Alembic)
+    name: Tests regression (allers-retours Alembic sur bases ephemeres)
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # Timeout large : upgrade(head) initial puis roundtrip regression
-    # downgrade(022) + upgrade(head). Depuis le backfill journalier profondeur
-    # (migration 107, 4 147 830 insertions avec trigger d'audit par ligne,
-    # 24 min 37 observees en CI pour le seul upgrade), le roundtrip rejoue ce
-    # volume une seconde fois et audite aussi les DELETE du downgrade.
+    # Timeout large : upgrade(head) de la base partagee (alembic check), dont le
+    # backfill journalier profondeur (migration 107, 4 147 830 insertions avec
+    # trigger d'audit par ligne, 24 min 37 observees en CI). Les allers-retours
+    # regression ne remontent que jusqu'a 027 sur leurs bases ephemeres.
 
     services:
       postgres:
@@ -63,16 +65,14 @@ jobs:
       API_CLE_ADMIN: ci_cle_admin_factice
       LOG_FORMAT: json
       LOG_NIVEAU: WARNING
-      # Court-circuite l'ingestion horaire de MASSE aussi dans le nightly :
-      # le roundtrip (downgrade 022 + upgrade head) rejouerait sinon les 138
-      # appels NASA / ville une seconde fois. Le nightly verifie la mecanique
-      # apply/rollback des migrations 056/057, pas le re-fetch de la donnee
-      # deterministe.
+      # Court-circuite l'ingestion horaire de MASSE aussi dans le nightly
+      # (upgrade head de la base partagee : 138 appels NASA / ville sinon).
       KUMA_SKIP_INGESTION_MASSE_HORAIRE: "1"
       # PVGIS-SARAH3 ET NASA daily servis offline (seed) aussi dans la chaine
-      # nightly, y compris le roundtrip -> stabilite. Les canaris dedies
-      # (canari-sarah3-derive, canari-nasa-daily-derive ; independants) gardent
-      # PVGIS et NASA daily LIVE pour detecter une derive amont.
+      # nightly -> stabilite (les allers-retours forcent offline de toute
+      # facon). Les canaris dedies (canari-sarah3-derive,
+      # canari-nasa-daily-derive ; independants) gardent PVGIS et NASA daily
+      # LIVE pour detecter une derive amont.
       KUMA_INGESTION_MODE: offline
 
     steps:
@@ -94,9 +94,8 @@ jobs:
       - name: Appliquer les migrations Alembic (retry réseau transitoire)
         # Idem ci.yml : retry sur indisponibilité transitoire JRC/NASA.
         # Le retry reprend à la dernière migration appliquée
-        # (transactionnel). NB : l'upgrade interne du test regression
-        # (downgrade 022 + upgrade head dans pytest) n'est pas couvert par ce
-        # retry de step - flakiness résiduelle côté regression.
+        # (transactionnel). Les allers-retours regression n'en dependent pas :
+        # ils montent leurs propres bases ephemeres, en offline.
         run: |
           for tentative in 1 2 3; do
             if uv run alembic upgrade head; then exit 0; fi
@@ -111,7 +110,7 @@ jobs:
       - name: Verifier la coherence Alembic / modeles SQLAlchemy
         run: uv run alembic check
 
-      - name: Executer les tests regression (TI-24 + futurs)
+      - name: Executer les tests regression (allers-retours Alembic)
         run: uv run pytest -m regression -v
 
   # === Job dedie : canari de derive PVGIS-SARAH3 ========

@@ -10,7 +10,7 @@ Couvre :
   avec difference dans [4, 12] degC)
 - niveau_confiance_derive uniforme 'B' sur les 6 villes
 - DHI <= GHI avec tolerance epsilon 10% sur les 5 nouvelles villes
-- roundtrip Alembic regression (downgrade 021 -> upgrade head)
+- aller-retour Alembic 021 -> 022 -> 021 -> 022 (regression, base ephemere)
 
 Pattern avec extension multi-localites.
 """
@@ -18,13 +18,11 @@ Pattern avec extension multi-localites.
 from __future__ import annotations
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.db.models.mesures_ressource import MesureRessource
-from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
+from tests._migrations import BaseEphemere, verifier_aller_retour
 
 pytestmark = pytest.mark.integration
 
@@ -376,55 +374,45 @@ def test_t43_dhi_inferieur_ghi_par_ville(db_session: Session, localite_code: str
 # ---------------------------------------------------------------------------
 
 
+_SQL_N_MESURES_SERIES = """
+    SELECT count(mr.id)
+    FROM mesures_ressource mr
+    JOIN series_metadonnees sm ON sm.id = mr.serie_id
+    WHERE sm.code = ANY(:codes)
+"""
+
+
 @pytest.mark.regression
-@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
-def test_t44_roundtrip_alembic_022() -> None:
-    """Downgrade 022 -> 021 (supprime 45 640 lignes, Conakry
-    preservee) puis upgrade head re-ingere et revérifie.
+def test_t44_roundtrip_alembic_022(base_ephemere: BaseEphemere) -> None:
+    """021 → 022 → 021 → 022 sur base éphémère : 25 séries x 1826 jours partent puis reviennent.
+
+    Les 5 séries Conakry (018, 020) sont préservées par le downgrade de 022.
     """
-    from kuma_data_core.db.session import get_engine
-
-    cfg = Config("alembic.ini")
-    engine = get_engine()
-
     codes_1_4 = [_code_serie(loc, gr) for loc in _LOCALITES_1_4 for gr in _GRANDEURS]
-    with Session(engine) as s:
-        n_initial = s.scalar(
-            text(
-                """
-                SELECT count(mr.id)
-                FROM mesures_ressource mr
-                JOIN series_metadonnees sm ON sm.id = mr.serie_id
-                WHERE sm.code = ANY(:codes)
-                """
-            ).bindparams(codes=codes_1_4)
-        )
-    assert 45550 <= n_initial <= 45650
+    codes_conakry = [_code_serie(_LOCALITE_CONAKRY, gr) for gr in _GRANDEURS]
 
-    command.downgrade(cfg, "021")
-    with Session(engine) as s:
-        n_apres_down = s.scalar(
-            text(
-                """
-                SELECT count(mr.id)
-                FROM mesures_ressource mr
-                JOIN series_metadonnees sm ON sm.id = mr.serie_id
-                WHERE sm.code = ANY(:codes)
-                """
-            ).bindparams(codes=codes_1_4)
+    def controler_021(base: BaseEphemere) -> None:
+        assert (
+            base.scalar(
+                "SELECT count(*) FROM series_metadonnees WHERE code = ANY(:codes)", codes=codes_1_4
+            )
+            == 25
         )
-    assert n_apres_down == 0
+        assert base.scalar(_SQL_N_MESURES_SERIES, codes=codes_1_4) == 0
+        assert base.scalar(_SQL_N_MESURES_SERIES, codes=codes_conakry) == 9130
 
-    command.upgrade(cfg, "head")
-    with Session(engine) as s:
-        n_final = s.scalar(
-            text(
-                """
-                SELECT count(mr.id)
-                FROM mesures_ressource mr
-                JOIN series_metadonnees sm ON sm.id = mr.serie_id
-                WHERE sm.code = ANY(:codes)
-                """
-            ).bindparams(codes=codes_1_4)
-        )
-    assert 45550 <= n_final <= 45650
+    def controler_022(base: BaseEphemere) -> None:
+        for code in codes_1_4:
+            assert base.scalar(_SQL_N_MESURES_SERIES, codes=[code]) == 1826, code
+        assert base.scalar(_SQL_N_MESURES_SERIES, codes=codes_1_4) == 45650
+        assert base.scalar(_SQL_N_MESURES_SERIES, codes=codes_conakry) == 9130
+        # 6 villes x 5 grandeurs x 1826 jours
+        assert base.scalar("SELECT count(*) FROM mesures_ressource") == 54780
+
+    verifier_aller_retour(
+        base_ephemere,
+        cible="021",
+        testee="022",
+        controler_cible=controler_021,
+        controler_testee=controler_022,
+    )

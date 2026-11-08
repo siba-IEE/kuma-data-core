@@ -6,8 +6,6 @@ import re
 from datetime import date
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -17,7 +15,7 @@ from kuma_data_core.db.seeds.sources_seed_data import (
     _MENTION_BETA2_NORMEE,
     SOURCES_SEED,
 )
-from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
+from tests._migrations import BaseEphemere, verifier_aller_retour
 
 pytestmark = pytest.mark.integration
 
@@ -240,34 +238,25 @@ def test_11_audit_9_lignes_insert_auteur_null(db_session: Session) -> None:
 
 
 @pytest.mark.regression
-@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
-def test_roundtrip_alembic_012() -> None:
-    """``downgrade -1`` puis ``upgrade head`` : toujours 9 sources (connexion Alembic propre)."""
-    from kuma_data_core.db.session import get_engine
+def test_roundtrip_alembic_012(base_ephemere: BaseEphemere) -> None:
+    """011 → 012 → 011 → 012 sur base éphémère : les 9 sources partent puis reviennent."""
 
-    cfg = Config("alembic.ini")
-    engine = get_engine()
-
-    with Session(engine) as s:
-        n_initial = s.scalar(
-            select(func.count()).select_from(Source).where(Source.code.in_(_CODES_SOURCES))
+    def n_sources(base: BaseEphemere) -> int:
+        return base.scalar(
+            "SELECT count(*) FROM sources WHERE code = ANY(:codes)", codes=list(_CODES_SOURCES)
         )
-    assert n_initial == 9
 
-    # Cible la révision explicite "011" plutôt que "-1" : "-1" dépend du
-    # head courant et casserait ce test dès qu'une migration ultérieure
-    # serait ajoutée (corrigé conjointement sur le roundtrip
-    # localites qui cible désormais "010").
-    command.downgrade(cfg, "011")
-    with Session(engine) as s:
-        n_apres_down = s.scalar(
-            select(func.count()).select_from(Source).where(Source.code.in_(_CODES_SOURCES))
-        )
-    assert n_apres_down == 0
+    def controler_011(base: BaseEphemere) -> None:
+        assert base.scalar("SELECT count(*) FROM sources") == 0
 
-    command.upgrade(cfg, "head")
-    with Session(engine) as s:
-        n_final = s.scalar(
-            select(func.count()).select_from(Source).where(Source.code.in_(_CODES_SOURCES))
-        )
-    assert n_final == 9
+    def controler_012(base: BaseEphemere) -> None:
+        assert n_sources(base) == 9
+        assert base.scalar("SELECT count(*) FROM sources") == 9
+
+    verifier_aller_retour(
+        base_ephemere,
+        cible="011",
+        testee="012",
+        controler_cible=controler_011,
+        controler_testee=controler_012,
+    )

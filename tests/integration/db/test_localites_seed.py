@@ -29,15 +29,13 @@ from __future__ import annotations
 import re
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, aliased
 
 from kuma_data_core.db.models.audit_log import AuditLog
 from kuma_data_core.db.models.localites import Localite
 from kuma_data_core.db.seeds.localites_seed_data import LOCALITES_SEED
-from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
+from tests._migrations import BaseEphemere, verifier_aller_retour
 
 pytestmark = pytest.mark.integration
 
@@ -320,39 +318,26 @@ def test_11_audit_20_lignes_insert_auteur_null(db_session: Session) -> None:
 
 
 @pytest.mark.regression
-@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
-def test_roundtrip_alembic_011() -> None:
-    """``downgrade -1`` puis ``upgrade head`` reverifie le compte de 20.
+def test_roundtrip_alembic_011(base_ephemere: BaseEphemere) -> None:
+    """010 → 011 → 010 → 011 sur base éphémère : les 20 localités partent puis reviennent."""
 
-    Test exécuté en dehors d'une fixture ``db_session`` car Alembic ouvre
-    sa propre connexion. Vérifications post-roundtrip via une session
-    dédiée.
-    """
-    from kuma_data_core.db.session import get_engine
+    def controler_010(base: BaseEphemere) -> None:
+        assert base.scalar("SELECT count(*) FROM localites") == 0
 
-    cfg = Config("alembic.ini")
-    engine = get_engine()
-
-    with Session(engine) as s:
-        n_initial = s.scalar(
-            select(func.count()).select_from(Localite).where(Localite.code.in_(_CODES_LOCALITES))
+    def controler_011(base: BaseEphemere) -> None:
+        assert (
+            base.scalar(
+                "SELECT count(*) FROM localites WHERE code = ANY(:codes)",
+                codes=list(_CODES_LOCALITES),
+            )
+            == 20
         )
-    assert n_initial == 20
+        assert base.scalar("SELECT count(*) FROM localites") == 20
 
-    # Cible la révision explicite "010" plutôt que "-1" : "-1" dépend du
-    # head courant et casse ce test dès qu'une migration ultérieure est
-    # ajoutée. Pattern à reproduire sur les roundtrips
-    # ultérieurs (cf. test_sources_seed.py qui cible "011").
-    command.downgrade(cfg, "010")
-    with Session(engine) as s:
-        n_apres_down = s.scalar(
-            select(func.count()).select_from(Localite).where(Localite.code.in_(_CODES_LOCALITES))
-        )
-    assert n_apres_down == 0
-
-    command.upgrade(cfg, "head")
-    with Session(engine) as s:
-        n_final = s.scalar(
-            select(func.count()).select_from(Localite).where(Localite.code.in_(_CODES_LOCALITES))
-        )
-    assert n_final == 20
+    verifier_aller_retour(
+        base_ephemere,
+        cible="010",
+        testee="011",
+        controler_cible=controler_010,
+        controler_testee=controler_011,
+    )

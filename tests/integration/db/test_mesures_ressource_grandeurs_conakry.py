@@ -5,7 +5,7 @@ Couvre :
 - Plages physiques (positivité, bornes tropicales sur T2M / RH2M)
 - Inégalité physique DHI ≤ GHI avec tolérance ε ≈ 5-10 %
 - Niveau de confiance dérivé identique pour les 5 séries (R4 catch-all)
-- Roundtrip Alembic regression (downgrade 019 → upgrade head)
+- Aller-retour Alembic 019 → 020 → 019 → 020 (regression, base éphémère)
 
 Pattern ``db_session`` fixture conftest.py.
 """
@@ -13,13 +13,11 @@ Pattern ``db_session`` fixture conftest.py.
 from __future__ import annotations
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.db.models.mesures_ressource import MesureRessource
-from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
+from tests._migrations import BaseEphemere, verifier_aller_retour
 
 pytestmark = pytest.mark.integration
 
@@ -228,43 +226,36 @@ def test_t35_aucune_ligne_sentinelle_1_3(db_session: Session) -> None:
 # ---------------------------------------------------------------------------
 
 
+_SQL_N_MESURES_SERIES = """
+    SELECT count(mr.id)
+    FROM mesures_ressource mr
+    JOIN series_metadonnees sm ON sm.id = mr.serie_id
+    WHERE sm.code = ANY(:codes)
+"""
+
+
 @pytest.mark.regression
-@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
-def test_t36_roundtrip_alembic_020() -> None:
-    """Downgrade 020 → 019 (supprime 7304 lignes, GHI préservé)
-    puis upgrade head revérifie le compte.
+def test_t36_roundtrip_alembic_020(base_ephemere: BaseEphemere) -> None:
+    """019 → 020 → 019 → 020 sur base éphémère : 4 séries x 1826 jours partent puis reviennent.
+
+    Le GHI Conakry (migration 018) est préservé par le downgrade de 020.
     """
-    from kuma_data_core.db.session import get_engine
 
-    cfg = Config("alembic.ini")
-    engine = get_engine()
+    def controler_019(base: BaseEphemere) -> None:
+        assert base.scalar(_SQL_N_MESURES_SERIES, codes=list(_CODES_SERIES_1_3)) == 0
+        assert base.scalar(_SQL_N_MESURES_SERIES, codes=[_CODE_SERIE_GHI]) == 1826
 
-    with Session(engine) as s:
-        ids = _ids_series(s, _CODES_SERIES_1_3)
-        n_initial = s.scalar(
-            select(func.count())
-            .select_from(MesureRessource)
-            .where(MesureRessource.serie_id.in_(ids.values()))
-        )
-    # 4 series x 1825-1826 jours
-    assert 7290 <= n_initial <= 7304
+    def controler_020(base: BaseEphemere) -> None:
+        for code in _CODES_SERIES_1_3:
+            assert base.scalar(_SQL_N_MESURES_SERIES, codes=[code]) == 1826, code
+        assert base.scalar(_SQL_N_MESURES_SERIES, codes=list(_CODES_SERIES_1_3)) == 7304
+        assert base.scalar(_SQL_N_MESURES_SERIES, codes=[_CODE_SERIE_GHI]) == 1826
+        assert base.scalar("SELECT count(*) FROM mesures_ressource") == 9130
 
-    command.downgrade(cfg, "019")
-    with Session(engine) as s:
-        ids = _ids_series(s, _CODES_SERIES_1_3)
-        n_apres_down = s.scalar(
-            select(func.count())
-            .select_from(MesureRessource)
-            .where(MesureRessource.serie_id.in_(ids.values()))
-        )
-    assert n_apres_down == 0
-
-    command.upgrade(cfg, "head")
-    with Session(engine) as s:
-        ids = _ids_series(s, _CODES_SERIES_1_3)
-        n_final = s.scalar(
-            select(func.count())
-            .select_from(MesureRessource)
-            .where(MesureRessource.serie_id.in_(ids.values()))
-        )
-    assert 7290 <= n_final <= 7304
+    verifier_aller_retour(
+        base_ephemere,
+        cible="019",
+        testee="020",
+        controler_cible=controler_019,
+        controler_testee=controler_020,
+    )

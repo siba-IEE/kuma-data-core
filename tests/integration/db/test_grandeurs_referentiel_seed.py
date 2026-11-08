@@ -9,7 +9,7 @@ Couvre :
 - Audit : 4 lignes ``audit_log`` ``table_auditee='unites'`` et 15 lignes
   ``table_auditee='grandeurs_referentiel'``, ``type_operation='I'``,
   ``auteur_applicatif IS NULL``.
-- Roundtrip Alembic ``downgrade -2`` puis ``upgrade head`` réversible.
+- Aller-retour Alembic 008 → 010 → 008 → 010 réversible (base éphémère).
 
 ``db_session`` fournie par ``tests/integration/db/conftest.py``
 (fixture connection-as-transaction rollback en sortie de test).
@@ -24,8 +24,6 @@ from __future__ import annotations
 from decimal import Decimal
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
@@ -38,7 +36,7 @@ from kuma_data_core.db.seeds.grandeurs_referentiel_seed_data import (
 from kuma_data_core.db.seeds.unites_complementaires_009_seed_data import (
     UNITES_COMPLEMENTAIRES_009_SEED,
 )
-from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
+from tests._migrations import BaseEphemere, verifier_aller_retour
 
 pytestmark = pytest.mark.integration
 
@@ -341,75 +339,40 @@ def test_010_audit_15_lignes_insert_auteur_null(db_session: Session) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Roundtrip Alembic - downgrade -2 puis upgrade head
+# Roundtrip Alembic 008 -> 010 -> 008 -> 010 (base éphémère)
 # ---------------------------------------------------------------------------
 
 
-def _alembic_config() -> Config:
-    """Construit une Config Alembic pointant sur ``alembic.ini`` du projet."""
-    cfg = Config("alembic.ini")
-    return cfg
-
-
 @pytest.mark.regression
-@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
-def test_roundtrip_alembic_009_010() -> None:
-    """``downgrade -2`` (010 -> 009 -> 008) puis ``upgrade head`` reverifie les comptes.
+def test_roundtrip_alembic_009_010(base_ephemere: BaseEphemere) -> None:
+    """008 → 010 → 008 → 010 : 4 unités complémentaires et 15 grandeurs partent puis reviennent."""
 
-    Test exécuté en dehors d'une fixture ``db_session`` car Alembic ouvre sa
-    propre connexion. Vérifications post-roundtrip via une session dédiée.
-    """
-    from kuma_data_core.db.session import get_engine  # local pour éviter import cycle
+    def n_grandeurs(base: BaseEphemere) -> int:
+        return base.scalar(
+            "SELECT count(*) FROM grandeurs_referentiel WHERE code = ANY(:codes)",
+            codes=list(_CODES_GRANDEURS),
+        )
 
-    cfg = _alembic_config()
+    def n_unites_complementaires(base: BaseEphemere) -> int:
+        return base.scalar(
+            "SELECT count(*) FROM unites WHERE code = ANY(:codes)",
+            codes=list(_CODES_UNITES_COMPLEMENTAIRES),
+        )
 
-    # Vérification de l'état initial : on est censé être à head (010).
-    engine = get_engine()
-    with Session(engine) as s:
-        n_grandeurs_initial = s.scalar(
-            select(func.count())
-            .select_from(GrandeurReferentiel)
-            .where(GrandeurReferentiel.code.in_(_CODES_GRANDEURS))
-        )
-        n_unites_complementaires_initial = s.scalar(
-            select(func.count())
-            .select_from(Unite)
-            .where(Unite.code.in_(_CODES_UNITES_COMPLEMENTAIRES))
-        )
-    assert n_grandeurs_initial == 15
-    assert n_unites_complementaires_initial == 4
+    def controler_008(base: BaseEphemere) -> None:
+        assert n_grandeurs(base) == 0
+        assert base.scalar("SELECT count(*) FROM grandeurs_referentiel") == 0
+        assert n_unites_complementaires(base) == 0
 
-    # Downgrade vers la révision absolue "008" : grandeurs (010) et unités
-    # complémentaires (009) disparues. Révision absolue plutôt que relative
-    # (`-2`) pour rester stable face à l'ajout de futures migrations
-    # (drift latent activé par 011, fix ultérieur).
-    command.downgrade(cfg, "008")
-    with Session(engine) as s:
-        n_grandeurs_apres_down = s.scalar(
-            select(func.count())
-            .select_from(GrandeurReferentiel)
-            .where(GrandeurReferentiel.code.in_(_CODES_GRANDEURS))
-        )
-        n_unites_apres_down = s.scalar(
-            select(func.count())
-            .select_from(Unite)
-            .where(Unite.code.in_(_CODES_UNITES_COMPLEMENTAIRES))
-        )
-    assert n_grandeurs_apres_down == 0
-    assert n_unites_apres_down == 0
+    def controler_010(base: BaseEphemere) -> None:
+        assert n_grandeurs(base) == 15
+        assert base.scalar("SELECT count(*) FROM grandeurs_referentiel") == 15
+        assert n_unites_complementaires(base) == 4
 
-    # Upgrade head : tout doit revenir.
-    command.upgrade(cfg, "head")
-    with Session(engine) as s:
-        n_grandeurs_final = s.scalar(
-            select(func.count())
-            .select_from(GrandeurReferentiel)
-            .where(GrandeurReferentiel.code.in_(_CODES_GRANDEURS))
-        )
-        n_unites_final = s.scalar(
-            select(func.count())
-            .select_from(Unite)
-            .where(Unite.code.in_(_CODES_UNITES_COMPLEMENTAIRES))
-        )
-    assert n_grandeurs_final == 15
-    assert n_unites_final == 4
+    verifier_aller_retour(
+        base_ephemere,
+        cible="008",
+        testee="010",
+        controler_cible=controler_008,
+        controler_testee=controler_010,
+    )

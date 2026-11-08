@@ -19,6 +19,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from kuma_data_core.db.session import get_engine
+from tests._migrations import BaseEphemere, base_alembic_ephemere
 
 
 @pytest.fixture
@@ -40,3 +41,14 @@ def db_session() -> Iterator[Session]:
         session.close()
         transaction.rollback()
         connection.close()
+
+
+@pytest.fixture
+def base_ephemere() -> Iterator[BaseEphemere]:
+    """Base PostgreSQL vide propre au test, supprimée en sortie même en échec.
+
+    Pour les aller-retours Alembic : la base partagée, à head, ne peut pas
+    redescendre sous la migration 046 (downgrade non réversible).
+    """
+    with base_alembic_ephemere() as base:
+        yield base

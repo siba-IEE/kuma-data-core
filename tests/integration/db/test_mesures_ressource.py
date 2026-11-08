@@ -18,8 +18,6 @@ from __future__ import annotations
 from datetime import UTC, date, datetime
 
 import pytest
-from alembic import command
-from alembic.config import Config
 from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
@@ -33,7 +31,7 @@ from kuma_data_core.editorial.niveaux_confiance import (
 from kuma_data_core.editorial.statuts import transition_statut
 from kuma_data_core.editorial.versioning import roter_ligne_versionnee
 from kuma_data_core.exceptions import TransitionEditorialeRefusee
-from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
+from tests._migrations import BaseEphemere, verifier_aller_retour
 
 pytestmark = pytest.mark.integration
 
@@ -515,46 +513,42 @@ def test_t25_bis_niveau_confiance_override_application(db_session: Session) -> N
 # ---------------------------------------------------------------------------
 
 
+_SQL_N_MESURES_SERIES = """
+    SELECT count(mr.id)
+    FROM mesures_ressource mr
+    JOIN series_metadonnees sm ON sm.id = mr.serie_id
+    WHERE sm.code = ANY(:codes)
+"""
+
+
 @pytest.mark.regression
-@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
-def test_t26_roundtrip_alembic_018() -> None:
-    """Downgrade -> 017 puis upgrade head revérifie le compte GHI.
+def test_t26_roundtrip_alembic_018(base_ephemere: BaseEphemere) -> None:
+    """017 → 018 → 017 → 018 sur base éphémère : les 1826 jours GHI Conakry partent puis reviennent.
 
-    Cible la révision explicite "017". Filtré sur
-    la série GHI - les séries DNI/DHI/T2M/RH2M sont
-    re-ingérées par la migration 020 lors du upgrade head, leur
-    roundtrip est testé dans ``test_mesures_ressource_grandeurs_conakry.py``.
+    La série (seedée par 016) reste en place ; seules ses mesures sont
+    retirées par le downgrade de 018.
     """
-    from kuma_data_core.db.session import get_engine
 
-    cfg = Config("alembic.ini")
-    engine = get_engine()
+    def n_ghi(base: BaseEphemere) -> int:
+        return base.scalar(_SQL_N_MESURES_SERIES, codes=[CODE_SERIE_CONAKRY])
 
-    with Session(engine) as s:
-        serie_id_ghi = _id_serie_conakry(s)
-        n_initial = s.scalar(
-            select(func.count())
-            .select_from(MesureRessource)
-            .where(MesureRessource.serie_id == serie_id_ghi)
+    def controler_017(base: BaseEphemere) -> None:
+        assert (
+            base.scalar(
+                "SELECT count(*) FROM series_metadonnees WHERE code = :c", c=CODE_SERIE_CONAKRY
+            )
+            == 1
         )
-    assert n_initial == 1826
+        assert base.scalar("SELECT count(*) FROM mesures_ressource") == 0
 
-    command.downgrade(cfg, "017")
-    with Session(engine) as s:
-        # serie_id_ghi peut avoir été préservée (migrations 019-020 ne touchent pas la série GHI).
-        n_apres_down = s.scalar(
-            select(func.count())
-            .select_from(MesureRessource)
-            .where(MesureRessource.serie_id == serie_id_ghi)
-        )
-    assert n_apres_down == 0
+    def controler_018(base: BaseEphemere) -> None:
+        assert n_ghi(base) == 1826
+        assert base.scalar("SELECT count(*) FROM mesures_ressource") == 1826
 
-    command.upgrade(cfg, "head")
-    with Session(engine) as s:
-        serie_id_ghi = _id_serie_conakry(s)
-        n_final = s.scalar(
-            select(func.count())
-            .select_from(MesureRessource)
-            .where(MesureRessource.serie_id == serie_id_ghi)
-        )
-    assert n_final == 1826
+    verifier_aller_retour(
+        base_ephemere,
+        cible="017",
+        testee="018",
+        controler_cible=controler_017,
+        controler_testee=controler_018,
+    )
