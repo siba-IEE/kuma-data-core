@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
-from kuma_data_core.api.v1 import grandeurs as module_grandeurs
+from kuma_data_core.api.v1.grandeurs import salissure as module_grandeurs
 from kuma_data_core.db.session import get_engine
 
 pytestmark = pytest.mark.integration
