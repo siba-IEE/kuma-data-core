@@ -31,11 +31,10 @@ jobs:
   tests-regression:
     name: Tests regression (allers-retours Alembic sur bases ephemeres)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
-    # Timeout large : upgrade(head) de la base partagee (alembic check), dont le
-    # backfill journalier profondeur (migration 107, 4 147 830 insertions avec
-    # trigger d'audit par ligne, 24 min 37 observees en CI). Les allers-retours
-    # regression ne remontent que jusqu'a 027 sur leurs bases ephemeres.
+    timeout-minutes: 15
+    # Les allers-retours ne remontent que jusqu'a 027 sur leurs bases
+    # ephemeres (~30 s). La montee complete et `alembic check` sont faites par
+    # ci.yml a chaque push et pull request.
 
     services:
       postgres:
@@ -65,14 +64,9 @@ jobs:
       API_CLE_ADMIN: ci_cle_admin_factice
       LOG_FORMAT: json
       LOG_NIVEAU: WARNING
-      # Court-circuite l'ingestion horaire de MASSE aussi dans le nightly
-      # (upgrade head de la base partagee : 138 appels NASA / ville sinon).
-      KUMA_SKIP_INGESTION_MASSE_HORAIRE: "1"
-      # PVGIS-SARAH3 ET NASA daily servis offline (seed) aussi dans la chaine
-      # nightly -> stabilite (les allers-retours forcent offline de toute
-      # facon). Les canaris dedies (canari-sarah3-derive,
-      # canari-nasa-daily-derive ; independants) gardent PVGIS et NASA daily
-      # LIVE pour detecter une derive amont.
+      # Ingestion offline (seeds) ; les allers-retours la forcent de toute
+      # facon. Les canaris dedies (jobs independants ci-dessous) restent LIVE
+      # pour detecter une derive amont.
       KUMA_INGESTION_MODE: offline
 
     steps:
@@ -90,25 +84,6 @@ jobs:
 
       - name: Synchroniser les dependances
         run: uv sync --group dev --frozen
-
-      - name: Appliquer les migrations Alembic (retry réseau transitoire)
-        # Idem ci.yml : retry sur indisponibilité transitoire JRC/NASA.
-        # Le retry reprend à la dernière migration appliquée
-        # (transactionnel). Les allers-retours regression n'en dependent pas :
-        # ils montent leurs propres bases ephemeres, en offline.
-        run: |
-          for tentative in 1 2 3; do
-            if uv run alembic upgrade head; then exit 0; fi
-            if [ "$tentative" -lt 3 ]; then
-              echo "::warning::alembic upgrade head tentative $tentative en echec (API externe transitoire ?) — retry dans 30s"
-              sleep 30
-            fi
-          done
-          echo "::error::alembic upgrade head en echec apres 3 tentatives"
-          exit 1
-
-      - name: Verifier la coherence Alembic / modeles SQLAlchemy
-        run: uv run alembic check
 
       - name: Executer les tests regression (allers-retours Alembic)
         run: uv run pytest -m regression -v
