@@ -15,7 +15,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
-from kuma_data_core.api.dependencies import CleApiValidee
+from kuma_data_core.api.dependencies import CleApiValidee, parametres_requete
 from kuma_data_core.api.erreurs import ExceptionKuma
 from kuma_data_core.api.v1.grandeurs._commun import (
     SerieSourceResolue,
@@ -337,7 +337,7 @@ def _propager_pr_realiste(
 )
 def grandeur_pr_realiste(
     code_serie_source: str,
-    params: Annotated[ParametresPRRealiste, Depends()],
+    params: Annotated[ParametresPRRealiste, Depends(parametres_requete(ParametresPRRealiste))],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> ReponsePRRealiste:

@@ -125,20 +125,31 @@ def test_ti98_data_grandeur_invalide(client: TestClient, headers_auth: dict[str,
 def test_ti99_data_plage_excessive_366_plus(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """Plage > 366 jours rejetée (« plage maximale 366 jours »).
+    """Plage > 366 jours -> 422 VALIDATION_VALEUR_INVALIDE (« plage maximale 366 jours »)."""
+    r = client.get(
+        f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
+        params={"periode_debut": "2023-01-01", "periode_fin": "2024-12-31"},
+        headers=headers_auth,
+    )
+    assert r.status_code == 422, r.text
+    erreur = r.json()["erreur"]
+    assert erreur["code"] == CodeErreur.VALIDATION_VALEUR_INVALIDE.value
+    [detail] = erreur["details"]["erreurs"]
+    assert "plage maximale 366 jours" in detail["msg"]
 
-    FastAPI ne traduit pas en 422 le ``ValidationError`` levé par un
-    ``model_validator`` dans ``Depends()`` : l'exception remonte jusqu'au
-    ``TestClient``.
-    """
-    from pydantic import ValidationError
 
-    with pytest.raises(ValidationError, match="366 jours"):
-        client.get(
-            f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
-            params={"periode_debut": "2023-01-01", "periode_fin": "2024-12-31"},
-            headers=headers_auth,
-        )
+def test_data_fenetre_inversee_422(client: TestClient, headers_auth: dict[str, str]) -> None:
+    """periode_fin < periode_debut -> 422 VALIDATION_VALEUR_INVALIDE."""
+    r = client.get(
+        f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
+        params={"periode_debut": "2024-01-05", "periode_fin": "2024-01-01"},
+        headers=headers_auth,
+    )
+    assert r.status_code == 422, r.text
+    erreur = r.json()["erreur"]
+    assert erreur["code"] == CodeErreur.VALIDATION_VALEUR_INVALIDE.value
+    [detail] = erreur["details"]["erreurs"]
+    assert "periode_fin doit etre superieure ou egale a periode_debut" in detail["msg"]
 
 
 def test_ti100_data_plage_hors_disponibilite(

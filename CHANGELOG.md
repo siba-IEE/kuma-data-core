@@ -119,6 +119,23 @@ le projet suit le versionnement sémantique.
 
 ### Corrigé
 
+- `/v1/grandeurs` (POA paramétrable et bifacial, productibles, énergie utile
+  ECS, degrés-jours de climatisation) et `/v1/horaire` : une contrainte entre
+  paramètres non respectée (`periode_fin` antérieure à `periode_debut`, plage
+  horaire de plus de 366 jours, `correction=temperature` sans `noct_degc` ou
+  sans `coeff_temp_pourcent_par_degc` sur `productible_pr_fourni`) renvoie un
+  422 `VALIDATION_VALEUR_INVALIDE`, dont le détail nomme la contrainte ou le
+  paramètre manquant, au lieu d'une erreur 500. Document OpenAPI inchangé.
+- `GET /v1/grandeurs/incertitude_inter_source` (collection) : une localité
+  dont tous les écarts de la fenêtre sont NULL ne fait plus partie du
+  périmètre (elle n'a pas de fiche) au lieu de faire échouer la collection en
+  500. La page est lue en trois requêtes (points avec le total, écarts,
+  dégénérescences) au lieu de quatre par point, la pagination se faisant en
+  SQL ; réponses inchangées.
+- HEP : `calculer_et_inserer_hep` refuse une série amont qui n'est pas du
+  GHI (`RuntimeError`), comme les autres grandeurs stockées. Les appels des
+  migrations 027 et 092 portent tous sur des séries GHI.
+
 - `GET /v1/grandeurs/incertitude_inter_source` (collection) : le périmètre
   des points ne retient plus que les écarts de la fenêtre 2021-2023, comme la
   fiche par localité ; un écart postérieur à 2023 aurait listé un point sans

@@ -11,7 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
-from kuma_data_core.api.dependencies import CleApiValidee
+from kuma_data_core.api.dependencies import CleApiValidee, parametres_requete
 from kuma_data_core.api.erreurs import ExceptionKuma
 from kuma_data_core.api.v1.grandeurs._commun import (
     SerieSourceResolue,
@@ -137,7 +137,7 @@ def _calculer_poa_parametrable_journalier(
     summary="POA paramétrable (modèle Perez 1990 + Liu-Jordan fallback)",
 )
 def grandeur_poa_parametrable(
-    params: Annotated[ParametresPOA, Depends()],
+    params: Annotated[ParametresPOA, Depends(parametres_requete(ParametresPOA))],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
@@ -312,7 +312,7 @@ def _calculer_poa_bifacial_journalier(
     summary="POA bifacial (modèle infinite-sheds row-aware)",
 )
 def grandeur_poa_bifacial(
-    params: Annotated[ParametresBifacial, Depends()],
+    params: Annotated[ParametresBifacial, Depends(parametres_requete(ParametresBifacial))],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:

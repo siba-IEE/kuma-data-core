@@ -9,7 +9,7 @@ from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
-from kuma_data_core.api.dependencies import CleApiValidee
+from kuma_data_core.api.dependencies import CleApiValidee, parametres_requete
 from kuma_data_core.api.erreurs import ExceptionKuma
 from kuma_data_core.api.services.serie_lecture import (
     TableMesures,
@@ -110,7 +110,10 @@ def _calculer_thermique_journalier(
     summary="Productible avec correction thermique (NOCT simple, Ross 1980)",
 )
 def grandeur_productible_correction_thermique(
-    params: Annotated[ParametresProductibleCorrectionThermique, Depends()],
+    params: Annotated[
+        ParametresProductibleCorrectionThermique,
+        Depends(parametres_requete(ParametresProductibleCorrectionThermique)),
+    ],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
@@ -302,7 +305,9 @@ def _parametres_pr_fourni(params: ParametresProductiblePRFourni) -> dict[str, ob
     summary="Productible avec PR fourni (brut Marion 2005 + PR_T Dierauf 2013)",
 )
 def grandeur_productible_pr_fourni(
-    params: Annotated[ParametresProductiblePRFourni, Depends()],
+    params: Annotated[
+        ParametresProductiblePRFourni, Depends(parametres_requete(ParametresProductiblePRFourni))
+    ],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:

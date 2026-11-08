@@ -32,7 +32,7 @@ from kuma_data_core.api.v1.grandeurs._commun import _propager
 from kuma_data_core.api.v1.grandeurs.ghi_exceedance import _construire_limite_ghi_exceedance
 from kuma_data_core.api.v1.grandeurs.incertitude import (
     _construire_limite_incertitude_inter_source,
-    _lire_degenerescence_localite,
+    _lire_degenerescences,
 )
 from kuma_data_core.api.v1.grandeurs.salissure import (
     _chercher_serie_pluie_nasa,
@@ -44,7 +44,7 @@ __all__ = [
     "_chercher_serie_pm_cams",
     "_construire_limite_ghi_exceedance",
     "_construire_limite_incertitude_inter_source",
-    "_lire_degenerescence_localite",
+    "_lire_degenerescences",
     "_propager",
     "routeur",
 ]

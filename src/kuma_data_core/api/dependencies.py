@@ -1,11 +1,15 @@
-"""Dépendances FastAPI partagées : authentification par clé API (Bearer)."""
+"""Dépendances FastAPI partagées : authentification par clé API (Bearer), paramètres de requête."""
 
 from __future__ import annotations
 
+import inspect
 import secrets
-from typing import Annotated
+from collections.abc import Callable
+from typing import Annotated, Any
 
 from fastapi import Depends, Header, status
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, ValidationError
 
 from kuma_data_core.api.codes_erreur import CodeErreur
 from kuma_data_core.api.erreurs import ExceptionKuma
@@ -126,3 +130,25 @@ CleApiValidee = Annotated[str, Depends(verifier_cle_api)]
 
 CleAdminValidee = Annotated[str, Depends(verifier_cle_admin)]
 """Type-alias pour les endpoints réservés à la clé administrateur."""
+
+
+def parametres_requete[M: BaseModel](modele: type[M]) -> Callable[..., M]:
+    """Dépendance qui construit ``modele`` depuis la requête, échec de validateur compris en 422.
+
+    Avec ``Depends(modele)``, FastAPI valide chaque champ isolément puis appelle
+    le constructeur : l'erreur d'un ``model_validator`` (contrainte entre champs)
+    s'échappe alors en ``ValidationError`` brute, servie en 500. La signature
+    exposée reste celle du modèle, donc le document OpenAPI ne change pas.
+    """
+
+    def construire(**valeurs: Any) -> M:
+        try:
+            return modele(**valeurs)
+        except ValidationError as exc:
+            erreurs = exc.errors(include_url=False, include_context=False)
+            raise RequestValidationError(
+                [{**erreur, "loc": ("query", *erreur["loc"])} for erreur in erreurs]
+            ) from exc
+
+    construire.__signature__ = inspect.signature(modele)  # type: ignore[attr-defined]
+    return construire

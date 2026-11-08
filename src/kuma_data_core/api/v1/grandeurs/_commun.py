@@ -125,7 +125,16 @@ def _resoudre_coordonnees(session: Session, localite_id: int) -> tuple[float, fl
         text("SELECT latitude, longitude FROM localites WHERE id = :id"),
         {"id": localite_id},
     ).first()
-    if row is None or row.latitude is None or row.longitude is None:
+    if row is None:
+        return _coordonnees_ou_erreur(localite_id, None, None)
+    return _coordonnees_ou_erreur(localite_id, row.latitude, row.longitude)
+
+
+def _coordonnees_ou_erreur(
+    localite_id: int, latitude: float | None, longitude: float | None
+) -> tuple[float, float]:
+    """``(latitude, longitude)`` lues, ou 500 ``SERVEUR_ERREUR_INTERNE`` si l'une manque."""
+    if latitude is None or longitude is None:
         raise ExceptionKuma(
             code=CodeErreur.SERVEUR_ERREUR_INTERNE,
             message=(
@@ -134,7 +143,7 @@ def _resoudre_coordonnees(session: Session, localite_id: int) -> tuple[float, fl
             ),
             statut_http=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-    return float(row.latitude), float(row.longitude)
+    return float(latitude), float(longitude)
 
 
 def _chercher_serie_compagne(

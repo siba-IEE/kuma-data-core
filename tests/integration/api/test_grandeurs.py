@@ -27,7 +27,7 @@ Couverture explicite Condition 2 du checkpoint 2 :
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
@@ -1408,3 +1408,64 @@ def test_propagation_lecteur_mensuel_ghi_exceedance(
     response = client.get("/v1/grandeurs/ghi_exceedance/gin_conakry_kaloum", headers=headers_auth)
     assert response.status_code == 200
     assert response.json()["niveau_confiance"] == "C"
+
+
+# === Contraintes entre paramètres : 422, jamais 500 ========================
+
+
+_FENETRE_INVERSEE = {"periode_debut": "2024-01-05", "periode_fin": "2024-01-01"}
+
+
+@pytest.mark.parametrize(
+    ("route", "params"),
+    [
+        ("poa_parametrable", _params_poa_valides),
+        ("poa_bifacial", _params_bifacial_valides),
+        ("productible_correction_thermique", _params_thermique_valides),
+        ("productible_pr_fourni", _params_pr_aucune),
+        ("energie_utile_ecs", _params_ecs_valides),
+        ("degre_jour_climatisation", _params_djc_valides),
+    ],
+)
+def test_fenetre_inversee_rejetee_422(
+    client: TestClient,
+    headers_auth: dict[str, str],
+    route: str,
+    params: Callable[[], dict[str, str]],
+) -> None:
+    """periode_fin < periode_debut -> 422 VALIDATION_VALEUR_INVALIDE, message en détail."""
+    response = client.get(
+        f"/v1/grandeurs/{route}", params=params() | _FENETRE_INVERSEE, headers=headers_auth
+    )
+    assert response.status_code == 422, response.text
+    erreur = response.json()["erreur"]
+    assert erreur["code"] == CodeErreur.VALIDATION_VALEUR_INVALIDE.value
+    [detail] = erreur["details"]["erreurs"]
+    assert detail["loc"] == ["query"]
+    assert "periode_fin doit etre superieure ou egale a periode_debut" in detail["msg"]
+
+
+@pytest.mark.parametrize(
+    ("retires", "attendu"),
+    [
+        (("noct_degc",), "requiert : noct_degc"),
+        (("coeff_temp_pourcent_par_degc",), "requiert : coeff_temp_pourcent_par_degc"),
+        (
+            ("noct_degc", "coeff_temp_pourcent_par_degc"),
+            "requiert : noct_degc, coeff_temp_pourcent_par_degc",
+        ),
+    ],
+)
+def test_pr_t_parametre_thermique_manquant_422(
+    client: TestClient, headers_auth: dict[str, str], retires: tuple[str, ...], attendu: str
+) -> None:
+    """correction='temperature' sans NOCT ou coefficient -> 422 nommant le paramètre manquant."""
+    params = {k: v for k, v in _params_pr_t().items() if k not in retires}
+    response = client.get(
+        "/v1/grandeurs/productible_pr_fourni", params=params, headers=headers_auth
+    )
+    assert response.status_code == 422, response.text
+    erreur = response.json()["erreur"]
+    assert erreur["code"] == CodeErreur.VALIDATION_VALEUR_INVALIDE.value
+    [detail] = erreur["details"]["erreurs"]
+    assert detail["msg"].endswith(attendu)

@@ -35,6 +35,9 @@ PLAFOND_CONFIANCE: NiveauConfiance = "A"
 GRANDEUR_CODE_HEP: str = "hep"
 """Code de la grandeur dans ``grandeurs_referentiel``."""
 
+GRANDEUR_CODE_GHI: str = "ghi"
+"""Grandeur attendue sur la série amont."""
+
 METHODE_COLLECTE_HEP: str = "calcul_derive"
 """Méthode attendue sur la série HEP cible (stockage dans ``grandeurs_metier``)."""
 
@@ -110,7 +113,7 @@ def calculer_et_inserer_hep(
     """Calcule et insère les HEP depuis les mesures GHI courantes (flush, sans commit).
 
     ``RuntimeError`` si une série est introuvable, si la cible n'est pas
-    ``hep``/``calcul_derive``, si les localités diffèrent, ou si
+    ``hep``/``calcul_derive``, si l'amont n'est pas ``ghi``, si les localités diffèrent, ou si
     ``version_formule`` diffère de la version du référentiel.
     """
     verifier_version_formule(session, GRANDEUR_CODE_HEP, version_formule)
@@ -124,7 +127,6 @@ def calculer_et_inserer_hep(
         methode_attendue=METHODE_COLLECTE_HEP,
     )
 
-    # Message et contrôle propres à HEP : la grandeur de la série amont n'est pas vérifiée.
     serie_ghi = session.execute(
         text(
             """
@@ -141,6 +143,11 @@ def calculer_et_inserer_hep(
     if serie_ghi is None:
         raise RuntimeError(
             f"Serie GHI amont {code_serie_ghi_amont!r} introuvable dans series_metadonnees."
+        )
+    if serie_ghi.grandeur_code != GRANDEUR_CODE_GHI:
+        raise RuntimeError(
+            f"Serie {code_serie_ghi_amont!r} : grandeur_code={serie_ghi.grandeur_code!r}, "
+            f"attendu {GRANDEUR_CODE_GHI!r}."
         )
     if int(serie_ghi.localite_id) != cible.localite_id:
         raise RuntimeError(

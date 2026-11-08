@@ -11,7 +11,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import event, text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.db.session import get_engine, obtenir_session
@@ -184,3 +184,50 @@ def test_fiche_500_si_un_ecart_est_en_a(
     """A est réservé aux mesures au sol : un écart en A trahit une dérive (500)."""
     _niveau_ecart_boffa(session_api, "A")
     assert client.get(f"{_URL}/gin_boffa", headers=headers_auth).status_code == 500
+
+
+def test_point_aux_ecarts_tous_null_hors_perimetre(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """Une localité dont tous les écarts sont NULL n'a pas de fiche : elle sort du périmètre."""
+    n = session_api.execute(
+        text(
+            "UPDATE grandeurs_metier SET valeur = NULL WHERE valide_au IS NULL "
+            "AND grandeur_code IN ('ecart_relatif_referentiel', 'ecart_relatif_dni_cams') "
+            "AND localite_id = (SELECT id FROM localites WHERE code = 'gin_boffa')"
+        )
+    ).rowcount  # type: ignore[attr-defined]
+    assert n > 0
+    assert client.get(f"{_URL}/gin_boffa", headers=headers_auth).status_code == 404
+    r = client.get(_URL, headers=headers_auth)
+    assert r.status_code == 200, r.text
+    p = r.json()
+    assert p["total"] == 33
+    assert "gin_boffa" not in {it["code_localite"] for it in p["items"]}
+
+
+@pytest.mark.parametrize(
+    ("params", "requetes_max"),
+    [({"limit": 1000}, 3), ({"limit": 1}, 3), ({"offset": 500}, 2)],
+)
+def test_collection_en_requetes_ensemblistes(
+    client: TestClient,
+    headers_auth: dict[str, str],
+    session_api: Session,
+    params: dict[str, int],
+    requetes_max: int,
+) -> None:
+    """Page, écarts et dégénérescences : nombre fixe de requêtes, quelle que soit la page."""
+    requetes: list[str] = []
+
+    def _compter(_conn: object, _curseur: object, sql: str, *_args: object) -> None:
+        requetes.append(sql)
+
+    connexion = session_api.connection()
+    event.listen(connexion, "before_cursor_execute", _compter)
+    try:
+        r = client.get(_URL, params=params, headers=headers_auth)
+    finally:
+        event.remove(connexion, "before_cursor_execute", _compter)
+    assert r.status_code == 200, r.text
+    assert len(requetes) <= requetes_max, requetes

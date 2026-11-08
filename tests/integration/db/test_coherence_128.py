@@ -28,7 +28,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from kuma_data_core.api.v1.grandeurs import _lire_degenerescence_localite
+from kuma_data_core.api.v1.grandeurs import _lire_degenerescences
 from kuma_data_core.publication.manifeste import (
     ASSAINISSEMENTS,
     TABLES_ASSAINIES,
@@ -108,9 +108,10 @@ def test_note_degenerescence_api_sans_d29(db_session: Session) -> None:
     ).scalar_one()
     assert nombre == 0
 
-    fiche, _ = _lire_degenerescence_localite(db_session, "gin_kindia")
-    if fiche is None:
+    lue = _lire_degenerescences(db_session, ["gin_kindia"]).get("gin_kindia")
+    if lue is None:
         pytest.skip("degenerescence_pixel non peuplee (base sans seed)")
+    fiche, _ = lue
     assert "D-29" not in fiche.note
     assert "ne pas presenter comme des mesures independantes." in fiche.note
 

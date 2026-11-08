@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, status
 from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
-from kuma_data_core.api.dependencies import CleApiValidee
+from kuma_data_core.api.dependencies import CleApiValidee, parametres_requete
 from kuma_data_core.api.v1.grandeurs._commun import (
     SerieSourceResolue,
     _construire_reponse,
@@ -99,7 +99,9 @@ def _calculer_ecs_journalier(
     summary="Énergie utile ECS bord-capteur (Hottel-Whillier-Bliss)",
 )
 def grandeur_energie_utile_ecs(
-    params: Annotated[ParametresEnergieUtileECS, Depends()],
+    params: Annotated[
+        ParametresEnergieUtileECS, Depends(parametres_requete(ParametresEnergieUtileECS))
+    ],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
@@ -186,7 +188,10 @@ def _calculer_djc(
     summary="Degrés-jours de climatisation (moyenne journalière ou intégration horaire)",
 )
 def grandeur_degre_jour_climatisation(
-    params: Annotated[ParametresDegreJourClimatisation, Depends()],
+    params: Annotated[
+        ParametresDegreJourClimatisation,
+        Depends(parametres_requete(ParametresDegreJourClimatisation)),
+    ],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:

@@ -132,6 +132,35 @@ def test_t6_runtime_error_si_serie_ghi_amont_absente() -> None:
         )
 
 
+def test_runtime_error_si_serie_amont_pas_ghi() -> None:
+    """Série amont d'une autre grandeur : ``RuntimeError`` avant toute lecture de mesures."""
+    session = MagicMock()
+    serie_hep_row = MagicMock(
+        serie_id=42,
+        localite_id=1,
+        grandeur_code="hep",
+        methode_collecte="calcul_derive",
+        fiabilite_source="haute",
+    )
+    serie_t2m_row = MagicMock(serie_id=7, localite_id=1, grandeur_code="t2m")
+    session.execute.side_effect = [
+        MagicMock(scalar=MagicMock(return_value=1)),
+        MagicMock(first=MagicMock(return_value=serie_hep_row)),
+        MagicMock(first=MagicMock(return_value=serie_t2m_row)),
+    ]
+
+    with pytest.raises(
+        RuntimeError,
+        match=r"Serie 'gin_test_t2m_nasa_power_2021_2025' : grandeur_code='t2m', attendu 'ghi'\.",
+    ):
+        calculer_et_inserer_hep(
+            session=session,
+            code_serie_hep="gin_test_hep_kuma_calculs_2021_2025",
+            code_serie_ghi_amont="gin_test_t2m_nasa_power_2021_2025",
+        )
+    assert session.execute.call_count == 3
+
+
 def test_t7_runtime_error_si_version_formule_desalignee() -> None:
     """``version_formule=2`` contre 1 au référentiel : ``RuntimeError`` avant toute lecture."""
     session = MagicMock()

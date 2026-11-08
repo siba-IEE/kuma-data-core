@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
-from typing import Annotated, Literal
+from collections.abc import Mapping, Sequence
+from typing import Annotated, Literal, NamedTuple
 
 from fastapi import APIRouter, Depends, Query, status
 from sqlalchemy import text
@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from kuma_data_core.api.codes_erreur import CodeErreur
 from kuma_data_core.api.dependencies import CleApiValidee
 from kuma_data_core.api.erreurs import ExceptionKuma
-from kuma_data_core.api.v1.grandeurs._commun import _resoudre_coordonnees
+from kuma_data_core.api.v1.grandeurs._commun import _coordonnees_ou_erreur
 from kuma_data_core.api.v1.schemas.grandeurs import (
     DegenerescenceFiche,
     EcartPaireInterSource,
@@ -35,6 +35,7 @@ _PAIRES_ECART_ATLAS: tuple[tuple[Literal["ghi", "dni"], str, str], ...] = (
     ("ghi", "ecart_relatif_referentiel", "NASA POWER vs PVGIS-SARAH3"),
     ("dni", "ecart_relatif_dni_cams", "NASA POWER vs CAMS"),
 )
+_GRANDEURS_ECART_ATLAS: tuple[str, ...] = tuple(g for _, g, _ in _PAIRES_ECART_ATLAS)
 
 
 def _mediane_abs(valeurs: Sequence[float]) -> float:
@@ -47,64 +48,84 @@ def _mediane_abs(valeurs: Sequence[float]) -> float:
     return (absolues[milieu - 1] + absolues[milieu]) / 2.0
 
 
-def _lire_ecart_paire_recent(
-    session: Session, code_localite: str, grandeur_ecart: str
-) -> tuple[list[float], list[tuple[str, str | None]]]:
-    """Lit les écarts mensuels RECENTS (2021-2023) d'une (localité, grandeur d'écart).
+_Niveaux = list[tuple[str, str | None]]
+"""(niveau dérivé, override) des lignes lues."""
 
-    Filtre ``annee_debut`` entre 2021 et 2023 : isole la fenêtre récente et exclut le climato DNI
-    2004-2020 (artefact pilote, anti-mélange de fenêtres). Renvoie ``(valeurs_signees,
-    niveaux)`` sur les mois non-NULL, ou ``([], [])`` si aucune (localité hors atlas).
+
+def _lire_ecarts_recents(
+    session: Session, codes_localites: Sequence[str]
+) -> dict[tuple[str, str], tuple[list[float], _Niveaux]]:
+    """Écarts mensuels récents (2021-2023) non NULL, par (localité, grandeur d'écart).
+
+    La fenêtre exclut le climato DNI 2004-2020 (anti-mélange de fenêtres). Valeurs
+    signées dans l'ordre (année, mois) ; une localité hors atlas n'a pas de clé.
     """
     rows = session.execute(
         text(
             """
-            SELECT gm.valeur, gm.niveau_confiance_derive AS derive,
+            SELECT l.code, gm.grandeur_code, gm.valeur,
+                   gm.niveau_confiance_derive AS derive,
                    gm.niveau_confiance_override AS override
             FROM v_grandeurs_metier_courantes gm
             JOIN localites l ON l.id = gm.localite_id
-            WHERE l.code = :loc AND gm.grandeur_code = :g
+            WHERE l.code = ANY(:codes) AND gm.grandeur_code = ANY(:grandeurs)
               AND gm.annee_debut BETWEEN :a1 AND :a2
-            ORDER BY gm.annee_debut, gm.mois
+              AND gm.valeur IS NOT NULL
+            ORDER BY l.code, gm.grandeur_code, gm.annee_debut, gm.mois, gm.id
             """
         ),
-        {"loc": code_localite, "g": grandeur_ecart, "a1": _AN_DEBUT_ATLAS, "a2": _AN_FIN_ATLAS},
+        {
+            "codes": list(codes_localites),
+            "grandeurs": list(_GRANDEURS_ECART_ATLAS),
+            "a1": _AN_DEBUT_ATLAS,
+            "a2": _AN_FIN_ATLAS,
+        },
     ).all()
-    valeurs = [float(r.valeur) for r in rows if r.valeur is not None]
-    niveaux = [(str(r.derive), r.override) for r in rows if r.valeur is not None]
-    return valeurs, niveaux
+    lus: dict[tuple[str, str], tuple[list[float], _Niveaux]] = {}
+    for r in rows:
+        valeurs, niveaux = lus.setdefault((str(r.code), str(r.grandeur_code)), ([], []))
+        valeurs.append(float(r.valeur))
+        niveaux.append((str(r.derive), r.override))
+    return lus
 
 
-def _lire_degenerescence_localite(
-    session: Session, code_localite: str
-) -> tuple[DegenerescenceFiche | None, list[tuple[str, str | None]]]:
-    """Lit la dégénérescence niveau-localité (grille NASA CERES, via la série ghi).
+def _lire_degenerescences(
+    session: Session, codes_localites: Sequence[str]
+) -> dict[str, tuple[DegenerescenceFiche, _Niveaux]]:
+    """Dégénérescence niveau-localité (grille NASA CERES, via la série ghi), par localité.
 
-    GHI et DNI partagent la grille CERES -> la ligne ``nasa_power`` + ``ghi`` est
-    représentative et unique par localité. Renvoie ``(fiche, niveaux)`` ou ``(None, [])``.
+    GHI et DNI partagent la grille CERES : la ligne ``nasa_power`` + ``ghi`` est
+    représentative et unique par localité. Une localité sans ligne, ou à valeur
+    NULL, n'a pas de clé.
     """
-    row = session.execute(
+    rows = session.execute(
         text(
             """
-            SELECT gm.valeur, gm.commentaire_editorial AS note,
+            SELECT DISTINCT ON (l.code)
+                   l.code, gm.valeur, gm.commentaire_editorial AS note,
                    gm.niveau_confiance_derive AS derive,
                    gm.niveau_confiance_override AS override
             FROM v_grandeurs_metier_courantes gm
             JOIN localites l ON l.id = gm.localite_id
             JOIN series_metadonnees sm ON sm.id = gm.series_metadonnees_id
             JOIN sources s ON s.id = sm.source_id
-            WHERE l.code = :loc AND gm.grandeur_code = 'degenerescence_pixel'
+            WHERE l.code = ANY(:codes) AND gm.grandeur_code = 'degenerescence_pixel'
               AND s.code = 'nasa_power' AND sm.grandeur_code = 'ghi'
+            ORDER BY l.code, gm.id
             """
         ),
-        {"loc": code_localite},
-    ).first()
-    if row is None or row.valeur is None:
-        return None, []
-    fiche = DegenerescenceFiche(
-        n_jumeaux=int(row.valeur), grille=_GRILLE_CERES, note=str(row.note or "")
-    )
-    return fiche, [(str(row.derive), row.override)]
+        {"codes": list(codes_localites)},
+    ).all()
+    return {
+        str(r.code): (
+            DegenerescenceFiche(
+                n_jumeaux=int(r.valeur), grille=_GRILLE_CERES, note=str(r.note or "")
+            ),
+            [(str(r.derive), r.override)],
+        )
+        for r in rows
+        if r.valeur is not None
+    }
 
 
 def _niveau_confiance_fiche(
@@ -148,18 +169,14 @@ class _FicheIncomplete(Exception):
         self.sans_ecart = sans_ecart
 
 
-def _assembler_fiche(session: Session, code_localite: str) -> ReponseIncertitudeInterSource:
-    """Fiche d'incertitude inter-source d'une localité, assemblée en lecture.
-
-    Deux axes distincts (écart par paire, dégénérescence de pixel), confiance lue
-    et limite éditoriale. Lève ``_FicheIncomplete`` si aucun écart n'est lu (la
-    dégénérescence n'est alors pas lue) ou si la dégénérescence manque, 500 sur
-    incohérence de confiance.
-    """
+def _composer_ecarts(
+    code_localite: str, lus: Mapping[tuple[str, str], tuple[list[float], _Niveaux]]
+) -> tuple[list[EcartPaireInterSource], _Niveaux]:
+    """Écart par paire (médiane des |écarts|, moyenne signée) et niveaux des lignes lues."""
     ecarts: list[EcartPaireInterSource] = []
-    niveaux: list[tuple[str, str | None]] = []
+    niveaux: _Niveaux = []
     for grandeur, grandeur_ecart, paire in _PAIRES_ECART_ATLAS:
-        valeurs, niv = _lire_ecart_paire_recent(session, code_localite, grandeur_ecart)
+        valeurs, niv = lus.get((code_localite, grandeur_ecart), ([], []))
         if not valeurs:
             continue
         ecarts.append(
@@ -172,23 +189,48 @@ def _assembler_fiche(session: Session, code_localite: str) -> ReponseIncertitude
             )
         )
         niveaux += niv
+    return ecarts, niveaux
+
+
+def _composer_fiche(
+    code_localite: str,
+    ecarts: list[EcartPaireInterSource],
+    niveaux: _Niveaux,
+    degenerescence: tuple[DegenerescenceFiche, _Niveaux] | None,
+) -> ReponseIncertitudeInterSource:
+    """Fiche d'une localité : deux axes distincts, confiance lue et limite éditoriale.
+
+    Lève ``_FicheIncomplete`` sans écart ou sans dégénérescence, 500 sur
+    incohérence de confiance.
+    """
     if not ecarts:
         raise _FicheIncomplete(sans_ecart=True)
-
-    degenerescence, niv_degen = _lire_degenerescence_localite(session, code_localite)
     if degenerescence is None:
         raise _FicheIncomplete(sans_ecart=False)
-    niveaux += niv_degen
-    niveau = _niveau_confiance_fiche(niveaux, code_localite)
-
+    fiche_degenerescence, niv_degen = degenerescence
+    niveau = _niveau_confiance_fiche([*niveaux, *niv_degen], code_localite)
     return ReponseIncertitudeInterSource(
         code_localite=code_localite,
         fenetre=_FENETRE_ATLAS_STR,
         ecarts=ecarts,
-        degenerescence=degenerescence,
+        degenerescence=fiche_degenerescence,
         niveau_confiance=niveau,
         limite=_construire_limite_incertitude_inter_source(niveau),
     )
+
+
+def _assembler_fiche(session: Session, code_localite: str) -> ReponseIncertitudeInterSource:
+    """Fiche d'incertitude inter-source d'une localité, assemblée en lecture.
+
+    La dégénérescence n'est lue que si un écart l'est.
+    """
+    ecarts, niveaux = _composer_ecarts(
+        code_localite, _lire_ecarts_recents(session, [code_localite])
+    )
+    if not ecarts:
+        raise _FicheIncomplete(sans_ecart=True)
+    degenerescence = _lire_degenerescences(session, [code_localite]).get(code_localite)
+    return _composer_fiche(code_localite, ecarts, niveaux, degenerescence)
 
 
 @routeur.get(
@@ -239,50 +281,91 @@ def grandeur_incertitude_inter_source(
         ) from None
 
 
-def _lister_points_atlas(session: Session) -> list[tuple[int, str]]:
-    """(localite_id, code) des points portant l'écart inter-source récent = périmètre atlas.
+class _PointAtlas(NamedTuple):
+    localite_id: int
+    code: str
+    latitude: float | None
+    longitude: float | None
 
-    Data-driven : les localités ayant un écart 2021-2023 (ghi vs SARAH-3 et/ou dni vs CAMS).
-    Robuste à une densification future (la liste suit la donnée, pas une énumération figée).
-    """
+
+# Périmètre de l'atlas : les localités ayant un écart non NULL dans la fenêtre de
+# lecture des fiches (sinon un point serait listé sans fiche lisible, 500). La
+# liste suit la donnée, pas une énumération figée.
+_SQL_POINTS_ATLAS = """
+    WITH points AS (
+        SELECT DISTINCT l.id, l.code, l.latitude, l.longitude
+        FROM v_grandeurs_metier_courantes gm
+        JOIN localites l ON l.id = gm.localite_id
+        WHERE gm.grandeur_code = ANY(:grandeurs)
+          AND gm.annee_debut BETWEEN :a1 AND :a2
+          AND gm.valeur IS NOT NULL
+    )
+"""
+
+
+def _lire_page_atlas(session: Session, limit: int, offset: int) -> tuple[int, list[_PointAtlas]]:
+    """Nombre total de points de l'atlas et la page demandée, triée par code."""
+    params = {
+        "grandeurs": list(_GRANDEURS_ECART_ATLAS),
+        "a1": _AN_DEBUT_ATLAS,
+        "a2": _AN_FIN_ATLAS,
+        "limit": limit,
+        "offset": offset,
+    }
     rows = session.execute(
         text(
-            """
-            SELECT DISTINCT l.id, l.code
-            FROM v_grandeurs_metier_courantes gm
-            JOIN localites l ON l.id = gm.localite_id
-            WHERE gm.grandeur_code IN ('ecart_relatif_referentiel', 'ecart_relatif_dni_cams')
-              AND gm.annee_debut BETWEEN :a1 AND :a2
-            ORDER BY l.code
+            _SQL_POINTS_ATLAS
+            + """
+            SELECT id, code, latitude, longitude, count(*) OVER () AS total
+            FROM points ORDER BY code LIMIT :limit OFFSET :offset
             """
         ),
-        # Même fenêtre que _lire_ecart_paire_recent : un point hors fenêtre
-        # serait listé sans fiche lisible (500).
-        {"a1": _AN_DEBUT_ATLAS, "a2": _AN_FIN_ATLAS},
+        params,
     ).all()
-    return [(int(r.id), str(r.code)) for r in rows]
+    if rows:
+        total = int(rows[0].total)
+    else:
+        # Page au-delà du dernier point : le total vient d'un comptage séparé.
+        total = int(
+            session.execute(
+                text(_SQL_POINTS_ATLAS + "SELECT count(*) FROM points"), params
+            ).scalar_one()
+        )
+    page = [
+        _PointAtlas(
+            int(r.id),
+            str(r.code),
+            None if r.latitude is None else float(r.latitude),
+            None if r.longitude is None else float(r.longitude),
+        )
+        for r in rows
+    ]
+    return total, page
 
 
-def _assembler_fiche_point(
-    session: Session, localite_id: int, code_localite: str
+def _fiche_point(
+    point: _PointAtlas,
+    ecarts_lus: Mapping[tuple[str, str], tuple[list[float], _Niveaux]],
+    degenerescences: Mapping[str, tuple[DegenerescenceFiche, _Niveaux]],
 ) -> FichePointIncertitude:
     """Fiche d'un point de l'atlas : la fiche par localité augmentée de ses coordonnées.
 
     Lève 500 sur incohérence (un point du périmètre sans écart ou sans
     dégénérescence ne devrait pas exister).
     """
+    ecarts, niveaux = _composer_ecarts(point.code, ecarts_lus)
     try:
-        fiche = _assembler_fiche(session, code_localite)
+        fiche = _composer_fiche(point.code, ecarts, niveaux, degenerescences.get(point.code))
     except _FicheIncomplete:
         raise ExceptionKuma(
             code=CodeErreur.SERVEUR_ERREUR_INTERNE,
             message=(
-                f"Incoherence collection atlas : point {code_localite!r} sans ecart ou "
+                f"Incoherence collection atlas : point {point.code!r} sans ecart ou "
                 "degenerescence (devrait etre garanti par le perimetre data-driven)."
             ),
             statut_http=status.HTTP_500_INTERNAL_SERVER_ERROR,
         ) from None
-    latitude, longitude = _resoudre_coordonnees(session, localite_id)
+    latitude, longitude = _coordonnees_ou_erreur(point.localite_id, point.latitude, point.longitude)
     return FichePointIncertitude(**dict(fiche), latitude_deg=latitude, longitude_deg=longitude)
 
 
@@ -307,10 +390,11 @@ def grandeur_incertitude_inter_source_collection(
     mensuel + dégénérescence), zéro substrat.
     Enveloppe paginée identique à /v1/series (items / total / limit / offset).
     """
-    points = _lister_points_atlas(session)
-    total = len(points)
-    page = points[offset : offset + limit]
-    items = [_assembler_fiche_point(session, loc_id, code) for loc_id, code in page]
+    total, page = _lire_page_atlas(session, limit, offset)
+    codes = [point.code for point in page]
+    ecarts_lus = _lire_ecarts_recents(session, codes) if page else {}
+    degenerescences = _lire_degenerescences(session, codes) if page else {}
+    items = [_fiche_point(point, ecarts_lus, degenerescences) for point in page]
     return ReponseIncertitudeInterSourceCollection(
         items=items, total=total, limit=limit, offset=offset
     )
