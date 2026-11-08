@@ -317,9 +317,10 @@ class ParametresDegreJourClimatisation(ParametresCommunsF2):
 class ReponseGhiExceedance(BaseModel):
     """Réponse de l'endpoint ``/v1/grandeurs/ghi_exceedance/{code_localite}``.
 
-    Exceedance inter-annuelle de l'irradiation annuelle pour une ville
-    pilote, dérivée de la série GHI mensuelle 1991-2020 NASA POWER.
-    Calculée à la volée à chaque appel, jamais stockée.
+    Exceedance inter-annuelle de l'irradiation annuelle d'une localité,
+    dérivée de sa série GHI mensuelle 1991-2020 NASA POWER (toutes les
+    localités couvertes en disposent). Calculée à la volée à chaque appel,
+    jamais stockée.
     """
 
     code_grandeur: Literal["ghi_exceedance"] = "ghi_exceedance"

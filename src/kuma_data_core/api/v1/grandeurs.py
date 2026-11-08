@@ -1475,8 +1475,7 @@ def _resoudre_serie_ghi_mensuelle_1991_2020(
     Raises:
         ExceptionKuma : HTTP 404 ``RESSOURCE_INCONNUE`` si la localité
             n'est pas trouvée ou si aucune série GHI mensuelle 1991-2020
-            n'est rattachée. Cas typique : localité hors des 6 villes
-            pilotes.
+            n'est rattachée (code de localité inconnu ou hors couverture).
     """
     row = session.execute(
         text(

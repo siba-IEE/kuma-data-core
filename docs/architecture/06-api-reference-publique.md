@@ -521,8 +521,8 @@ portant l'écart inter-source récent), robuste à une densification.
 ### 3.8 `GET /v1/horaire/{localite}/{grandeur}`
 
 Localités : toute localité du référentiel par son **code complet**
-(ex. `gin_kankan`) ; les codes courts historiques des 6 villes
-pilotes (`kankan`, `kindia`...) restent acceptés en alias de
+(ex. `gin_kankan`) ; les codes courts historiques, sans le préfixe
+`gin_` (`kankan`, `kindia`...), restent acceptés en alias de
 compatibilité. Un code inconnu répond 404
 `RESSOURCE_LOCALITE_INCONNUE` (et non plus 422 : l'énumération fermée
 a disparu avec la généricité pays).
@@ -1160,7 +1160,7 @@ un déploiement se lit via `/v1/series` (filtre `source`).
 `esmap_wapp` porte `fiabilite=haute` et une méthode de collecte
 `mesure_directe` : c'est la combinaison qui déclenche la règle R3 et
 produit la première confiance A du catalogue (station Kankan,
-co-localisée à moins de 2 km du pilote `gin_kankan`).
+à environ 2 km du point de référence de la localité Kankan, `gin_kankan`).
 
 ### 7.2 Normes techniques mobilisées (couche C)
 

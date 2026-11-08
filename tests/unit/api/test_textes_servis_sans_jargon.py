@@ -2,7 +2,7 @@
 
 - Le document OpenAPI construit depuis l'application (descriptions de routes,
   docstrings des schémas, descriptions de champs) ne porte aucun motif de
-  ``JARGON_INTERNE``.
+  ``JARGON_INTERNE``, ni de localités « pilotes » (toutes sont couvertes).
 - Les avertissements ``limite`` renvoyés par les grandeurs calculées à la volée
   (salissure, PR réaliste dans tous ses modes, exceedance GHI avec et sans ville
   jumelle, incertitude inter-source) non plus, et gardent leur contenu.
@@ -49,6 +49,12 @@ def test_openapi_sans_jargon_interne() -> None:
         (chemin, m.group(0)) for chemin, texte in chaines if (m := JARGON_INTERNE.search(texte))
     ]
     assert fautifs == []
+
+
+def test_openapi_sans_localites_pilotes() -> None:
+    """Toutes les localités sont couvertes : aucun texte servi n'en isole des « pilotes »."""
+    chaines = _chaines(creer_application().openapi())
+    assert [(chemin, texte[:120]) for chemin, texte in chaines if "pilote" in texte.lower()] == []
 
 
 def test_limite_salissure_sans_jargon() -> None:

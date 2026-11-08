@@ -26,7 +26,7 @@ class ReponseCalage(BaseModel):
     ``localites_couvertes`` porte le domaine de couverture du
     transport (couverture progressive : le domaine s'étend localité par
     localité à mesure que la recherche qualifie le transport) : les
-    codes des localités qualifiées, triés. C'est la donnée qui pilote la
+    codes des localités qualifiées, triés. C'est la donnée qui détermine la
     couverture géographique des consommateurs - une étude calée
     n'est permise que si la localité résolue du site en fait partie.
     ``justification_couverture`` en donne la provenance.

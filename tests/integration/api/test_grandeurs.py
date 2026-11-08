@@ -898,10 +898,10 @@ def test_ti116_ghi_exceedance_sans_auth_rejete(client: TestClient) -> None:
     assert response.json()["erreur"]["code"] == CodeErreur.AUTH_HEADER_MANQUANT.value
 
 
-def test_ti117_ghi_exceedance_ville_pilote_succes(
+def test_ti117_ghi_exceedance_localite_succes(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """ville pilote valide -> 200 + reponse complete conforme.
+    """localite couverte -> 200 + reponse complete conforme.
 
     Verifie : structure response_model, P50 / P90 plausibles pour la
     Guinee, P90 < P50, champ limite present, niveau B, base 30 ans.
@@ -932,7 +932,7 @@ def test_ti117_ghi_exceedance_ville_pilote_succes(
 def test_ti118_ghi_exceedance_localite_inconnue_404(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """localite hors des 6 villes pilotes -> 404 RESSOURCE_LOCALITE_INCONNUE."""
+    """localite inconnue -> 404 RESSOURCE_LOCALITE_INCONNUE."""
     response = client.get("/v1/grandeurs/ghi_exceedance/gin_inexistante_xyz", headers=headers_auth)
     assert response.status_code == 404
     body = response.json()
@@ -969,8 +969,8 @@ def test_ti119_ghi_exceedance_d29_kindia_mamou_identiques(
 def test_ti120_ghi_exceedance_plausibilite_6_villes(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """sur les 6 villes pilotes, P50 dans plage tropicale plausible
-    et P90 < P50 strictement."""
+    """sur six localites temoins, P50 dans plage tropicale plausible
+    et P90 < P50 strictement (reponse des 34 : test_coherence_132)."""
     for code_localite in (
         "gin_conakry_kaloum",
         "gin_kankan",

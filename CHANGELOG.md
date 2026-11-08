@@ -176,6 +176,26 @@ le projet suit le versionnement sémantique.
   théorique, humidex, variabilité journalière, rang référentiel temporel).
   Les libellés restent uniques. Correction en place, sans nouvelle version
   (migration 131).
+- Données publiées dans l'édition : 141 libellés de séries écrivaient leur
+  localité autrement que son nom au référentiel : « Conakry-Kaloum » pour
+  Kaloum (commune de Conakry nommée, comme Dixinn, Matam, Matoto et Ratoma,
+  par son seul nom), « Labe » pour Labé, « Nzerekore » pour Nzérékoré, 47
+  séries par localité ; ils emploient désormais le nom exact. Les libellés
+  restent uniques. Correction en place, sans nouvelle version
+  (migration 132).
+- Données publiées et API : toutes les localités sont couvertes ; les textes
+  qui en présentaient une partie comme « pilotes » décrivent la couverture
+  réelle. Les notes publiques des 36 séries horaires NASA POWER de Kaloum,
+  Kankan, Kindia, Labé, Mamou et Nzérékoré disent que le contrôle qualité
+  s'applique aux séries horaires de toutes les localités couvertes ; la
+  description de `ghi_exceedance` et celle de son schéma de réponse dans le
+  document OpenAPI indiquent que les 34 localités couvertes disposent de la
+  série GHI mensuelle 1991-2020 qui la fonde ; celle de `rang_referentiel`
+  (désactivée) ne parle plus de « villes pilotes » ; la note de la source
+  `esmap_wapp` situe la station de Kankan à environ 2 km du point de la
+  localité (2,14 km, et non « moins de 2 km »). Correction en place, sans
+  nouvelle version (migration 132). Les textes de `rang_referentiel_spatial`
+  sont repris à part.
 - API : codes internes (dettes « D-n », caveats « L-XXX-n », ADR, codes
   d'étape, convention de nommage « D-32 ») retirés du document OpenAPI
   (descriptions de routes, de schémas et de champs) et des avertissements
