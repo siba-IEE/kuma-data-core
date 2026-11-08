@@ -5,9 +5,9 @@ emportés par ``pg_dump``, document OpenAPI, réponses de l'API) ne renvoie ni
 aux PR, étapes, vagues, lots, dettes, caveats, ADR ou phases du chantier, ni
 à un document ``*.md`` par son chemin dans le dépôt (seul un lien complet
 vers le dépôt public est admis). Chaque motif a été vérifié sans faux
-positif sur l'ensemble des textes publiés ; ``CdC`` et ``(Dn)`` sont
-sensibles à la casse, et un code d'étape exige une lettre collée au second
-nombre (``1-2b`` oui, ``1991-2020`` non).
+positif sur l'ensemble des textes publiés ; ``CdC``, ``(Dn)`` et ``Temps n``
+sont sensibles à la casse, et un code d'étape exige une lettre collée au
+second nombre (``1-2b`` oui, ``1991-2020`` non).
 """
 
 from __future__ import annotations
@@ -50,6 +50,8 @@ JARGON_INTERNE = re.compile(
     r"|\bpost-audit"
     r"|\bmigrations?\s+\d{3}\b"
     r"|β\d"
-    r"|\bdettes?\s+[ée]ditoriales?)",
+    r"|\bdettes?\s+[ée]ditoriales?"
+    # Étape de l'atlas d'incertitude (« Temps 1 ») ; « temps 1 h » reste admis.
+    r"|(?-i:\bTemps\s+\d))",
     re.IGNORECASE,
 )

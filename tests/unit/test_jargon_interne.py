@@ -27,6 +27,9 @@ pytestmark = pytest.mark.unit
         "Chef-lieu deja ingere (migration 011, Wikidata Q874317)",
         "cross-check β2",
         "Dettes éditoriales projet",
+        # Étape de l'atlas (migration 130).
+        "ecart_relatif_dni_cams mensuel gin_fria 2021-2023 (atlas Temps 1)",
+        "calcul à la volée par l'endpoint, Temps 2",
         # Chemin de dépôt relatif vers un document.
         "docs/methodologie/grandeurs/hep.md",
         "Note docs/methodologie/calage.md, script",
@@ -57,6 +60,8 @@ def test_jargon_detecte(texte: str) -> None:
         "mise à jour en 2024",
         "IEC 61724-1:2021 Edition 2.0",
         "dette publique",
+        "pas de temps 1 h",
+        "Temps de réponse",
     ],
 )
 def test_texte_legitime_non_detecte(texte: str) -> None:

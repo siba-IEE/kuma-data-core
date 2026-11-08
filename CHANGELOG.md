@@ -161,6 +161,11 @@ le projet suit le versionnement sémantique.
   `rang_referentiel_temporel` ne désignait aucun fichier et vise la note des
   référentiels comparatifs qui documente sa méthode. Correction en place,
   sans nouvelle version (migration 129).
+- Données publiées dans l'édition : les libellés des 62 séries d'écart
+  inter-source 2021-2023 (`ecart_relatif_referentiel` aux 28 communes,
+  `ecart_relatif_dni_cams` aux 34 points) ne portent plus le marqueur
+  d'étape interne « (atlas Temps 1) » ; les libellés restent uniques.
+  Correction en place, sans nouvelle version (migration 130).
 - API : codes internes (dettes « D-n », caveats « L-XXX-n », ADR, codes
   d'étape, convention de nommage « D-32 ») retirés du document OpenAPI
   (descriptions de routes, de schémas et de champs) et des avertissements

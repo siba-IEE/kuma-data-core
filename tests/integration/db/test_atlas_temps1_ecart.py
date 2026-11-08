@@ -64,15 +64,19 @@ def test_ecart_dni_recent_34_climato_intact(db_session: Session) -> None:
 
 
 def test_62_series_calculees_creees(db_session: Session) -> None:
-    """62 series calculees creees par 091 (28 GHI communes + 34 DNI recent)."""
+    """62 series calculees creees par 091 (28 GHI communes + 34 DNI recent).
+
+    Libelle par code de localite, sans marqueur d'etape depuis la migration 130.
+    """
     n = db_session.execute(
         text(
             """
             SELECT COUNT(*) FROM series_metadonnees sm
             JOIN sources s ON s.id = sm.source_id
+            JOIN localites l ON l.id = sm.localite_id
             WHERE s.code = 'kuma_calculs'
               AND sm.code LIKE '%_kuma_calculs_2021_2023'
-              AND sm.libelle LIKE '%(atlas Temps 1)'
+              AND sm.libelle = sm.grandeur_code || ' mensuel ' || l.code || ' 2021-2023'
             """
         )
     ).scalar_one()
