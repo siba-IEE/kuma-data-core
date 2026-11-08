@@ -37,6 +37,7 @@ from sqlalchemy.orm import Session, aliased
 from kuma_data_core.db.models.audit_log import AuditLog
 from kuma_data_core.db.models.localites import Localite
 from kuma_data_core.db.seeds.localites_seed_data import LOCALITES_SEED
+from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
 
 pytestmark = pytest.mark.integration
 
@@ -319,6 +320,7 @@ def test_11_audit_20_lignes_insert_auteur_null(db_session: Session) -> None:
 
 
 @pytest.mark.regression
+@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
 def test_roundtrip_alembic_011() -> None:
     """``downgrade -1`` puis ``upgrade head`` reverifie le compte de 20.
 

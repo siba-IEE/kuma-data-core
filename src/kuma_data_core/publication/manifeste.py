@@ -51,9 +51,6 @@ ASSAINISSEMENTS: dict[str, dict[str, str]] = {
 FONCTION_AUDIT: str = "kuma_log_audit"
 PREFIXE_TRIGGERS_AUDIT: str = "trg_audit_"
 
-# Tables hors ORM (absentes de Base.metadata) publiées pour traçabilité.
-TABLES_HORS_ORM_PUBLIEES: frozenset[str] = frozenset({"alembic_version"})
-
 
 def tables_classees() -> frozenset[str]:
     """Union des trois catégories : le périmètre couvert par le manifeste."""

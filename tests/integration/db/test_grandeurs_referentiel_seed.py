@@ -38,6 +38,7 @@ from kuma_data_core.db.seeds.grandeurs_referentiel_seed_data import (
 from kuma_data_core.db.seeds.unites_complementaires_009_seed_data import (
     UNITES_COMPLEMENTAIRES_009_SEED,
 )
+from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
 
 pytestmark = pytest.mark.integration
 
@@ -351,6 +352,7 @@ def _alembic_config() -> Config:
 
 
 @pytest.mark.regression
+@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
 def test_roundtrip_alembic_009_010() -> None:
     """``downgrade -2`` (010 -> 009 -> 008) puis ``upgrade head`` reverifie les comptes.
 

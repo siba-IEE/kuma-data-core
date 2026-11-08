@@ -17,6 +17,7 @@ from kuma_data_core.db.seeds.sources_seed_data import (
     _MENTION_BETA2_NORMEE,
     SOURCES_SEED,
 )
+from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
 
 pytestmark = pytest.mark.integration
 
@@ -239,6 +240,7 @@ def test_11_audit_9_lignes_insert_auteur_null(db_session: Session) -> None:
 
 
 @pytest.mark.regression
+@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
 def test_roundtrip_alembic_012() -> None:
     """``downgrade -1`` puis ``upgrade head`` : toujours 9 sources (connexion Alembic propre)."""
     from kuma_data_core.db.session import get_engine

@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 
 from kuma_data_core.db.models.audit_log import AuditLog
 from kuma_data_core.db.models.grandeurs_metier import GrandeurMetier
+from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
 
 pytestmark = pytest.mark.integration
 
@@ -788,28 +789,24 @@ def test_ti39_decompte_cumule_grandeurs_kuma_hors_indicateur(db_session: Session
 
 
 @pytest.mark.regression
+@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
 def test_ti24_roundtrip_alembic_023_a_027() -> None:
     """Downgrade jusqu'à 022 puis upgrade : mêmes décomptes (lent, marqueur regression)."""
-    cfg = Config("alembic.ini")
+    from kuma_data_core.db.session import get_engine
 
+    sql_hep = text(
+        "SELECT COUNT(*) FROM grandeurs_metier WHERE grandeur_code = 'hep' AND valide_au IS NULL"
+    )
+    sql_total = text("SELECT COUNT(*) FROM grandeurs_metier WHERE valide_au IS NULL")
+    engine = get_engine()
+    with engine.connect() as conn:
+        n_hep_avant = conn.execute(sql_hep).scalar_one()
+        n_total_avant = conn.execute(sql_total).scalar_one()
+
+    cfg = Config("alembic.ini")
     command.downgrade(cfg, "022")
     command.upgrade(cfg, "head")
 
-    # Vérification décompte post-upgrade (cumulé hep + grandeurs Kuma)
-    from kuma_data_core.db.session import get_engine
-
-    engine = get_engine()
     with engine.connect() as conn:
-        # hep doit toujours être à 390
-        n_hep = conn.execute(
-            text(
-                "SELECT COUNT(*) FROM grandeurs_metier "
-                "WHERE grandeur_code = 'hep' AND valide_au IS NULL"
-            )
-        ).scalar_one()
-        assert n_hep == 390
-        # Total cumulé doit dépasser 1500 lignes (390 hep + 4 grandeurs Kuma)
-        n_total = conn.execute(
-            text("SELECT COUNT(*) FROM grandeurs_metier WHERE valide_au IS NULL")
-        ).scalar_one()
-        assert n_total >= 1500
+        assert conn.execute(sql_hep).scalar_one() == n_hep_avant
+        assert conn.execute(sql_total).scalar_one() == n_total_avant

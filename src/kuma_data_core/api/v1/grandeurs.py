@@ -1986,7 +1986,7 @@ def _lire_ecart_paire_recent(
 ) -> tuple[list[float], list[tuple[str, str | None]]]:
     """Lit les écarts mensuels RECENTS (2021-2023) d'une (localité, grandeur d'écart).
 
-    Filtre ``annee_debut >= 2021`` : isole la fenêtre récente et exclut le climato DNI
+    Filtre ``annee_debut`` entre 2021 et 2023 : isole la fenêtre récente et exclut le climato DNI
     2004-2020 (artefact pilote, anti-mélange de fenêtres). Renvoie ``(valeurs_signees,
     niveaux)`` sur les mois non-NULL, ou ``([], [])`` si aucune (localité hors atlas).
     """
@@ -2087,7 +2087,7 @@ def grandeur_incertitude_inter_source(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> ReponseIncertitudeInterSource:
-    """Assemble en LECTURE la fiche d'incertitude inter-source d'une localité (atlas Temps 2).
+    """Assemble en LECTURE la fiche d'incertitude inter-source d'une localité.
 
     Deux axes d'honnêteté DISTINCTS, non fusionnés :
 
@@ -2162,11 +2162,13 @@ def _lister_points_atlas(session: Session) -> list[tuple[int, str]]:
             FROM grandeurs_metier gm
             JOIN localites l ON l.id = gm.localite_id
             WHERE gm.grandeur_code IN ('ecart_relatif_referentiel', 'ecart_relatif_dni_cams')
-              AND gm.annee_debut >= :a1 AND gm.valide_au IS NULL
+              AND gm.annee_debut BETWEEN :a1 AND :a2 AND gm.valide_au IS NULL
             ORDER BY l.code
             """
         ),
-        {"a1": _AN_DEBUT_ATLAS},
+        # Même fenêtre que _lire_ecart_paire_recent : un point hors fenêtre
+        # serait listé sans fiche lisible (500).
+        {"a1": _AN_DEBUT_ATLAS, "a2": _AN_FIN_ATLAS},
     ).all()
     return [(int(r.id), str(r.code)) for r in rows]
 
@@ -2238,8 +2240,8 @@ def grandeur_incertitude_inter_source_collection(
 
     Un appel pour le snapshot média (carte) au lieu de N. Chaque item = la MÊME fiche
     que l'endpoint par-localité (deux axes distincts, B, limite éditoriale) + lat/lon.
-    Lecture/assemblage pur des grandeurs déjà matérialisées (écart Temps 1 +
-    dégénérescence), zéro substrat.
+    Lecture/assemblage pur des grandeurs déjà matérialisées (écart inter-source
+    mensuel + dégénérescence), zéro substrat.
     Enveloppe paginée identique à /v1/series (items / total / limit / offset).
     """
     points = _lister_points_atlas(session)

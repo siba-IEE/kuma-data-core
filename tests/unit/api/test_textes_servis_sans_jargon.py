@@ -10,6 +10,7 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from typing import Any, get_args
 
@@ -47,6 +48,20 @@ def test_openapi_sans_jargon_interne() -> None:
     assert len(chaines) > 1000, "document OpenAPI anormalement court"
     fautifs = [
         (chemin, m.group(0)) for chemin, texte in chaines if (m := JARGON_INTERNE.search(texte))
+    ]
+    assert fautifs == []
+
+
+def test_openapi_sans_etape_atlas() -> None:
+    """Pas de « Temps n » (étape de l'atlas) dans le document OpenAPI.
+
+    Hors ``JARGON_INTERNE`` tant que des libellés de séries publiés le portent.
+    """
+    etape = re.compile(r"\bTemps\s+\d")
+    fautifs = [
+        (chemin, texte[:80])
+        for chemin, texte in _chaines(creer_application().openapi())
+        if etape.search(texte)
     ]
     assert fautifs == []
 

@@ -305,8 +305,8 @@ class ParametresDegreJourClimatisation(ParametresCommunsF2):
             "Methode de calcul. 'moyenne_journaliere' (defaut, retro-compatible) : "
             "ecart de la moyenne quotidienne a T_b, serie source journaliere. "
             "'integration_horaire' (Erbs 1983) : integration des ecarts horaires "
-            "positifs a T_b, leve le biais de moyennage tropical (-5 a -15 %, dette "
-            "D-42) ; exige une serie source horaire (granularite='horaire')."
+            "positifs a T_b, leve le biais de moyennage tropical (-5 a -15 %) ; "
+            "exige une serie source horaire (granularite='horaire')."
         ),
     )
 
@@ -623,11 +623,11 @@ class DegenerescenceFiche(BaseModel):
         ...,
         description="Grille source de la degenerescence (ex. 'CERES SYN1deg 1 deg / 110 km').",
     )
-    note: str = Field(..., description="Caveat editorial brut (groupe de jumeaux + nature, B-3).")
+    note: str = Field(..., description="Caveat editorial brut (groupe de jumeaux + nature).")
 
 
 class ReponseIncertitudeInterSource(BaseModel):
-    """Fiche d'incertitude INTER-SOURCE d'une localité (atlas Temps 2, lecture/assemblage).
+    """Fiche d'incertitude INTER-SOURCE d'une localité (lecture/assemblage).
 
     Assemble SANS les fusionner les deux axes d'honnêteté : écart inter-source (relatif,
     par paire/grandeur) et dégénérescence de pixel. Confiance B (inter-source, relatif) ;
@@ -660,7 +660,7 @@ class ReponseIncertitudeInterSource(BaseModel):
 class FichePointIncertitude(ReponseIncertitudeInterSource):
     """Fiche d'incertitude inter-source d'un point + ses coordonnées (pour la carte/collection).
 
-    Strictement la fiche Temps 2 (héritée, contrat inchangé) augmentée de lat/lon, pour que
+    Strictement la fiche par localité (héritée, contrat inchangé) augmentée de lat/lon, pour que
     le consommateur média (snapshot atlas) place chaque point sans second appel.
     """
 
@@ -676,7 +676,7 @@ class ReponseIncertitudeInterSourceCollection(BaseModel):
     """
 
     items: list[FichePointIncertitude] = Field(
-        ..., description="Fiches par point de l'atlas (chacune = fiche Temps 2 + coordonnees)."
+        ..., description="Fiches par point de l'atlas (chacune = fiche par localite + coordonnees)."
     )
     total: int = Field(..., ge=0, description="Nombre total de points de l'atlas (34 attendu).")
     limit: int = Field(..., ge=1, description="Taille de page demandee.")

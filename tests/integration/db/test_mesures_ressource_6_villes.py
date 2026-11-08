@@ -24,6 +24,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.db.models.mesures_ressource import MesureRessource
+from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
 
 pytestmark = pytest.mark.integration
 
@@ -320,40 +321,54 @@ def test_t42_niveau_confiance_uniforme_6_villes(db_session: Session) -> None:
 
 @pytest.mark.parametrize("localite_code", list(_LOCALITES_1_4))
 def test_t43_dhi_inferieur_ghi_par_ville(db_session: Session, localite_code: str) -> None:
-    """DHI <= GHI * (1 + epsilon) sur les 5 nouvelles villes.
+    """DHI <= GHI * (1 + epsilon) par paire de series GHI/DHI d'une meme source.
 
-    Tolerance epsilon = 10%. Au plus 5% des jours en
-    violation par ville.
+    GHI et DHI ne sont comparables qu'au sein d'une meme source et d'une meme
+    fenetre de serie : croiser deux sources melange deux modeles. Tolerance
+    epsilon = 10 %, au plus 5 % des jours en violation par paire.
     """
     rows = db_session.execute(
         text(
             """
-            SELECT ghi.instant_mesure, ghi.valeur AS ghi, dhi.valeur AS dhi
+            SELECT s.code AS source, sm_ghi.periode_debut,
+                   count(*) AS n,
+                   count(DISTINCT ghi.instant_mesure) AS n_instants,
+                   count(*) FILTER (WHERE dhi.valeur > ghi.valeur * :seuil)
+                       AS n_violations
             FROM mesures_ressource ghi
             JOIN series_metadonnees sm_ghi ON sm_ghi.id = ghi.serie_id
+            JOIN series_metadonnees sm_dhi
+                 ON sm_dhi.localite_id = sm_ghi.localite_id
+                AND sm_dhi.source_id = sm_ghi.source_id
+                AND sm_dhi.periode_debut = sm_ghi.periode_debut
+                AND sm_dhi.periode_fin IS NOT DISTINCT FROM sm_ghi.periode_fin
+                AND sm_dhi.granularite IS NOT DISTINCT FROM sm_ghi.granularite
+                AND sm_dhi.grandeur_code = 'dhi'
             JOIN mesures_ressource dhi
-                 ON dhi.instant_mesure = ghi.instant_mesure
-            JOIN series_metadonnees sm_dhi ON sm_dhi.id = dhi.serie_id
+                 ON dhi.serie_id = sm_dhi.id
+                AND dhi.instant_mesure = ghi.instant_mesure
             JOIN localites l ON l.id = sm_ghi.localite_id
+            JOIN sources s ON s.id = sm_ghi.source_id
             WHERE l.code = :loc
               AND sm_ghi.grandeur_code = 'ghi'
-              AND sm_dhi.grandeur_code = 'dhi'
-              AND sm_dhi.localite_id = sm_ghi.localite_id
               AND ghi.valide_au IS NULL
               AND dhi.valide_au IS NULL
+            GROUP BY s.code, sm_ghi.periode_debut
             """
         ),
-        {"loc": localite_code},
+        {"loc": localite_code, "seuil": 1.0 + _TOLERANCE_EPSILON_DHI_GHI},
     ).all()
 
-    assert len(rows) >= 1820, f"{localite_code} : {len(rows)} jours communs"
-
-    seuil = 1.0 + _TOLERANCE_EPSILON_DHI_GHI
-    violations = [r for r in rows if r.dhi > r.ghi * seuil]
-    pct_violations = len(violations) / len(rows) * 100.0
-    assert pct_violations <= 5.0, (
-        f"{localite_code} : {pct_violations:.2f}% violent DHI <= GHI*{seuil}"
-    )
+    assert rows, f"{localite_code} : aucune paire de series GHI/DHI"
+    for r in rows:
+        paire = f"{localite_code} {r.source} {r.periode_debut}"
+        # Une ligne par jour : un doublon trahirait une jointure entre series.
+        assert r.n == r.n_instants, f"{paire} : {r.n} lignes, {r.n_instants} jours"
+        assert r.n >= 1820, f"{paire} : {r.n} jours communs"
+        pct_violations = r.n_violations / r.n * 100.0
+        assert pct_violations <= 5.0, (
+            f"{paire} : {pct_violations:.2f}% violent DHI <= GHI*{1.0 + _TOLERANCE_EPSILON_DHI_GHI}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +377,7 @@ def test_t43_dhi_inferieur_ghi_par_ville(db_session: Session, localite_code: str
 
 
 @pytest.mark.regression
+@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
 def test_t44_roundtrip_alembic_022() -> None:
     """Downgrade 022 -> 021 (supprime 45 640 lignes, Conakry
     preservee) puis upgrade head re-ingere et revérifie.

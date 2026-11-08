@@ -92,6 +92,7 @@ def _quota_cle_self_service(cle: str) -> int | None:
     """
     from sqlalchemy.orm import Session
 
+    from kuma_data_core.core.logging import obtenir_logger
     from kuma_data_core.db.session import get_engine_meta
     from kuma_data_core.services.cles import quota_si_active
 
@@ -99,6 +100,7 @@ def _quota_cle_self_service(cle: str) -> int | None:
         with Session(get_engine_meta()) as session:
             return quota_si_active(session, cle)
     except Exception:
+        obtenir_logger("kuma.api.auth").warning("meta_db_injoignable_cle_refusee", exc_info=True)
         return None
 
 

@@ -76,6 +76,26 @@ le projet suit le versionnement sémantique.
 
 ### Corrigé
 
+- `GET /v1/grandeurs/incertitude_inter_source` (collection) : le périmètre
+  des points ne retient plus que les écarts de la fenêtre 2021-2023, comme la
+  fiche par localité ; un écart postérieur à 2023 aurait listé un point sans
+  fiche lisible et renvoyé une erreur 500.
+- Authentification : une panne de la base de service pendant la recherche
+  d'une clé self-service est journalisée (`meta_db_injoignable_cle_refusee`,
+  avertissement avec la trace) ; la clé reste refusée (401).
+- Document OpenAPI : les descriptions de la fiche et de la collection
+  d'incertitude inter-source et du champ `note` de la dégénérescence de
+  pixel n'emploient plus de vocabulaire de chantier (« Temps 1 », « Temps 2 »,
+  « B-3 »).
+- Tests : la comparaison DHI ≤ GHI des cinq villes rapproche GHI et DHI d'une
+  même source et d'une même série (elle croisait les sources et comptait des
+  doublons) ; les tests d'aller-retour Alembic qui redescendent sous la
+  migration 046, non réversible, sont ignorés avec ce motif, et celui des
+  grandeurs métier compare les décomptes avant et après.
+- Constantes inutilisées retirées (`METHODE_COLLECTE_INDICATEUR`,
+  `SOURCE_CODE_INDICATEUR`, `IRRADIANCE_STC_W_PAR_M2`, `UNITE_SORTIE`,
+  `FAMILLES_AUTORISEES`, `STRATEGIES_CALCUL_AUTORISEES`,
+  `TABLES_HORS_ORM_PUBLIEES`).
 - Commentaires des tables `unites` et `grandeurs_referentiel`, publiés dans
   l'édition : les décomptes figés devenus faux et le vocabulaire de chantier
   sont remplacés par une description sans décompte. La phrase qui

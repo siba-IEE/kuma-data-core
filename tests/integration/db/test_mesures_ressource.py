@@ -33,6 +33,7 @@ from kuma_data_core.editorial.niveaux_confiance import (
 from kuma_data_core.editorial.statuts import transition_statut
 from kuma_data_core.editorial.versioning import roter_ligne_versionnee
 from kuma_data_core.exceptions import TransitionEditorialeRefusee
+from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
 
 pytestmark = pytest.mark.integration
 
@@ -515,6 +516,7 @@ def test_t25_bis_niveau_confiance_override_application(db_session: Session) -> N
 
 
 @pytest.mark.regression
+@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
 def test_t26_roundtrip_alembic_018() -> None:
     """Downgrade -> 017 puis upgrade head revérifie le compte GHI.
 

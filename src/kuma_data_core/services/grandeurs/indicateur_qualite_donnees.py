@@ -30,8 +30,6 @@ PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Méta-indicateur sur une série : au plus B."""
 
 GRANDEUR_CODE_INDICATEUR: str = "indicateur_qualite_donnees"
-METHODE_COLLECTE_INDICATEUR: str = "calcul_derive"
-SOURCE_CODE_INDICATEUR: str = "kuma_calculs"
 
 POIDS_COMPLETUDE: float = 0.5
 POIDS_CONFIANCE_MOYENNE: float = 0.3

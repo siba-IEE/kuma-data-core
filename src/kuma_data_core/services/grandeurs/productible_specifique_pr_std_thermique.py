@@ -23,9 +23,6 @@ from kuma_data_core.services.grandeurs.productible_correction_thermique import (
 
 # === Constantes module ====================================================
 
-UNITE_SORTIE: Final[str] = "kWh/kWc"
-"""Énergie mensuelle par kWc installé."""
-
 TEMPERATURE_STC_DEGC: Final[float] = 25.0
 """Température STC de référence (°C), identique à ``productible_pr_fourni``."""
 

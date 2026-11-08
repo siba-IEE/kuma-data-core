@@ -7,8 +7,14 @@ l'atlas en un appel, enveloppe paginee ``{items, total, limit, offset}`` (identi
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+from kuma_data_core.db.session import get_engine, obtenir_session
 
 pytestmark = pytest.mark.integration
 
@@ -81,3 +87,63 @@ def test_ecart_abs_primaire_par_item(client: TestClient, headers_auth: dict[str,
     for it in client.get(_URL, headers=headers_auth).json()["items"]:
         for e in it["ecarts"]:
             assert e["ecart_abs_pct"] >= 0.0
+
+
+@pytest.fixture
+def session_api() -> Iterator[Session]:
+    """Session servie à l'API dans une transaction annulée en fin de test."""
+    from kuma_data_core.api.main import app
+
+    connection = get_engine().connect()
+    transaction = connection.begin()
+    session = Session(bind=connection, join_transaction_mode="create_savepoint")
+
+    def _session() -> Iterator[Session]:
+        yield session
+
+    app.dependency_overrides[obtenir_session] = _session
+    try:
+        yield session
+    finally:
+        app.dependency_overrides.pop(obtenir_session, None)
+        session.close()
+        transaction.rollback()
+        connection.close()
+
+
+def test_ecart_hors_fenetre_hors_perimetre(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """Un écart postérieur à la fenêtre 2021-2023 n'ajoute pas de point sans fiche."""
+    code_hors_atlas = session_api.execute(
+        text(
+            """
+            INSERT INTO grandeurs_metier (
+                grandeur_code, localite_id, series_metadonnees_id, periode_type,
+                annee_debut, annee_fin, mois, version_formule, valeur,
+                niveau_confiance_derive)
+            SELECT gm.grandeur_code, hors.id, gm.series_metadonnees_id, gm.periode_type,
+                   2024, 2024, gm.mois, gm.version_formule, gm.valeur,
+                   gm.niveau_confiance_derive
+            FROM grandeurs_metier gm
+            JOIN localites l ON l.id = gm.localite_id,
+            LATERAL (
+                SELECT h.id, h.code FROM localites h
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM grandeurs_metier e
+                    WHERE e.localite_id = h.id AND e.grandeur_code IN
+                        ('ecart_relatif_referentiel', 'ecart_relatif_dni_cams'))
+                ORDER BY h.code LIMIT 1
+            ) hors
+            WHERE l.code = 'gin_boffa' AND gm.grandeur_code = 'ecart_relatif_referentiel'
+              AND gm.annee_debut = 2021 AND gm.mois = 1 AND gm.valide_au IS NULL
+            RETURNING (SELECT code FROM localites WHERE id = localite_id)
+            """
+        )
+    ).scalar_one()
+
+    r = client.get(_URL, headers=headers_auth)
+    assert r.status_code == 200
+    p = r.json()
+    assert p["total"] == 34
+    assert code_hors_atlas not in {it["code_localite"] for it in p["items"]}

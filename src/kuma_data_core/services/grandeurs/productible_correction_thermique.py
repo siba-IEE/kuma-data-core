@@ -45,9 +45,6 @@ UNITE_PRODUCTIBLE: str = "kWh"
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
 """Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
 
-IRRADIANCE_STC_W_PAR_M2: float = 1000.0
-"""Irradiance STC de référence (W/m²)."""
-
 TEMPERATURE_STC_DEGC: float = 25.0
 """Température STC de référence (°C)."""
 

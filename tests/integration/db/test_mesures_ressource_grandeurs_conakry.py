@@ -19,6 +19,7 @@ from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.db.models.mesures_ressource import MesureRessource
+from tests._migrations import RAISON_DOWNGRADE_046 as _RAISON_DOWNGRADE_046
 
 pytestmark = pytest.mark.integration
 
@@ -228,6 +229,7 @@ def test_t35_aucune_ligne_sentinelle_1_3(db_session: Session) -> None:
 
 
 @pytest.mark.regression
+@pytest.mark.skip(reason=_RAISON_DOWNGRADE_046)
 def test_t36_roundtrip_alembic_020() -> None:
     """Downgrade 020 → 019 (supprime 7304 lignes, GHI préservé)
     puis upgrade head revérifie le compte.

@@ -85,3 +85,29 @@ def test_base_de_service_injoignable_fail_closed_401(
         verifier_cle_api(authorization="Bearer kuma_cle_inconnue_xxxxxxxx")
     assert info.value.code is CodeErreur.AUTH_CLE_INVALIDE
     assert info.value.statut_http == 401
+
+
+@pytest.mark.unit
+def test_base_de_service_injoignable_journalise_et_renvoie_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """La panne de la base de service reste fail-closed mais laisse une trace."""
+    from structlog.testing import capture_logs
+
+    from kuma_data_core.api.dependencies import _quota_cle_self_service
+
+    def _moteur_meta_casse() -> object:
+        raise RuntimeError("base de service injoignable")
+
+    monkeypatch.setattr("kuma_data_core.db.session.get_engine_meta", _moteur_meta_casse)
+
+    with capture_logs() as journaux:
+        assert _quota_cle_self_service("kuma_cle_inconnue_xxxxxxxx") is None
+
+    assert journaux == [
+        {
+            "event": "meta_db_injoignable_cle_refusee",
+            "log_level": "warning",
+            "exc_info": True,
+        }
+    ]

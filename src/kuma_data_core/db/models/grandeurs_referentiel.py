@@ -10,11 +10,6 @@ PK ``id BIGINT IDENTITY`` + clé naturelle ``code`` : la fonction
 d'audit ``kuma_log_audit()`` (migration 005) suppose une colonne
 ``id`` sur les tables auditées (cf. ``docs/conventions/01-naming.md``
 §*Audit et convention de PK pour les tables auditées*).
-
-Constantes ``FAMILLES_AUTORISEES`` et ``STRATEGIES_CALCUL_AUTORISEES``
-non encore consommées. Préparées pour la validation applicative
-(cf. ``docs/conventions/01-naming.md`` §*Catégoriels et listes
-fermées*).
 """
 
 from __future__ import annotations
@@ -38,9 +33,6 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, mapped_column
 
 from kuma_data_core.db.base import Base
-
-FAMILLES_AUTORISEES: frozenset[str] = frozenset({"F1", "F2"})
-STRATEGIES_CALCUL_AUTORISEES: frozenset[str] = frozenset({"stockee", "calculee_volee"})
 
 
 class GrandeurReferentiel(Base):
