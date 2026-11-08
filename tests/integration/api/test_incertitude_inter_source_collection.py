@@ -147,3 +147,40 @@ def test_ecart_hors_fenetre_hors_perimetre(
     p = r.json()
     assert p["total"] == 34
     assert code_hors_atlas not in {it["code_localite"] for it in p["items"]}
+
+
+def _niveau_ecart_boffa(session: Session, niveau: str) -> None:
+    n = session.execute(
+        text(
+            "UPDATE grandeurs_metier SET niveau_confiance_derive = :n "
+            "WHERE grandeur_code = 'ecart_relatif_referentiel' AND valide_au IS NULL "
+            "AND localite_id = (SELECT id FROM localites WHERE code = 'gin_boffa') "
+            "AND annee_debut = 2021 AND mois = 1"
+        ),
+        {"n": niveau},
+    ).rowcount  # type: ignore[attr-defined]
+    assert n == 1
+
+
+def test_fiche_en_c_si_un_ecart_est_en_c(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """Un écart en C (entrée dégradée) rend la fiche C, par localité et en collection."""
+    _niveau_ecart_boffa(session_api, "C")
+    fiche = client.get(f"{_URL}/gin_boffa", headers=headers_auth)
+    assert fiche.status_code == 200
+    assert fiche.json()["niveau_confiance"] == "C"
+    assert "confiance C" in fiche.json()["limite"]
+    items = {
+        it["code_localite"]: it for it in client.get(_URL, headers=headers_auth).json()["items"]
+    }
+    assert items["gin_boffa"]["niveau_confiance"] == "C"
+    assert {it["niveau_confiance"] for c, it in items.items() if c != "gin_boffa"} == {"B"}
+
+
+def test_fiche_500_si_un_ecart_est_en_a(
+    client: TestClient, headers_auth: dict[str, str], session_api: Session
+) -> None:
+    """A est réservé aux mesures au sol : un écart en A trahit une dérive (500)."""
+    _niveau_ecart_boffa(session_api, "A")
+    assert client.get(f"{_URL}/gin_boffa", headers=headers_auth).status_code == 500

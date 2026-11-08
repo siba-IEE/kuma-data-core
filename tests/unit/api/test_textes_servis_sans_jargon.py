@@ -88,7 +88,9 @@ def test_limite_ghi_exceedance_sans_jargon(localite: str, jumelle: str | None) -
         assert f"Co-localisation : cette localite et {jumelle!r}" in limite
 
 
-def test_limite_incertitude_inter_source_sans_jargon() -> None:
-    limite = _construire_limite_incertitude_inter_source()
+@pytest.mark.parametrize("niveau", ["B", "C"])
+def test_limite_incertitude_inter_source_sans_jargon(niveau: str) -> None:
+    limite = _construire_limite_incertitude_inter_source(niveau)
     assert JARGON_INTERNE.search(limite) is None
     assert "mesure sol" in limite
+    assert f"confiance {niveau}." in limite

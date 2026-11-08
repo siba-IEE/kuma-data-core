@@ -24,6 +24,10 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from kuma_data_core.editorial.statuts import (
+    filtre_mesure_horaire_utilisable,
+    filtre_mesure_utilisable,
+)
 from kuma_data_core.services.capsule.construire import EntreesRessource
 
 # Période de référence des climatologies mensuelles du référentiel.
@@ -183,11 +187,11 @@ class SourceCore:
             )
         rows = self.session.execute(
             text(
-                """
+                f"""
                 SELECT m.mois, avg(m.valeur) AS hep
                 FROM mesures_ressource_mensuelles m
                 JOIN series_metadonnees sm ON sm.id = m.serie_id
-                WHERE sm.code = :code AND m.valide_au IS NULL AND m.statut <> 'deprecie'
+                WHERE sm.code = :code AND {filtre_mesure_utilisable("m")}
                 GROUP BY m.mois ORDER BY m.mois
                 """
             ),
@@ -225,7 +229,7 @@ class SourceCore:
         """
         row = self.session.execute(
             text(
-                """
+                f"""
                 SELECT
                     min(m.valeur) FILTER (WHERE sm.grandeur_code = 't2m_min') AS froid,
                     max(m.valeur) FILTER (WHERE sm.grandeur_code = 't2m_max') AS chaud,
@@ -238,7 +242,7 @@ class SourceCore:
                 WHERE sm.localite_id = :loc
                   AND sm.grandeur_code IN ('t2m_min', 't2m_max')
                   AND sm.granularite = 'journalier' AND sm.actif
-                  AND m.valide_au IS NULL AND m.statut <> 'deprecie'
+                  AND {filtre_mesure_utilisable("m")}
                 """
             ),
             {"loc": localite_id},
@@ -289,11 +293,7 @@ class SourceCore:
                 f"pas de série GHI horaire satellite pour la localité {localite_id}"
             )
 
-        clauses = [
-            "sm.code = :code",
-            "mh.statut = 'valide_auto'",
-            "mh.valide_au IS NULL",
-        ]
+        clauses = ["sm.code = :code", filtre_mesure_horaire_utilisable("mh")]
         params: dict[str, object] = {"code": meta.code}
         if self.annee_min is not None:
             clauses.append("extract(year from mh.instant_mesure at time zone 'UTC') >= :amin")

@@ -13,6 +13,11 @@ Règles évaluées dans l'ordre, la première qui s'applique l'emporte :
 P (ADR-0008) : le plafond vaut ``B``, sauf calcul exact sans modèle ni
 hypothèse de l'utilisateur sur une source de fiabilité ``haute`` (``A``).
 La dérivation est pure ; l'override mute une ligne fournie par l'appelant.
+
+Exemption : ``degenerescence_pixel`` porte toujours ``B``
+(:data:`NIVEAU_CONFIANCE_DEGENERESCENCE_PIXEL`). Elle décrit la géométrie de
+la grille source (combien de localités partagent une cellule), pas la qualité
+des valeurs : le niveau de ses entrées ne s'y propage pas.
 """
 
 from __future__ import annotations
@@ -28,6 +33,9 @@ NIVEAUX_CONFIANCE_AUTORISES: frozenset[str] = frozenset({"A", "B", "C"})
 """Miroir de la CHECK ``ck_<table>_niveau_confiance_*_valide``."""
 
 NiveauConfiance = Literal["A", "B", "C"]
+
+NIVEAU_CONFIANCE_DEGENERESCENCE_PIXEL: NiveauConfiance = "B"
+"""Niveau fixe de ``degenerescence_pixel`` (exemption à P, voir le docstring du module)."""
 
 _RANG_NIVEAU: dict[str, int] = {"C": 0, "B": 1, "A": 2}
 _NIVEAU_DU_RANG: dict[int, NiveauConfiance] = {0: "C", 1: "B", 2: "A"}

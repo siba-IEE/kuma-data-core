@@ -497,8 +497,9 @@ grandeur, GHI = NASA POWER vs SARAH-3, DNI = NASA POWER vs CAMS, fenêtre
 2021-2023) et `degenerescence` (propriété niveau-localité liée à la
 grille CERES). `ecart_abs_pct` (médiane des écarts absolus mensuels) est
 le signal primaire ; `ecart_signe_pct` est orientationnel, jamais une
-correction de biais. `niveau_confiance` : B, lu et vérifié (jamais A :
-inter-source, pas terrain). 404 `RESSOURCE_LOCALITE_INCONNUE` si la
+correction de biais. `niveau_confiance` : lu dans les écarts et la
+dégénérescence, B, ou C si une valeur lue est en C ; jamais A
+(inter-source, pas terrain : une valeur en A répond 500). 404 `RESSOURCE_LOCALITE_INCONNUE` si la
 localité n'est pas couverte par l'atlas.
 
 `incertitude_inter_source` (collection) : toutes les fiches des points
@@ -534,15 +535,16 @@ un pur passe-plat.
 Comportement :
 
 1. Si une série horaire stockée couvre la plage demandée, l'endpoint
-   renvoie les points validés (`mesures_ressource_horaires`, statut
-   `valide_auto`, confiance B). Les lignes rejetées par le contrôle
-   qualité (statut `brut`) sont exclues.
+   renvoie les points utilisables (`mesures_ressource_horaires`, statut
+   `valide_auto`, `valide_humain` ou `publie`, voir 5.3). Les lignes
+   rejetées par le contrôle qualité (statut `brut`) sont exclues.
 2. Sinon, l'API relaie la requête vers le service amont (NASA POWER),
    convertit la réponse au format Kuma et l'étiquète
    `passe_plat_non_valide`.
 
-Le champ `statut_editorial` de chaque point vaut donc `valide_auto`
-(stocké validé) ou `passe_plat_non_valide` (relais non validé).
+Le champ `statut_editorial` de chaque point vaut donc le statut du point
+stocké (`valide_auto`, `valide_humain` ou `publie`) ou
+`passe_plat_non_valide` (relais non validé).
 
 - Auth : Bearer requise
 - Paramètres path :
@@ -963,7 +965,7 @@ Voir 3.7 pour les routes, modèles physiques et paramètres.
 Une partie du substrat solaire existe en granularité horaire (GHI, DNI,
 DHI, T2M et compagnes selon la localité), stockée dans
 `mesures_ressource_horaires` avec passage par contrôle qualité (statut
-`valide_auto`, confiance B). Ces séries alimentent l'endpoint horaire
+`valide_auto` ou suivants, voir 5.3). Ces séries alimentent l'endpoint horaire
 (3.8) et le mode `integration_horaire` des routes F2. La couverture
 horaire par localité se découvre via `/v1/series` (filtre sur la
 granularité).
@@ -1019,7 +1021,15 @@ mesures de sa période, sans dépasser le plafond de sa méthode (B par défaut,
 pour un calcul exact sans modèle ni hypothèse, comme les P50/P90 de
 `ghi_exceedance`). `taux_salissure_proxy`, modèle cumulatif, prend le niveau
 de tous les jours retenus, comme `pr_realiste` quand il tient compte de la
-salissure.
+salissure. Les grandeurs stockées `ecart_relatif_referentiel`,
+`ecart_relatif_dni_cams`, `rang_referentiel_temporel` et
+`rang_referentiel_spatial` suivent la même règle, plafond B, mois par mois
+(un rang spatial dépend des valeurs de toutes les localités classées ce
+mois-là).
+
+Exemption : `degenerescence_pixel` porte toujours B. Elle décrit la
+géométrie de la grille source (combien de localités partagent une cellule),
+pas la qualité des valeurs ; le niveau de ses entrées ne s'y propage pas.
 
 Interprétation :
 
@@ -1052,9 +1062,16 @@ Chaque mesure et chaque ligne de `grandeurs_metier` porte un statut parmi
 | `deprecie` | Retiré du circuit éditorial |
 
 Les transitions sont encadrées par la couche service Python ; l'API les
-expose en lecture. La vue `v_grandeurs_metier_courantes` filtre
-nativement les lignes `deprecie` et les versions de formule non
-actuelles.
+expose en lecture.
+
+Une valeur est utilisable (servie par l'API, lue par un calcul) selon une
+seule règle par table (`editorial/statuts.py`) :
+
+| Table | Valeur utilisable |
+|---|---|
+| `mesures_ressource`, `mesures_ressource_mensuelles` | courante et non `deprecie` ; `brut` reste utilisable (pas de contrôle qualité automatique sur ces tables) |
+| `mesures_ressource_horaires` | courante et `valide_auto`, `valide_humain` ou `publie` ; `brut` y signale un rejet du contrôle qualité |
+| `grandeurs_metier` | vue `v_grandeurs_metier_courantes` : courante, non `deprecie`, version de formule actuelle |
 
 ### 5.4 Convention de nommage des codes de série
 

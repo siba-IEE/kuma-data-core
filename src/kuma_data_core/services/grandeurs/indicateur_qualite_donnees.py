@@ -25,6 +25,7 @@ from kuma_data_core.editorial.niveaux_confiance import (
     NiveauConfiance,
     propager_niveau_confiance,
 )
+from kuma_data_core.editorial.statuts import filtre_mesure_utilisable
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Méta-indicateur sur une série : au plus B."""
@@ -166,13 +167,12 @@ def calculer_et_inserer_indicateur_qualite_donnees(
 
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT niveau_confiance_derive,
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource
             WHERE serie_id = :serie_id
-              AND valide_au IS NULL
-              AND statut <> 'deprecie'
+              AND {filtre_mesure_utilisable()}
             """
         ),
         {"serie_id": int(serie.serie_id)},

@@ -98,8 +98,9 @@ class ResultatHoraire(BaseModel):
 
     ``statut_editorial`` distingue les deux régimes de service :
 
-    - ``valide_auto`` : donnée horaire **stockée et validée** par le
-      contrôle qualité algorithmique Kuma (confiance B).
+    - ``valide_auto``, ``valide_humain`` ou ``publie`` : donnée horaire
+      **stockée** qui a passé le contrôle qualité Kuma (algorithmique, puis
+      relue ou publiée), avec son statut.
     - ``passe_plat_non_valide`` : donnée relayée à la volée (passe-plat),
       non validée éditorialement - servie en repli là où aucune donnée
       validée ne couvre la plage demandée.
@@ -114,7 +115,9 @@ class ResultatHoraire(BaseModel):
         ),
     )
     unite: str
-    statut_editorial: Literal["valide_auto", "passe_plat_non_valide"] = "passe_plat_non_valide"
+    statut_editorial: Literal["valide_auto", "valide_humain", "publie", "passe_plat_non_valide"] = (
+        "passe_plat_non_valide"
+    )
 
 
 # === Schémas réponses =====================================================

@@ -631,8 +631,8 @@ class ReponseIncertitudeInterSource(BaseModel):
     """Fiche d'incertitude INTER-SOURCE d'une localité (lecture/assemblage).
 
     Assemble SANS les fusionner les deux axes d'honnêteté : écart inter-source (relatif,
-    par paire/grandeur) et dégénérescence de pixel. Confiance B (inter-source, relatif) ;
-    ne quantifie PAS l'incertitude absolue vs mesure sol (terrain).
+    par paire/grandeur) et dégénérescence de pixel. Confiance B (inter-source, relatif),
+    C si une valeur lue est en C ; ne quantifie PAS l'incertitude absolue vs mesure sol (terrain).
     """
 
     code_grandeur: Literal["incertitude_inter_source"] = "incertitude_inter_source"
@@ -647,12 +647,15 @@ class ReponseIncertitudeInterSource(BaseModel):
     )
     niveau_confiance: Literal["A", "B", "C"] = Field(
         ...,
-        description="Confiance derivee LUE des donnees (B attendu : inter-source, pas terrain).",
+        description=(
+            "Confiance derivee LUE des donnees : B (inter-source, pas terrain), "
+            "C si une valeur lue est en C."
+        ),
     )
     limite: str = Field(
         ...,
         description=(
-            "Avertissement editorial : incertitude inter-source / relative, confiance B ; "
+            "Avertissement editorial : incertitude inter-source / relative, avec sa confiance ; "
             "ne quantifie PAS l'incertitude absolue vs mesure sol."
         ),
     )

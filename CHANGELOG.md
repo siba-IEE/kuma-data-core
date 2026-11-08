@@ -90,6 +90,32 @@ le projet suit le versionnement sémantique.
   plafond A d'un calcul exact. Les séries satellitaires et de réanalyse
   donnent toujours B. La constante
   `ghi_exceedance.NIVEAU_CONFIANCE_DERIVE` est retirée.
+- Valeur utilisable : une seule règle par table, définie dans
+  `editorial/statuts.py` (`filtre_mesure_utilisable`,
+  `filtre_mesure_horaire_utilisable`) et appliquée par l'API, les calculs et
+  la capsule. Journalier et mensuel : mesure courante et non dépréciée, une
+  mesure `brut` reste utilisable ; `/v1/series/{code_serie}` et les calculs
+  à la volée de `/v1/grandeurs` excluent désormais les mesures dépréciées.
+  Horaire : statut `valide_auto`, `valide_humain` ou `publie` ; la séquence
+  horaire de la capsule garde les points relus (`valide_humain`, `publie`),
+  et `/v1/horaire` renvoie dans `statut_editorial` le statut réel du point.
+  Grandeurs calculées : l'atlas `incertitude_inter_source` et le productible
+  spécifique théorique lisent `v_grandeurs_metier_courantes` (non dépréciée,
+  version de formule actuelle), comme `/v1/series`. Aucune valeur servie ne
+  change aujourd'hui : aucune mesure courante n'est dépréciée.
+- `pr_realiste` (modes avec salissure) lit la même pluie que
+  `taux_salissure_proxy` : la série NASA POWER journalière qui couvre la
+  fenêtre de la série PM2.5, et non plus une pluie de même source et de même
+  début que le GHI. Un GHI d'une autre source (CAMS, ERA5-Land) n'est plus
+  refusé faute de pluie compagne.
+- Confiance : `ecart_relatif_referentiel`, `ecart_relatif_dni_cams`,
+  `rang_referentiel_temporel` et `rang_referentiel_spatial` prennent le
+  niveau de leurs entrées du mois (règle P, plafond B) au lieu d'un B fixe ;
+  un rang spatial prend celui de tout le pool classé. Les valeurs stockées
+  restent B (toutes leurs entrées sont B). `degenerescence_pixel` garde un B
+  fixe, exemption documentée dans `editorial/niveaux_confiance.py`. La fiche
+  `incertitude_inter_source` affiche C si une valeur lue est en C, au lieu
+  d'une erreur 500 ; un A y reste une erreur.
 
 ### Corrigé
 

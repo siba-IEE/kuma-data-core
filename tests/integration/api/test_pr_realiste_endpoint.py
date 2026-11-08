@@ -10,14 +10,20 @@ from __future__ import annotations
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
+from kuma_data_core.api.v1 import grandeurs as module_grandeurs
+from kuma_data_core.db.session import get_engine
 
 pytestmark = pytest.mark.integration
 
 _BASE = "/v1/grandeurs/pr_realiste"
 _SERIE_GHI_CONAKRY = "gin_conakry_ghi_nasa_power_2021_2025"
 _SERIE_PM25_CONAKRY = "gin_conakry_pm2_5_cams_eac4_2021_2025"
+_SERIE_GHI_CAMS_CONAKRY = "gin_conakry_kaloum_ghi_cams_journalier_2004_2025"
+_SERIE_PLUIE_CONAKRY = "gin_conakry_precipitation_nasa_power_2021_2025"
 _SERIE_INCONNUE = "serie_inexistante_xxx"
 _PR = "0.80"
 _NOCT = "45"
@@ -131,3 +137,47 @@ def test_pr_realiste_serie_inconnue(client: TestClient, headers_auth: dict[str, 
         headers=headers_auth,
     )
     assert response.status_code == 404
+
+
+def test_pluie_meme_serie_que_proxy_salissure(
+    client: TestClient, headers_auth: dict[str, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """PR réaliste et proxy de salissure lisent la même série de pluie à Conakry."""
+    resolues: list[int | None] = []
+    resolveur = module_grandeurs._chercher_serie_pluie_nasa
+
+    def _espion(session: Session, serie_pm_id: int) -> int | None:
+        resolues.append(resolveur(session, serie_pm_id))
+        return resolues[-1]
+
+    monkeypatch.setattr(module_grandeurs, "_chercher_serie_pluie_nasa", _espion)
+    r_pr = client.get(
+        f"{_BASE}/{_SERIE_GHI_CONAKRY}", params=_params("salissure", False), headers=headers_auth
+    )
+    r_proxy = client.get(
+        f"/v1/grandeurs/taux_salissure_proxy/{_SERIE_PM25_CONAKRY}", headers=headers_auth
+    )
+    assert r_pr.status_code == 200 and r_proxy.status_code == 200
+    with get_engine().connect() as connexion:
+        attendu = connexion.execute(
+            text("SELECT id FROM series_metadonnees WHERE code = :c"),
+            {"c": _SERIE_PLUIE_CONAKRY},
+        ).scalar_one()
+    assert resolues == [attendu, attendu]
+
+
+def test_pr_realiste_salissure_ghi_autre_source(
+    client: TestClient, headers_auth: dict[str, str]
+) -> None:
+    """GHI CAMS (2004-2025) : la pluie suit la fenêtre des PM, pas celle du GHI.
+
+    L'ancienne règle cherchait une pluie de même source et même début que le
+    GHI : aucune, donc 400.
+    """
+    response = client.get(
+        f"{_BASE}/{_SERIE_GHI_CAMS_CONAKRY}",
+        params=_params("salissure", thermique=False),
+        headers=headers_auth,
+    )
+    assert response.status_code == 200
+    assert response.json()["periode"] == "2021-01-01/2025-08-31"

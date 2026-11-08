@@ -22,6 +22,7 @@ from kuma_data_core.editorial.niveaux_confiance import (
     NiveauxEntrees,
     calculer_niveau_confiance_derive,
 )
+from kuma_data_core.editorial.statuts import filtre_mesure_utilisable
 
 PLAFOND_CONFIANCE: NiveauConfiance = "A"
 """Plafond de confiance : somme exacte des mesures GHI, sans modèle ni hypothèse."""
@@ -208,13 +209,12 @@ def calculer_et_inserer_hep(
 
     rows_ghi = session.execute(
         text(
-            """
+            f"""
             SELECT instant_mesure, valeur,
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource
             WHERE serie_id = :serie_id
-              AND valide_au IS NULL
-              AND statut <> 'deprecie'
+              AND {filtre_mesure_utilisable()}
             ORDER BY instant_mesure
             """
         ),

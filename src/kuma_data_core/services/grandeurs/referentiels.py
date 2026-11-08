@@ -8,20 +8,28 @@
   mois. Version 1 : Kaloum, Kankan, Kindia, Labé, Mamou et Nzérékoré (orchestrateur combiné) ;
   version 2 : toutes les localités couvertes (:func:`calculer_et_inserer_rang_spatial`).
 
-Confiance ``B`` partout : l'écart combine deux sources, le quantile mapping
-NASA POWER n'est validé publiquement que pour le rayonnement de grande
-longueur d'onde, et le rang spatial classe des données de modèle dont la grille
-donne des valeurs identiques à des localités voisines.
+Confiance propagée depuis les entrées du mois (règle P), plafonnée à ``B`` :
+l'écart combine deux sources, le quantile mapping NASA POWER n'est validé
+publiquement que pour le rayonnement de grande longueur d'onde, et le rang
+spatial classe des données de modèle dont la grille donne des valeurs
+identiques à des localités voisines.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from typing import TypedDict
+from typing import NamedTuple, TypedDict
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+
+from kuma_data_core.editorial.niveaux_confiance import (
+    NiveauConfiance,
+    NiveauxEntrees,
+    calculer_niveau_confiance_derive,
+)
+from kuma_data_core.editorial.statuts import filtre_mesure_utilisable
 
 # === Constantes module =====================================================
 
@@ -29,7 +37,7 @@ GRANDEUR_ECART: str = "ecart_relatif_referentiel"
 GRANDEUR_RANG_TEMPOREL: str = "rang_referentiel_temporel"
 GRANDEUR_RANG_SPATIAL: str = "rang_referentiel_spatial"
 
-NIVEAU_CONFIANCE_DERIVE_1_7B: str = "B"
+PLAFOND_CONFIANCE: NiveauConfiance = "B"
 VERSION_FORMULE_1_7B: int = 1
 
 ANNEE_KUMA_DEBUT: int = 2021
@@ -71,7 +79,24 @@ class CalculReferentielsResultat(TypedDict):
     nb_total: int
 
 
+class CibleConfiance(NamedTuple):
+    """Méthode de la série calculée et fiabilité de sa source (entrées de R1-R4)."""
+
+    methode_collecte: str | None
+    fiabilite_source: str | None
+
+
 # === Fonctions pures ======================================================
+
+
+def _niveau_derive(cible: CibleConfiance, niveaux_entrees: set[str]) -> str:
+    """Niveau d'une valeur calculée depuis les niveaux de ses entrées."""
+    return calculer_niveau_confiance_derive(
+        cible.methode_collecte,
+        cible.fiabilite_source,
+        niveaux_entrees=niveaux_entrees,
+        plafond=PLAFOND_CONFIANCE,
+    )
 
 
 def _agreger_mensuel(valeurs_journalieres: Sequence[float]) -> float:
@@ -115,46 +140,77 @@ def _calcul_rang_spatial(valeurs_par_localite: dict[int, float]) -> dict[int, in
 # === Helpers I/O ==========================================================
 
 
-def _lire_kuma_mensuel(session: Session, code_serie: str) -> dict[tuple[int, int], float]:
-    """Agrège en moyenne mensuelle les mesures Kuma NASA POWER 2021-2025."""
+def _lire_kuma_mensuel(
+    session: Session, code_serie: str, niveaux: NiveauxEntrees | None = None
+) -> dict[tuple[int, int], float]:
+    """Agrège en moyenne mensuelle les mesures Kuma NASA POWER 2021-2025.
+
+    Range sous chaque mois les niveaux effectifs de ses jours dans ``niveaux``.
+    """
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT
                 EXTRACT(YEAR FROM mr.instant_mesure)::int AS annee,
                 EXTRACT(MONTH FROM mr.instant_mesure)::int AS mois,
-                AVG(mr.valeur) AS moyenne
+                AVG(mr.valeur) AS moyenne,
+                array_agg(DISTINCT coalesce(mr.niveau_confiance_override,
+                                            mr.niveau_confiance_derive)) AS niveaux
             FROM mesures_ressource mr
             JOIN series_metadonnees sm ON sm.id = mr.serie_id
             WHERE sm.code = :code
-              AND mr.valide_au IS NULL
-              AND mr.statut <> 'deprecie'
+              AND {filtre_mesure_utilisable("mr")}
             GROUP BY annee, mois
             ORDER BY annee, mois
             """
         ),
         {"code": code_serie},
     ).all()
+    if niveaux is not None:
+        for r in rows:
+            for niveau in r.niveaux:
+                niveaux.ajouter((int(r.annee), int(r.mois)), niveau)
     return {(int(r.annee), int(r.mois)): float(r.moyenne) for r in rows}
 
 
-def _lire_mensuel(session: Session, code_serie: str) -> dict[tuple[int, int], float]:
-    """Lit les valeurs mensuelles d'une série depuis ``mesures_ressource_mensuelles``."""
+def _lire_mensuel(
+    session: Session, code_serie: str, niveaux: NiveauxEntrees | None = None
+) -> dict[tuple[int, int], float]:
+    """Lit les valeurs mensuelles d'une série, et leurs niveaux effectifs dans ``niveaux``."""
     rows = session.execute(
         text(
-            """
-            SELECT m.annee, m.mois, m.valeur
+            f"""
+            SELECT m.annee, m.mois, m.valeur,
+                   coalesce(m.niveau_confiance_override, m.niveau_confiance_derive) AS niveau
             FROM mesures_ressource_mensuelles m
             JOIN series_metadonnees sm ON sm.id = m.serie_id
             WHERE sm.code = :code
-              AND m.valide_au IS NULL
-              AND m.statut <> 'deprecie'
+              AND {filtre_mesure_utilisable("m")}
             ORDER BY m.annee, m.mois
             """
         ),
         {"code": code_serie},
     ).all()
+    if niveaux is not None:
+        for r in rows:
+            niveaux.ajouter((int(r.annee), int(r.mois)), r.niveau)
     return {(int(r.annee), int(r.mois)): float(r.valeur) for r in rows}
+
+
+def _lire_cible(session: Session, serie_id: int) -> CibleConfiance:
+    """Méthode et fiabilité de source de la série calculée ``serie_id``."""
+    row = session.execute(
+        text(
+            """
+            SELECT sm.methode_collecte, s.fiabilite
+            FROM series_metadonnees sm
+            JOIN sources s ON s.id = sm.source_id
+            WHERE sm.id = :id
+            """
+        ),
+        {"id": serie_id},
+    ).one()
+    return CibleConfiance(row.methode_collecte, row.fiabilite)
 
 
 def _bulk_insert_grandeurs_metier(session: Session, lignes: list[dict[str, object]]) -> None:
@@ -198,15 +254,21 @@ def calculer_et_inserer_referentiels(
 
     # Pré-charge des mesures Kuma mensuelles (utilisées par les 3 étapes)
     kuma_par_localite: dict[int, dict[tuple[int, int], float]] = {}
+    niveaux_kuma: dict[int, NiveauxEntrees] = {}
     for ctx in contextes_villes:
         loc_id = ctx["localite_id"]
-        kuma_par_localite[loc_id] = _lire_kuma_mensuel(session, ctx["code_serie_kuma_daily"])
+        niveaux_kuma[loc_id] = NiveauxEntrees()
+        kuma_par_localite[loc_id] = _lire_kuma_mensuel(
+            session, ctx["code_serie_kuma_daily"], niveaux_kuma[loc_id]
+        )
 
     # === ecart_relatif_referentiel (216 lignes attendues) ====================
     for ctx in contextes_villes:
         loc_id = ctx["localite_id"]
-        sarah3 = _lire_mensuel(session, ctx["code_serie_sarah3"])
+        niveaux_sarah3 = NiveauxEntrees()
+        sarah3 = _lire_mensuel(session, ctx["code_serie_sarah3"], niveaux_sarah3)
         serie_id = serie_id_par_grandeur_localite[(GRANDEUR_ECART, loc_id)]
+        cible = _lire_cible(session, serie_id)
 
         lignes: list[dict[str, object]] = []
         for annee in range(ANNEE_KUMA_DEBUT, ANNEE_SARAH3_FIN + 1):
@@ -227,7 +289,11 @@ def calculer_et_inserer_referentiels(
                         "mois": mois,
                         "version_formule": VERSION_FORMULE_1_7B,
                         "valeur": ecart_pct,
-                        "niveau_confiance_derive": NIVEAU_CONFIANCE_DERIVE_1_7B,
+                        "niveau_confiance_derive": _niveau_derive(
+                            cible,
+                            niveaux_kuma[loc_id].du_mois(annee, mois)
+                            | niveaux_sarah3.du_mois(annee, mois),
+                        ),
                     }
                 )
         _bulk_insert_grandeurs_metier(session, lignes)
@@ -236,7 +302,8 @@ def calculer_et_inserer_referentiels(
     # === rang_referentiel_temporel (360 lignes attendues) ====================
     for ctx in contextes_villes:
         loc_id = ctx["localite_id"]
-        climato = _lire_mensuel(session, ctx["code_serie_power_1991_2020"])
+        niveaux_climato = NiveauxEntrees()
+        climato = _lire_mensuel(session, ctx["code_serie_power_1991_2020"], niveaux_climato)
 
         # Distribution stratifiée par mois calendrier
         distribution_par_mois: dict[int, list[float]] = {m: [] for m in range(1, 13)}
@@ -245,6 +312,7 @@ def calculer_et_inserer_referentiels(
                 distribution_par_mois[mois_clim].append(valeur)
 
         serie_id = serie_id_par_grandeur_localite[(GRANDEUR_RANG_TEMPOREL, loc_id)]
+        cible = _lire_cible(session, serie_id)
 
         lignes = []
         for annee in range(ANNEE_KUMA_DEBUT, ANNEE_KUMA_FIN + 1):
@@ -265,7 +333,13 @@ def calculer_et_inserer_referentiels(
                         "mois": mois,
                         "version_formule": VERSION_FORMULE_1_7B,
                         "valeur": percentile,
-                        "niveau_confiance_derive": NIVEAU_CONFIANCE_DERIVE_1_7B,
+                        "niveau_confiance_derive": _niveau_derive(
+                            cible,
+                            niveaux_kuma[loc_id].du_mois(annee, mois)
+                            | niveaux_climato.de_periode(
+                                ANNEE_CLIMATO_DEBUT, ANNEE_CLIMATO_FIN, mois
+                            ),
+                        ),
                     }
                 )
         _bulk_insert_grandeurs_metier(session, lignes)
@@ -273,6 +347,7 @@ def calculer_et_inserer_referentiels(
 
     # === rang_referentiel_spatial (360 lignes attendues) =====================
     lignes_spatial: list[dict[str, object]] = []
+    cibles_spatial: dict[int, CibleConfiance] = {}
     for annee in range(ANNEE_KUMA_DEBUT, ANNEE_KUMA_FIN + 1):
         for mois in range(1, 13):
             valeurs_par_loc: dict[int, float] = {}
@@ -283,8 +358,14 @@ def calculer_et_inserer_referentiels(
             if len(valeurs_par_loc) != N_VILLES_KUMA:
                 continue
             rangs = _calcul_rang_spatial(valeurs_par_loc)
+            # Un rang dépend des valeurs de tout le pool ce mois-là.
+            niveaux_pool = set().union(
+                *(niveaux_kuma[loc].du_mois(annee, mois) for loc in valeurs_par_loc)
+            )
             for loc_id, rang in rangs.items():
                 serie_id = serie_id_par_grandeur_localite[(GRANDEUR_RANG_SPATIAL, loc_id)]
+                if serie_id not in cibles_spatial:
+                    cibles_spatial[serie_id] = _lire_cible(session, serie_id)
                 lignes_spatial.append(
                     {
                         "grandeur_code": GRANDEUR_RANG_SPATIAL,
@@ -296,7 +377,9 @@ def calculer_et_inserer_referentiels(
                         "mois": mois,
                         "version_formule": VERSION_FORMULE_1_7B,
                         "valeur": float(rang),
-                        "niveau_confiance_derive": NIVEAU_CONFIANCE_DERIVE_1_7B,
+                        "niveau_confiance_derive": _niveau_derive(
+                            cibles_spatial[serie_id], niveaux_pool
+                        ),
                     }
                 )
 
@@ -421,12 +504,14 @@ def recalculer_ecart_relatif_referentiel(
 
     for ctx in contextes:
         loc_id = ctx["localite_id"]
-        kuma_mens = _lire_kuma_mensuel(session, ctx["code_serie_kuma_daily"])
-        sarah3_mens = _lire_mensuel(session, ctx["code_serie_sarah3"])
+        niveaux = NiveauxEntrees()
+        kuma_mens = _lire_kuma_mensuel(session, ctx["code_serie_kuma_daily"], niveaux)
+        sarah3_mens = _lire_mensuel(session, ctx["code_serie_sarah3"], niveaux)
         serie_id = serie_id_par_loc.get(loc_id)
         if serie_id is None:
             # Garde défensive : chaque localité doit avoir sa série d'écart.
             continue
+        cible = _lire_cible(session, serie_id)
 
         lignes: list[dict[str, object]] = []
         for annee in range(ANNEE_KUMA_DEBUT, ANNEE_SARAH3_FIN + 1):
@@ -449,7 +534,9 @@ def recalculer_ecart_relatif_referentiel(
                         "mois": mois,
                         "version_formule": VERSION_FORMULE_1_7B,
                         "valeur": ecart_pct,
-                        "niveau_confiance_derive": NIVEAU_CONFIANCE_DERIVE_1_7B,
+                        "niveau_confiance_derive": _niveau_derive(
+                            cible, niveaux.du_mois(annee, mois)
+                        ),
                     }
                 )
         _bulk_insert_grandeurs_metier(session, lignes)
@@ -479,7 +566,6 @@ def calculer_et_inserer_ecart_inter_source(
     annee_debut: int,
     annee_fin: int,
     seuil_reference_min: float = SEUIL_SARAH3_MIN_DEFAUT,
-    niveau_confiance: str = NIVEAU_CONFIANCE_DERIVE_1_7B,
 ) -> tuple[int, int]:
     """Écart mensuel signé ``(nasa - ref) / ref * 100``, NASA journalier agrégé au mois.
 
@@ -490,8 +576,10 @@ def calculer_et_inserer_ecart_inter_source(
     nb_total = 0
     nb_null = 0
     for ctx in contextes:
-        nasa = _lire_kuma_mensuel(session, ctx["code_serie_nasa_daily"])
-        reference = _lire_mensuel(session, ctx["code_serie_reference"])
+        niveaux = NiveauxEntrees()
+        nasa = _lire_kuma_mensuel(session, ctx["code_serie_nasa_daily"], niveaux)
+        reference = _lire_mensuel(session, ctx["code_serie_reference"], niveaux)
+        cible = _lire_cible(session, ctx["series_metadonnees_id"])
 
         lignes: list[dict[str, object]] = []
         for annee in range(annee_debut, annee_fin + 1):
@@ -516,7 +604,9 @@ def calculer_et_inserer_ecart_inter_source(
                         "mois": mois,
                         "version_formule": VERSION_FORMULE_1_7B,
                         "valeur": ecart,
-                        "niveau_confiance_derive": niveau_confiance,
+                        "niveau_confiance_derive": _niveau_derive(
+                            cible, niveaux.du_mois(annee, mois)
+                        ),
                     }
                 )
         _bulk_insert_grandeurs_metier(session, lignes)
@@ -545,7 +635,6 @@ def calculer_et_inserer_rang_temporel(
     grandeur_code: str = GRANDEUR_RANG_TEMPOREL,
     annee_debut: int = ANNEE_KUMA_DEBUT,
     annee_fin: int = ANNEE_KUMA_FIN,
-    niveau_confiance: str = NIVEAU_CONFIANCE_DERIVE_1_7B,
 ) -> int:
     """Rang temporel seul, sans écart ni rang spatial ; renvoie le nombre de lignes.
 
@@ -554,12 +643,15 @@ def calculer_et_inserer_rang_temporel(
     """
     nb_total = 0
     for ctx in contextes:
-        climato = _lire_mensuel(session, ctx["code_serie_power_1991_2020"])
+        niveaux_climato = NiveauxEntrees()
+        climato = _lire_mensuel(session, ctx["code_serie_power_1991_2020"], niveaux_climato)
         distribution_par_mois: dict[int, list[float]] = {m: [] for m in range(1, 13)}
         for (annee_clim, mois_clim), valeur in climato.items():
             if ANNEE_CLIMATO_DEBUT <= annee_clim <= ANNEE_CLIMATO_FIN:
                 distribution_par_mois[mois_clim].append(valeur)
-        kuma = _lire_kuma_mensuel(session, ctx["code_serie_kuma_daily"])
+        niveaux_kuma = NiveauxEntrees()
+        kuma = _lire_kuma_mensuel(session, ctx["code_serie_kuma_daily"], niveaux_kuma)
+        cible = _lire_cible(session, ctx["series_metadonnees_id"])
 
         lignes: list[dict[str, object]] = []
         for annee in range(annee_debut, annee_fin + 1):
@@ -580,7 +672,13 @@ def calculer_et_inserer_rang_temporel(
                         "mois": mois,
                         "version_formule": VERSION_FORMULE_1_7B,
                         "valeur": percentile,
-                        "niveau_confiance_derive": niveau_confiance,
+                        "niveau_confiance_derive": _niveau_derive(
+                            cible,
+                            niveaux_kuma.du_mois(annee, mois)
+                            | niveaux_climato.de_periode(
+                                ANNEE_CLIMATO_DEBUT, ANNEE_CLIMATO_FIN, mois
+                            ),
+                        ),
                     }
                 )
         _bulk_insert_grandeurs_metier(session, lignes)
@@ -608,12 +706,14 @@ def _lignes_rang_spatial(
     annee_debut: int,
     annee_fin: int,
     version_formule: int,
-    niveau_confiance: str,
+    niveaux_pool: NiveauxEntrees,
+    cible_par_localite: dict[int, CibleConfiance],
 ) -> tuple[list[dict[str, object]], list[tuple[int, int]]]:
     """Lignes de rang 1-N par mois, et mois non classés faute d'une valeur pour chaque localité.
 
     Ex-aequo départagés par l'ordre d'insertion de ``kuma_par_localite``
-    (:func:`_calcul_rang_spatial`).
+    (:func:`_calcul_rang_spatial`). Un rang dépend des valeurs de tout le pool :
+    il prend le niveau des entrées du pool pour son mois (``niveaux_pool``).
     """
     lignes: list[dict[str, object]] = []
     mois_non_classes: list[tuple[int, int]] = []
@@ -627,6 +727,7 @@ def _lignes_rang_spatial(
             if len(valeurs) != len(kuma_par_localite):
                 mois_non_classes.append((annee, mois))
                 continue
+            niveaux_mois = niveaux_pool.du_mois(annee, mois)
             for loc_id, rang in _calcul_rang_spatial(valeurs).items():
                 lignes.append(
                     {
@@ -639,7 +740,9 @@ def _lignes_rang_spatial(
                         "mois": mois,
                         "version_formule": version_formule,
                         "valeur": float(rang),
-                        "niveau_confiance_derive": niveau_confiance,
+                        "niveau_confiance_derive": _niveau_derive(
+                            cible_par_localite[loc_id], niveaux_mois
+                        ),
                     }
                 )
     return lignes, mois_non_classes
@@ -652,7 +755,6 @@ def calculer_et_inserer_rang_spatial(
     version_formule: int,
     annee_debut: int = ANNEE_KUMA_DEBUT,
     annee_fin: int = ANNEE_KUMA_FIN,
-    niveau_confiance: str = NIVEAU_CONFIANCE_DERIVE_1_7B,
     valide_du: datetime | None = None,
 ) -> tuple[int, list[tuple[int, int]]]:
     """Rang spatial sur le pool ``contextes`` (flush, sans commit).
@@ -680,8 +782,9 @@ def calculer_et_inserer_rang_spatial(
     if len({ctx["localite_id"] for ctx in contextes}) != len(contextes):
         raise RuntimeError("Rang spatial : localite en double dans le pool.")
 
+    niveaux_pool = NiveauxEntrees()
     kuma_par_localite = {
-        ctx["localite_id"]: _lire_kuma_mensuel(session, ctx["code_serie_kuma_daily"])
+        ctx["localite_id"]: _lire_kuma_mensuel(session, ctx["code_serie_kuma_daily"], niveaux_pool)
         for ctx in contextes
     }
     lignes, mois_non_classes = _lignes_rang_spatial(
@@ -692,7 +795,11 @@ def calculer_et_inserer_rang_spatial(
         annee_debut=annee_debut,
         annee_fin=annee_fin,
         version_formule=version_formule,
-        niveau_confiance=niveau_confiance,
+        niveaux_pool=niveaux_pool,
+        cible_par_localite={
+            ctx["localite_id"]: _lire_cible(session, ctx["series_metadonnees_id"])
+            for ctx in contextes
+        },
     )
     if lignes:
         session.execute(

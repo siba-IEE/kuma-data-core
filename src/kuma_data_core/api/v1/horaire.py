@@ -33,6 +33,7 @@ from kuma_data_core.api.v1.schemas.horaire import (
 )
 from kuma_data_core.core.config import get_settings
 from kuma_data_core.db.session import obtenir_session
+from kuma_data_core.editorial.statuts import filtre_mesure_horaire_utilisable
 from kuma_data_core.exceptions import (
     NasaPowerHttpError,
     NasaPowerPayloadError,
@@ -162,15 +163,14 @@ def _lire_horaire_validee(
     periode_debut: date,
     periode_fin: date,
 ) -> list[ResultatHoraire]:
-    """Points ``valide_auto`` de la série sur la plage (rejets QC exclus), instants UTC naïfs."""
+    """Points utilisables de la série sur la plage (rejets QC exclus), instants UTC naïfs."""
     rows = session.execute(
         text(
-            """
-            SELECT instant_mesure, valeur
+            f"""
+            SELECT instant_mesure, valeur, statut
             FROM mesures_ressource_horaires
             WHERE serie_id = :serie_id
-              AND statut IN ('valide_auto', 'valide_humain', 'publie')
-              AND valide_au IS NULL
+              AND {filtre_mesure_horaire_utilisable()}
               AND (instant_mesure AT TIME ZONE 'UTC')::date >= :debut
               AND (instant_mesure AT TIME ZONE 'UTC')::date <= :fin
             ORDER BY instant_mesure
@@ -184,7 +184,7 @@ def _lire_horaire_validee(
             instant=r.instant_mesure.astimezone(UTC).replace(tzinfo=None),
             valeur=float(r.valeur),
             unite=unite,
-            statut_editorial="valide_auto",
+            statut_editorial=r.statut,
         )
         for r in rows
     ]

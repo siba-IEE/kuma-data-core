@@ -129,20 +129,15 @@ def calculer_et_inserer_productible_specifique_theorique(
             f"{code_serie_hep_amont!r} localite_id={int(serie_hep.localite_id)}."
         )
 
-    # Même filtre de version courante que v_grandeurs_metier_courantes.
     rows_hep = session.execute(
         text(
             """
             SELECT
                 gm.periode_type, gm.annee_debut, gm.annee_fin, gm.mois, gm.valeur,
                 coalesce(gm.niveau_confiance_override, gm.niveau_confiance_derive) AS niveau
-            FROM grandeurs_metier gm
-            JOIN grandeurs_referentiel gr ON gr.code = gm.grandeur_code
+            FROM v_grandeurs_metier_courantes gm
             WHERE gm.series_metadonnees_id = :serie_id
               AND gm.grandeur_code = :grandeur_code
-              AND gm.valide_au IS NULL
-              AND gm.statut <> 'deprecie'
-              AND gm.version_formule = gr.version_formule_actuelle
             ORDER BY gm.annee_debut, gm.mois NULLS FIRST
             """
         ),

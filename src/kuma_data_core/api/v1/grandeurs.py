@@ -75,6 +75,10 @@ from kuma_data_core.editorial.niveaux_confiance import (
     NiveauxEntrees,
     propager_niveau_confiance,
 )
+from kuma_data_core.editorial.statuts import (
+    filtre_mesure_horaire_utilisable,
+    filtre_mesure_utilisable,
+)
 from kuma_data_core.services.grandeurs.degre_jour_climatisation import (
     PLAFOND_CONFIANCE as PLAFOND_DJC,
 )
@@ -357,12 +361,12 @@ def _lire_mesures_par_serie_id(
     """
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT instant_mesure, valeur,
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource
             WHERE serie_id = :serie_id
-              AND valide_au IS NULL
+              AND {filtre_mesure_utilisable()}
               AND instant_mesure >= :debut
               AND instant_mesure <= :fin
             ORDER BY instant_mesure
@@ -385,23 +389,21 @@ def _lire_mesures_horaires_par_serie_id(
 ) -> dict[datetime, float]:
     """Lit les valeurs horaires **validées** d'une série sur la fenêtre.
 
-    Lit ``mesures_ressource_horaires`` (statut ``valide_auto``, lignes
-    courantes), renvoie ``{instant_mesure: valeur}`` indexé par datetime
+    Lit les mesures horaires utilisables (passées par le contrôle qualité),
+    renvoie ``{instant_mesure: valeur}`` indexé par datetime
     UTC. Utilisé par l'intégration horaire DJC
-    (``methode='integration_horaire'``). Les lignes rejetées par le QC
-    (statut ``brut``) sont exclues. Borne de fenêtre sur la date UTC,
+    (``methode='integration_horaire'``). Borne de fenêtre sur la date UTC,
     cohérente avec la lecture journalière. Range le niveau effectif de
     chaque valeur lue sous son jour UTC dans ``niveaux``.
     """
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT instant_mesure, valeur,
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource_horaires
             WHERE serie_id = :serie_id
-              AND statut IN ('valide_auto', 'valide_humain', 'publie')
-              AND valide_au IS NULL
+              AND {filtre_mesure_horaire_utilisable()}
               AND (instant_mesure AT TIME ZONE 'UTC')::date >= :debut
               AND (instant_mesure AT TIME ZONE 'UTC')::date <= :fin
             ORDER BY instant_mesure
@@ -436,12 +438,12 @@ def _lire_mesures_mensuel_par_serie_id(
     """
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT annee, mois, valeur,
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource_mensuelles
             WHERE serie_id = :serie_id
-              AND valide_au IS NULL
+              AND {filtre_mesure_utilisable()}
               AND (annee, mois) >= (:from_y, :from_m)
               AND (annee, mois) <= (:to_y, :to_m)
             ORDER BY annee, mois
@@ -1516,18 +1518,18 @@ def _lire_mensuelles_brutes(
     """Lit les 360 mesures mensuelles courantes d'une série sous forme de tuples.
 
     Renvoie une liste de tuples ``(annee, mois, valeur)`` ordonnés
-    chronologiquement. Filtre standard ``valide_au IS NULL`` (version
-    courante). Pas de pagination : on charge tout (360 lignes attendues
+    chronologiquement. Mesures utilisables seulement (courantes, non
+    dépréciées). Pas de pagination : on charge tout (360 lignes attendues
     pour une série 1991-2020 complète). Range le niveau effectif de chaque
     valeur lue dans ``niveaux``.
     """
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT annee, mois, valeur,
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource_mensuelles
-            WHERE serie_id = :serie_id AND valide_au IS NULL
+            WHERE serie_id = :serie_id AND {filtre_mesure_utilisable()}
             ORDER BY annee, mois
             """
         ),
@@ -1615,44 +1617,33 @@ _FENETRE_LARGE_DEBUT: date = date(2000, 1, 1)
 _FENETRE_LARGE_FIN: date = date(2100, 1, 1)
 
 
-def _chercher_serie_pluie_nasa(
-    session: Session,
-    localite_id: int,
-    periode_debut: date,
-    periode_fin: date | None,
-) -> int | None:
-    """Résout la série de précipitation journalière NASA POWER d'une localité.
+def _chercher_serie_pluie_nasa(session: Session, serie_pm_id: int) -> int | None:
+    """Série de précipitation journalière NASA POWER qui couvre la fenêtre de la série PM.
 
-    Résolveur **dédié** (la pluie est ``nasa_power``, source différente des PM
-    ``cams_eac4`` ; ``_chercher_serie_compagne`` filtre sur ``source_id`` et la
-    raterait). La source est **épinglée explicitement** : même si une autre source de
-    pluie arrive un jour, elle ne sera pas sélectionnée. Depuis le backfill
-    journalier profondeur (migration 107), une localité porte **deux** séries de
-    pluie NASA (1981-2020 et 2021-2025) : la série retenue est celle dont la plage
-    **recouvre la fenêtre de la série PM appelante** (le modèle HSU intègre la
-    pluie sur les dates des PM) ; ordre stable sur ``periode_debut, id``.
+    Seul résolveur de pluie des calculs de salissure (proxy et PR réaliste) :
+    le modèle HSU intègre la pluie sur les dates des PM, la série de pluie
+    dépend donc de la série PM réellement lue, pas de la série GHI. La source
+    est épinglée ; ordre stable sur ``periode_debut, id``.
     """
     row = session.execute(
         text(
             """
             SELECT sm.id FROM series_metadonnees sm
             JOIN sources s ON s.id = sm.source_id
-            WHERE sm.localite_id = :localite_id
+            JOIN series_metadonnees pm ON pm.id = :serie_pm_id
+            WHERE sm.localite_id = pm.localite_id
               AND s.code = 'nasa_power'
               AND sm.grandeur_code = 'precipitation'
               AND sm.granularite = 'journalier'
               AND sm.actif = TRUE
-              AND (sm.periode_fin IS NULL OR sm.periode_fin >= :periode_debut)
-              AND (CAST(:periode_fin AS DATE) IS NULL OR sm.periode_debut <= :periode_fin)
+              AND sm.periode_debut <= pm.periode_debut
+              AND (sm.periode_fin IS NULL
+                   OR (pm.periode_fin IS NOT NULL AND sm.periode_fin >= pm.periode_fin))
             ORDER BY sm.periode_debut, sm.id
             LIMIT 1
             """
         ),
-        {
-            "localite_id": localite_id,
-            "periode_debut": periode_debut,
-            "periode_fin": periode_fin,
-        },
+        {"serie_pm_id": serie_pm_id},
     ).first()
     return int(row.id) if row else None
 
@@ -1694,9 +1685,9 @@ def grandeur_taux_salissure_proxy(
     1. ``code_serie_source`` = la série **PM2.5** (EAC4) ; résolution + contrôle de
        grandeur (400 si ce n'est pas une série ``pm2_5``).
     2. Compagne **PM10** (même source ``cams_eac4``, ``_chercher_serie_compagne``)
-       + compagne **precipitation** (``nasa_power``, résolveur bi-source dédié).
-       L'une absente -> 400.
-    3. Lecture des 3 séries (``mesures_ressource``, courantes) ; alignement par
+       + **precipitation** NASA POWER journalière couvrant la fenêtre de la série
+       PM2.5. L'une absente -> 400.
+    3. Lecture des 3 séries (mesures utilisables) ; alignement par
        **intersection des dates** (fenêtre effective = overlap PM ∩ pluie, bornée
        par les PM : 2021-01-01 à 2025-08-31) ; garde-fou de contiguïté (HSU
        path-dependant).
@@ -1710,9 +1701,7 @@ def grandeur_taux_salissure_proxy(
     pm10_serie_id = _chercher_serie_compagne(
         session, serie.localite_id, serie.source_id, "pm10", serie.periode_debut, serie.granularite
     )
-    pluie_serie_id = _chercher_serie_pluie_nasa(
-        session, serie.localite_id, serie.periode_debut, serie.periode_fin
-    )
+    pluie_serie_id = _chercher_serie_pluie_nasa(session, serie.serie_id)
     if pm10_serie_id is None or pluie_serie_id is None:
         raise ExceptionKuma(
             code=CodeErreur.INCOMPATIBILITE_SOURCE_GRANDEUR,
@@ -1777,9 +1766,7 @@ def _chercher_serie_pm_cams(session: Session, localite_id: int, grandeur_code: s
 
     Résolveur **cross-source dédié** : les PM sont ``cams_eac4``, source différente du
     GHI source (typiquement ``nasa_power``) ; ``_chercher_serie_compagne`` filtre sur
-    ``source_id`` et les raterait. **Symétrique** du ``_chercher_serie_pluie_nasa``,
-    mais en sens inverse : ici c'est la PM qui est cross-source (la pluie
-    l'était dans l'autre résolveur). Source épinglée explicitement, ordre stable.
+    ``source_id`` et les raterait. Source épinglée explicitement, ordre stable.
     """
     row = session.execute(
         text(
@@ -1816,8 +1803,9 @@ def grandeur_pr_realiste(
     """PR effectif = ``PR_fourni x ratio_T x (1 - salissure)`` selon le mode, à la volée.
 
     Source = série **GHI** (fournit G + l'index de dates ; 400 si grandeur != ghi).
-    Compagnes selon le mode : T2M et pluie (même source que le GHI), PM2.5/PM10
-    (cross-source EAC4). Alignement par intersection des séries du mode ; la fenêtre
+    Compagnes selon le mode : T2M (même source que le GHI), PM2.5/PM10 (EAC4) et
+    pluie NASA POWER journalière couvrant la fenêtre des PM, la même série que
+    pour ``taux_salissure_proxy``. Alignement par intersection des séries du mode ; la fenêtre
     effective diverge donc par mode (les modes salissure sont bornés à l'overlap PM
     EAC4, 2025-08-31), avec garde-fou de contiguïté (HSU path-dependant). Sorties
     journalier + mensuel (la courbe mensuelle = la PR saisonnière).
@@ -1873,16 +1861,9 @@ def grandeur_pr_realiste(
     pm2_5: dict[date, float] = {}
     pm10: dict[date, float] = {}
     if besoin_salissure:
-        pluie_id = _chercher_serie_compagne(
-            session,
-            serie.localite_id,
-            serie.source_id,
-            "precipitation",
-            serie.periode_debut,
-            serie.granularite,
-        )
         pm2_5_id = _chercher_serie_pm_cams(session, serie.localite_id, "pm2_5")
         pm10_id = _chercher_serie_pm_cams(session, serie.localite_id, "pm10")
+        pluie_id = None if pm2_5_id is None else _chercher_serie_pluie_nasa(session, pm2_5_id)
         if pluie_id is None or pm2_5_id is None or pm10_id is None:
             raise ExceptionKuma(
                 code=CodeErreur.INCOMPATIBILITE_SOURCE_GRANDEUR,
@@ -1994,11 +1975,10 @@ def _lire_ecart_paire_recent(
             """
             SELECT gm.valeur, gm.niveau_confiance_derive AS derive,
                    gm.niveau_confiance_override AS override
-            FROM grandeurs_metier gm
+            FROM v_grandeurs_metier_courantes gm
             JOIN localites l ON l.id = gm.localite_id
             WHERE l.code = :loc AND gm.grandeur_code = :g
               AND gm.annee_debut BETWEEN :a1 AND :a2
-              AND gm.valide_au IS NULL
             ORDER BY gm.annee_debut, gm.mois
             """
         ),
@@ -2023,13 +2003,12 @@ def _lire_degenerescence_localite(
             SELECT gm.valeur, gm.commentaire_editorial AS note,
                    gm.niveau_confiance_derive AS derive,
                    gm.niveau_confiance_override AS override
-            FROM grandeurs_metier gm
+            FROM v_grandeurs_metier_courantes gm
             JOIN localites l ON l.id = gm.localite_id
             JOIN series_metadonnees sm ON sm.id = gm.series_metadonnees_id
             JOIN sources s ON s.id = sm.source_id
             WHERE l.code = :loc AND gm.grandeur_code = 'degenerescence_pixel'
               AND s.code = 'nasa_power' AND sm.grandeur_code = 'ghi'
-              AND gm.valide_au IS NULL
             """
         ),
         {"loc": code_localite},
@@ -2042,33 +2021,34 @@ def _lire_degenerescence_localite(
     return fiche, [(str(row.derive), row.override)]
 
 
-def _assurer_confiance_b(
+def _niveau_confiance_fiche(
     niveaux: Sequence[tuple[str, str | None]], code_localite: str
-) -> Literal["B"]:
-    """Confiance effective (override sinon derive). Exige ``{'B'}``, sinon 500.
+) -> Literal["B", "C"]:
+    """Confiance effective de la fiche (override sinon derive) : le plus bas de ses lignes.
 
-    Garde d'honnêteté (au lieu d'un 'B' codé en dur) : si une ligne écart/dégénérescence
-    n'est pas B, la fiche ne doit JAMAIS afficher B -> 500 explicite (la donnée a dérivé).
+    Une ligne en A (réservé aux mesures au sol) ou un niveau absent trahit une
+    dérive de la donnée : 500 explicite plutôt qu'un niveau affiché à tort.
     """
     effectifs = {(override if override is not None else derive) for derive, override in niveaux}
-    if effectifs != {"B"}:
+    if not effectifs or not effectifs <= {"B", "C"}:
         raise ExceptionKuma(
             code=CodeErreur.SERVEUR_ERREUR_INTERNE,
             message=(
                 f"Incoherence de confiance pour {code_localite!r} : la fiche inter-source "
-                f"attend des donnees en confiance B, trouve {sorted(effectifs)}. "
-                "L'atlas est inter-source (B) ; A est reserve aux mesures terrain."
+                f"attend des donnees en confiance B ou C, trouve {sorted(effectifs)}. "
+                "L'atlas est inter-source ; A est reserve aux mesures terrain."
             ),
             statut_http=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
-    return "B"
+    return "C" if "C" in effectifs else "B"
 
 
-def _construire_limite_incertitude_inter_source() -> str:
+def _construire_limite_incertitude_inter_source(niveau: str) -> str:
     """Avertissement éditorial anti-survente."""
     return (
         "Incertitude inter-source / relative : divergence entre NASA POWER et les references "
-        "satellite (SARAH-3 pour le GHI, CAMS pour le DNI), fenetre 2021-2023, confiance B. "
+        "satellite (SARAH-3 pour le GHI, CAMS pour le DNI), fenetre 2021-2023, "
+        f"confiance {niveau}. "
         "Ne quantifie PAS l'incertitude absolue vs mesure sol (qui exige des mesures terrain) : "
         "ce n'est pas une barre d'erreur calibree au sol."
     )
@@ -2096,8 +2076,9 @@ def grandeur_incertitude_inter_source(
     - ``degenerescence`` : propriété niveau-localité (grille NASA CERES), rendue une fois.
 
     Lecture/assemblage pur des grandeurs DÉJÀ matérialisées, zéro calcul de
-    substrat. Confiance B lue et assérée (jamais A : A = terrain). 404 si la
-    localité n'est pas couverte par l'atlas (33 préfectures + Conakry, 34 points).
+    substrat. Confiance lue : B, ou C si une ligne lue est en C (jamais A : A =
+    terrain). 404 si la localité n'est pas couverte par l'atlas (33 préfectures
+    + Conakry, 34 points).
     """
     ecarts: list[EcartPaireInterSource] = []
     niveaux: list[tuple[str, str | None]] = []
@@ -2137,14 +2118,15 @@ def grandeur_incertitude_inter_source(
             statut_http=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
     niveaux += niv_degen
+    niveau = _niveau_confiance_fiche(niveaux, code_localite)
 
     return ReponseIncertitudeInterSource(
         code_localite=code_localite,
         fenetre=_FENETRE_ATLAS_STR,
         ecarts=ecarts,
         degenerescence=degenerescence,
-        niveau_confiance=_assurer_confiance_b(niveaux, code_localite),
-        limite=_construire_limite_incertitude_inter_source(),
+        niveau_confiance=niveau,
+        limite=_construire_limite_incertitude_inter_source(niveau),
     )
 
 
@@ -2158,10 +2140,10 @@ def _lister_points_atlas(session: Session) -> list[tuple[int, str]]:
         text(
             """
             SELECT DISTINCT l.id, l.code
-            FROM grandeurs_metier gm
+            FROM v_grandeurs_metier_courantes gm
             JOIN localites l ON l.id = gm.localite_id
             WHERE gm.grandeur_code IN ('ecart_relatif_referentiel', 'ecart_relatif_dni_cams')
-              AND gm.annee_debut BETWEEN :a1 AND :a2 AND gm.valide_au IS NULL
+              AND gm.annee_debut BETWEEN :a1 AND :a2
             ORDER BY l.code
             """
         ),
@@ -2177,8 +2159,8 @@ def _assembler_fiche_point(
 ) -> FichePointIncertitude:
     """Fiche d'un point de l'atlas (fiche par localité + coordonnées), pour la collection.
 
-    Réutilise les mêmes helpers que l'endpoint par-localité (deux axes distincts, confiance B
-    lue + assérée, limite éditoriale). Lève 500 sur incohérence (un point du périmètre sans écart ou
+    Réutilise les mêmes helpers que l'endpoint par-localité (deux axes distincts, confiance
+    lue, limite éditoriale). Lève 500 sur incohérence (un point du périmètre sans écart ou
     sans dégénérescence ne devrait pas exister).
     """
     ecarts: list[EcartPaireInterSource] = []
@@ -2209,14 +2191,15 @@ def _assembler_fiche_point(
             statut_http=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
     niveaux += niv_degen
+    niveau = _niveau_confiance_fiche(niveaux, code_localite)
     latitude, longitude = _resoudre_coordonnees(session, localite_id)
     return FichePointIncertitude(
         code_localite=code_localite,
         fenetre=_FENETRE_ATLAS_STR,
         ecarts=ecarts,
         degenerescence=degenerescence,
-        niveau_confiance=_assurer_confiance_b(niveaux, code_localite),
-        limite=_construire_limite_incertitude_inter_source(),
+        niveau_confiance=niveau,
+        limite=_construire_limite_incertitude_inter_source(niveau),
         latitude_deg=latitude,
         longitude_deg=longitude,
     )
@@ -2238,7 +2221,7 @@ def grandeur_incertitude_inter_source_collection(
     """Toutes les fiches d'incertitude inter-source des points de l'atlas, paginées.
 
     Un appel pour le snapshot média (carte) au lieu de N. Chaque item = la MÊME fiche
-    que l'endpoint par-localité (deux axes distincts, B, limite éditoriale) + lat/lon.
+    que l'endpoint par-localité (deux axes distincts, confiance, limite éditoriale) + lat/lon.
     Lecture/assemblage pur des grandeurs déjà matérialisées (écart inter-source
     mensuel + dégénérescence), zéro substrat.
     Enveloppe paginée identique à /v1/series (items / total / limit / offset).

@@ -47,6 +47,7 @@ from kuma_data_core.api.v1.schemas.series import (
     SerieListeePaginee,
 )
 from kuma_data_core.db.session import obtenir_session
+from kuma_data_core.editorial.statuts import filtre_mesure_utilisable
 
 routeur = APIRouter(prefix="/series", tags=["series"])
 
@@ -258,7 +259,7 @@ def _lire_mesures_journalier(
 ) -> list[MesureLue]:
     """Lit les mesures journalieres depuis ``mesures_ressource``."""
     from_d, to_d = bornes
-    clauses = ["mr.serie_id = :serie_id", "mr.valide_au IS NULL"]
+    clauses = ["mr.serie_id = :serie_id", filtre_mesure_utilisable("mr")]
     params: dict[str, object] = {"serie_id": serie_id, "limit": limit, "offset": offset}
     if from_d is not None:
         clauses.append("mr.instant_mesure >= :from_d")
@@ -306,7 +307,7 @@ def _lire_mesures_mensuel(
 ) -> list[MesureLue]:
     """Lit les mesures mensuelles depuis ``mesures_ressource_mensuelles``."""
     from_d, to_d = bornes
-    clauses = ["m.serie_id = :serie_id", "m.valide_au IS NULL"]
+    clauses = ["m.serie_id = :serie_id", filtre_mesure_utilisable("m")]
     params: dict[str, object] = {"serie_id": serie_id, "limit": limit, "offset": offset}
     if from_d is not None:
         clauses.append("(m.annee, m.mois) >= (:from_y, :from_m)")

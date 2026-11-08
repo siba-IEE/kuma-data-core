@@ -12,6 +12,17 @@ Pas de retour en arrière ; une donnée dépréciée revient par une nouvelle
 version de ligne, pas par transition. Les référentiels stables se retirent
 par soft delete (``actif``), pas par statut. Module sans SQLAlchemy : la mise
 à jour de la ligne revient à l'appelant.
+
+Une mesure est utilisable (lue pour sa valeur par l'API ou un calcul) si elle
+est courante (``valide_au IS NULL``) et :
+
+- journalière ou mensuelle : non dépréciée ; une mesure ``brut`` reste
+  utilisable, ces tables n'ont pas de contrôle qualité automatique ;
+- horaire : passée par le contrôle qualité (``valide_auto``, ``valide_humain``
+  ou ``publie``) ; ``brut`` y signale un rejet du contrôle.
+
+Les grandeurs calculées suivent la vue ``v_grandeurs_metier_courantes``
+(courante, non dépréciée, version de formule actuelle).
 """
 
 from __future__ import annotations
@@ -43,6 +54,23 @@ TRANSITIONS_AUTORISEES: frozenset[tuple[str, str]] = frozenset(
     }
 )
 """Matrice exhaustive : toute paire absente est refusée."""
+
+
+STATUTS_HORAIRES_UTILISABLES: tuple[str, ...] = ("valide_auto", "valide_humain", "publie")
+"""Statuts d'une mesure horaire qui a passé le contrôle qualité."""
+
+
+def filtre_mesure_utilisable(alias: str | None = None) -> str:
+    """Prédicat SQL d'une mesure journalière ou mensuelle utilisable."""
+    p = f"{alias}." if alias else ""
+    return f"{p}valide_au IS NULL AND {p}statut <> 'deprecie'"
+
+
+def filtre_mesure_horaire_utilisable(alias: str | None = None) -> str:
+    """Prédicat SQL d'une mesure horaire utilisable."""
+    p = f"{alias}." if alias else ""
+    statuts = ", ".join(f"'{s}'" for s in STATUTS_HORAIRES_UTILISABLES)
+    return f"{p}valide_au IS NULL AND {p}statut IN ({statuts})"
 
 
 def transition_autorisee(statut_courant: str, nouveau_statut: str) -> bool:

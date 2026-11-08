@@ -7,8 +7,8 @@ Les services interpolés au point (SARAH-3, CAMS 5 km) donnent 0 par
 construction ; un caveat de résolution porte alors le sens.
 
 Une ligne statique par (localité, source, paramètre), valeur = nombre de
-jumeaux. Confiance ``B`` : le fait est exact, mais A/B/C classe la
-fiabilité d'une mesure, et A est réservé aux mesures au sol.
+jumeaux. Confiance fixe ``B``, exemptée de la propagation : voir
+:mod:`kuma_data_core.editorial.niveaux_confiance`.
 """
 
 from __future__ import annotations
@@ -19,10 +19,12 @@ from typing import TypedDict
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from kuma_data_core.editorial.niveaux_confiance import NIVEAU_CONFIANCE_DEGENERESCENCE_PIXEL
+from kuma_data_core.editorial.statuts import filtre_mesure_utilisable
+
 # === Constantes module =====================================================
 
 GRANDEUR_DEGENERESCENCE: str = "degenerescence_pixel"
-NIVEAU_CONFIANCE_DERIVE: str = "B"
 VERSION_FORMULE: int = 1
 
 # Texte d'origine de la migration 090, retiré ensuite des textes publiés sous
@@ -225,7 +227,7 @@ def _calculer_et_inserer(session: Session, *, texte_historique_090: bool) -> int
     for cfg in _CONFIG:
         rows = session.execute(
             text(
-                """
+                f"""
                 SELECT l.id AS loc_id, l.code AS loc_code, sm.id AS serie_id,
                        EXTRACT(YEAR FROM sm.periode_debut)::int AS an_deb,
                        EXTRACT(YEAR FROM sm.periode_fin)::int AS an_fin,
@@ -236,7 +238,7 @@ def _calculer_et_inserer(session: Session, *, texte_historique_090: bool) -> int
                 JOIN localites l ON l.id = sm.localite_id
                 WHERE s.code = :src AND sm.grandeur_code = :g
                   AND sm.granularite = 'mensuel' AND sm.periode_debut = :pdeb
-                  AND m.valide_au IS NULL AND m.statut <> 'deprecie'
+                  AND {filtre_mesure_utilisable("m")}
                 ORDER BY l.code, m.annee, m.mois
                 """
             ),
@@ -282,7 +284,7 @@ def _calculer_et_inserer(session: Session, *, texte_historique_090: bool) -> int
                     "mois": None,
                     "version_formule": VERSION_FORMULE,
                     "valeur": float(len(ids_jumeaux)),
-                    "niveau_confiance_derive": NIVEAU_CONFIANCE_DERIVE,
+                    "niveau_confiance_derive": NIVEAU_CONFIANCE_DEGENERESCENCE_PIXEL,
                     "commentaire": _commentaire(
                         cfg,
                         cfg["grandeur_code"],

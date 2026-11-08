@@ -2,7 +2,8 @@
 
 CAMS Radiation (DNI corrigé des aérosols) sert de référence au dénominateur.
 Le signe est un constat (NASA lit en moyenne 26 % de DNI en moins), pas un
-choix. Confiance ``B`` : signal indirect. Calcul depuis la base, sans réseau.
+choix. Confiance propagée depuis les deux mois d'entrée, plafonnée à ``B`` :
+signal indirect. Calcul depuis la base, sans réseau.
 """
 
 from __future__ import annotations
@@ -12,16 +13,18 @@ from typing import TypedDict
 
 from sqlalchemy.orm import Session
 
+from kuma_data_core.editorial.niveaux_confiance import NiveauxEntrees
 from kuma_data_core.services.grandeurs.referentiels import (
     _bulk_insert_grandeurs_metier,
     _calcul_ecart_relatif,
+    _lire_cible,
     _lire_mensuel,
+    _niveau_derive,
 )
 
 # === Constantes module =====================================================
 
 GRANDEUR_ECART_DNI_CAMS: str = "ecart_relatif_dni_cams"
-NIVEAU_CONFIANCE_DERIVE: str = "B"
 VERSION_FORMULE: int = 1
 
 
@@ -58,8 +61,10 @@ def calculer_et_inserer_ecart_dni_cams(
     nb_insere = 0
 
     for ctx in contextes_villes:
-        nasa = _lire_mensuel(session, ctx["code_serie_nasa"])
-        cams = _lire_mensuel(session, ctx["code_serie_cams"])
+        niveaux = NiveauxEntrees()
+        nasa = _lire_mensuel(session, ctx["code_serie_nasa"], niveaux)
+        cams = _lire_mensuel(session, ctx["code_serie_cams"], niveaux)
+        cible = _lire_cible(session, ctx["series_metadonnees_id"])
 
         lignes: list[dict[str, object]] = []
         for annee, mois in sorted(set(nasa) & set(cams)):
@@ -75,7 +80,7 @@ def calculer_et_inserer_ecart_dni_cams(
                     "mois": mois,
                     "version_formule": VERSION_FORMULE,
                     "valeur": ecart_pct,
-                    "niveau_confiance_derive": NIVEAU_CONFIANCE_DERIVE,
+                    "niveau_confiance_derive": _niveau_derive(cible, niveaux.du_mois(annee, mois)),
                 }
             )
         _bulk_insert_grandeurs_metier(session, lignes)
