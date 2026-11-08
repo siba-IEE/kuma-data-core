@@ -111,6 +111,22 @@ le projet suit le versionnement sémantique.
   sources qu'elles nommaient ; le commentaire de `sources.fiabilite`
   renvoyait à un document inexistant. Les décomptes figés sont remplacés par
   le nom de la contrainte CHECK qui fait foi (migration 127).
+- Données publiées dans l'édition : vocabulaire de chantier interne retiré
+  des textes des tables publiées telles quelles. Note de dégénérescence de
+  pixel (`grandeurs_metier.commentaire_editorial`, servie par l'API) : la
+  mention « (D-29 generalise) » est retirée de 140 lignes, la règle restant
+  dite en clair. Notes de 67 localités (densification préfectorale, renvois
+  de spec, phases, étiquettes de suivi), notes de 14 sources et deux valeurs
+  de `sources.metadonnees` (vagues, lots, dettes, phases, codes d'étape,
+  renvoi de PR), provenance du calage GHI de Kankan (renvoi vers une note et
+  un script du dépôt) : les codes sont retirés ou remplacés par leur contenu.
+  Erreurs de fond corrigées au passage : `ecmwf_era5` ne porte aucune série
+  Kuma (ERA5-Land est la source distincte `ecmwf_era5_land`) ;
+  `ecmwf_era5_land` couvre 34 localités et non les 6 villes pilotes ;
+  `esmap_wapp` alimente une série DNI en plus du GHI ; `cams_radiation`
+  porte GHI, DNI et DHI ; la communauté NASA POWER utilisée (RE) est fixée.
+  Correction en place, sans nouvelle version ni changement de valeur, de
+  période, de statut ou de confiance (migration 128).
 
 ## 1.0.0
 
