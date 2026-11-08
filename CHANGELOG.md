@@ -166,6 +166,16 @@ le projet suit le versionnement sémantique.
   `ecart_relatif_dni_cams` aux 34 points) ne portent plus le marqueur
   d'étape interne « (atlas Temps 1) » ; les libellés restent uniques.
   Correction en place, sans nouvelle version (migration 130).
+- Données publiées dans l'édition : 314 libellés de séries calculées par Kuma
+  désignaient leur localité par son code (`ecart_relatif_dni_cams mensuel
+  gin_fria 2021-2023`) ; ils la nomment désormais par son nom, comme le reste
+  de la base (`ecart_relatif_dni_cams mensuel Fria 2021-2023`). Sont concernés
+  les écarts inter-source 2021-2023 (`ecart_relatif_dni_cams` aux 34 points,
+  `ecart_relatif_referentiel` aux 28 communes) et les neuf séries « (calcul
+  Kuma) » des 28 communes (fraction diffuse, HEP, productible spécifique
+  théorique, humidex, variabilité journalière, rang référentiel temporel).
+  Les libellés restent uniques. Correction en place, sans nouvelle version
+  (migration 131).
 - API : codes internes (dettes « D-n », caveats « L-XXX-n », ADR, codes
   d'étape, convention de nommage « D-32 ») retirés du document OpenAPI
   (descriptions de routes, de schémas et de champs) et des avertissements

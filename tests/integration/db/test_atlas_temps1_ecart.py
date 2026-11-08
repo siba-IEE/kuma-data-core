@@ -23,6 +23,14 @@ from sqlalchemy.orm import Session
 pytestmark = pytest.mark.integration
 
 _COMMUNE = "gin_boffa"  # une nouvelle commune temoin
+_PILOTES = (
+    "gin_conakry_kaloum",
+    "gin_kankan",
+    "gin_kindia",
+    "gin_labe",
+    "gin_mamou",
+    "gin_nzerekore",
+)
 
 
 def test_ecart_ghi_etendu_aux_34(db_session: Session) -> None:
@@ -66,21 +74,29 @@ def test_ecart_dni_recent_34_climato_intact(db_session: Session) -> None:
 def test_62_series_calculees_creees(db_session: Session) -> None:
     """62 series calculees creees par 091 (28 GHI communes + 34 DNI recent).
 
-    Libelle par code de localite, sans marqueur d'etape depuis la migration 130.
+    Libelle par nom de localite depuis la migration 131. Les 6 series GHI
+    2021-2023 des villes pilotes, anterieures a 091, sont exclues.
     """
-    n = db_session.execute(
+    rows = db_session.execute(
         text(
             """
-            SELECT COUNT(*) FROM series_metadonnees sm
+            SELECT sm.grandeur_code, COUNT(*) AS n FROM series_metadonnees sm
             JOIN sources s ON s.id = sm.source_id
             JOIN localites l ON l.id = sm.localite_id
             WHERE s.code = 'kuma_calculs'
               AND sm.code LIKE '%_kuma_calculs_2021_2023'
-              AND sm.libelle = sm.grandeur_code || ' mensuel ' || l.code || ' 2021-2023'
+              AND sm.libelle = sm.grandeur_code || ' mensuel ' || l.nom || ' 2021-2023'
+              AND NOT (sm.grandeur_code = 'ecart_relatif_referentiel'
+                       AND l.code = ANY(:pilotes))
+            GROUP BY sm.grandeur_code
             """
-        )
-    ).scalar_one()
-    assert n == 62
+        ),
+        {"pilotes": list(_PILOTES)},
+    ).all()
+    assert {r.grandeur_code: r.n for r in rows} == {
+        "ecart_relatif_dni_cams": 34,
+        "ecart_relatif_referentiel": 28,
+    }
 
 
 def test_confiance_b_jamais_a(db_session: Session) -> None:
