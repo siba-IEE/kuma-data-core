@@ -213,6 +213,20 @@ le projet suit le versionnement sémantique.
   localité (2,14 km, et non « moins de 2 km »). Correction en place, sans
   nouvelle version (migration 132). Les textes de `rang_referentiel_spatial`
   sont repris avec sa nouvelle version (migration 133).
+- Données publiées dans l'édition : les séries NASA POWER de DHI longues
+  contiennent des pas où l'irradiation diffuse dépasse l'irradiation
+  globale de la même série, ce qui est physiquement impossible : 8 222 jours
+  sur 459 510 dans les 34 séries journalières 1984-2020 (de 0,2 % à 8,6 %
+  selon la localité, Yomou, Lola et Nzérékoré en tête) et 7 mois sur 17 136
+  dans 3 séries mensuelles 1984-2025 (Lola, Nzérékoré, Yomou). Les valeurs
+  sont celles que livre NASA POWER (`ALLSKY_SFC_SW_DIFF` contre
+  `ALLSKY_SFC_SW_DWN`, même unité) et tous les cas sont antérieurs à 2001,
+  période où l'API annonce la source GEWEX SRB. La note publique de chacune
+  de ces 37 séries DHI porte une mise en garde chiffrée ; les séries
+  journalières 2021-2025, la climatologie mensuelle 2001-2020, CAMS et la
+  fraction diffuse (calculée sur 2001 et après, toujours au plus 1) ne sont
+  pas concernées. Correction en place, sans nouvelle version (migration
+  134).
 - API : codes internes (dettes « D-n », caveats « L-XXX-n », ADR, codes
   d'étape, convention de nommage « D-32 ») retirés du document OpenAPI
   (descriptions de routes, de schémas et de champs) et des avertissements
