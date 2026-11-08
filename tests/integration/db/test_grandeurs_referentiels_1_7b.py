@@ -57,7 +57,8 @@ def test_ti54_grandeurs_metier_cumule_post_1_7b(db_session: Session) -> None:
     #   + 1 218 écart DNI (6 x 203) = 10 020
     # 374 dégénérescence + 1 008 écart GHI (28 x 36) + 1 224 écart DNI (34 x 36)
     # 28 communes : 34 580 (28 x 1 235) + 3 808 (28 x 136) + 5 684 écart DNI (28 x 203)
-    assert total == 56698
+    # Rang spatial version 2 (34 x 60) au lieu de la version 1 (6 x 60) : + 1 680
+    assert total == 58378
 
 
 def test_ti55_grandeurs_referentiel_post_d39(db_session: Session) -> None:
@@ -191,8 +192,8 @@ def test_ti59_ecart_relatif_dans_borne_physique(db_session: Session) -> None:
         )
 
 
-def test_ti60_rang_spatial_dans_1_6(db_session: Session) -> None:
-    """Rangs spatiaux entiers de 1 à 6, chacun attribué 60 fois (une fois par mois)."""
+def test_ti60_rang_spatial_dans_1_34(db_session: Session) -> None:
+    """Rangs spatiaux courants entiers de 1 à 34, chacun attribué 60 fois (une fois par mois)."""
     rows = db_session.execute(
         text(
             """
@@ -203,7 +204,7 @@ def test_ti60_rang_spatial_dans_1_6(db_session: Session) -> None:
         )
     ).all()
     valeurs_distinctes = {int(r.valeur) for r in rows}
-    assert valeurs_distinctes == {1, 2, 3, 4, 5, 6}
+    assert valeurs_distinctes == set(range(1, 35))
 
     rows_compte = db_session.execute(
         text(
@@ -214,7 +215,7 @@ def test_ti60_rang_spatial_dans_1_6(db_session: Session) -> None:
             """
         )
     ).all()
-    # 6 villes x 60 mois
-    assert sum(r.n for r in rows_compte) == 360
+    # 34 localités x 60 mois
+    assert sum(r.n for r in rows_compte) == 2040
     for r in rows_compte:
         assert r.n == 60

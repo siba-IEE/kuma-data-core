@@ -9,8 +9,9 @@ orchestrateur sur les series brutes daily). Garanties verifiees :
 - **Anti-regression pilote** : les 6 pilotes gardent exactement leurs lignes des 4
   grandeurs (la migration n'INSERE que des communes) ; somme temoin byte-stable.
 - **Garde anti-corruption rang_spatial (obligatoire)** : (a) zero ligne
-  rang_referentiel_spatial creee par 093 (total inchange, aucune commune) ; (b) les
-  rang_spatial des 6 pilotes byte-identiques.
+  rang_referentiel_spatial version 1 creee par 093 (total inchange, aucune commune) ;
+  (b) les rang_spatial version 1 des 6 pilotes byte-identiques. La version 2
+  (migration 133, toutes les localites) est testee par ``test_coherence_133``.
 - **Fidelite rang_temporel** : sur une commune temoin, chaque percentile stocke ==
   recalcul direct via le helper pur _calcul_rang_temporel (garde anti-erreur de cablage
   de la fonction focalisee).
@@ -58,8 +59,8 @@ _N_PAR_LOCALITE = _N_HUMIDEX + _N_VARIAB + _N_RANG_TEMP + _N_INDIC  # 136
 # Somme temoin gin_kankan sur les 4 grandeurs (byte-stable, valeur deterministe du
 # seed offline). Mesuree sur DB fraiche 001->093.
 _SOMME_KANKAN_A2 = 4868.157741460751
-# Somme rang_spatial des 6 pilotes (byte-identite, inchangee par 093). 360 lignes de rang
-# ordinal 1-6, soit 60 groupes mensuels x (1+2+3+4+5+6) = 60 x 21 = 1260.
+# Somme rang_spatial version 1 des 6 pilotes (byte-identite, inchangee par 093). 360 lignes
+# de rang ordinal 1-6, soit 60 groupes mensuels x (1+2+3+4+5+6) = 60 x 21 = 1260.
 _SOMME_RANG_SPATIAL_PILOTES = 1260.0
 
 
@@ -147,11 +148,12 @@ def test_volumes_a2_totaux_communes(db_session: Session) -> None:
 def test_garde_zero_rang_spatial(db_session: Session) -> None:
     """Garde anti-corruption (a) : 093 ne cree AUCUNE ligne rang_referentiel_spatial.
 
-    Total rang_spatial inchange (360 = pool pilote migration 043) ; aucune commune n'a
-    de ligne rang_spatial."""
+    Total rang_spatial version 1 inchange (360 = pool de la migration 043) ; aucune
+    commune n'a de ligne rang_spatial version 1."""
     total = db_session.execute(
         text(
-            "SELECT COUNT(*) FROM grandeurs_metier WHERE grandeur_code = 'rang_referentiel_spatial'"
+            "SELECT COUNT(*) FROM grandeurs_metier "
+            "WHERE grandeur_code = 'rang_referentiel_spatial' AND version_formule = 1"
         )
     ).scalar_one()
     assert total == 360, "093 a cree des lignes rang_referentiel_spatial (pool pilote corrompu)"
@@ -160,7 +162,8 @@ def test_garde_zero_rang_spatial(db_session: Session) -> None:
             f"""
             SELECT COUNT(*) FROM grandeurs_metier gm
             JOIN localites l ON l.id = gm.localite_id
-            WHERE gm.grandeur_code = 'rang_referentiel_spatial' AND l.code NOT IN {_PILOTES_SQL}
+            WHERE gm.grandeur_code = 'rang_referentiel_spatial' AND gm.version_formule = 1
+              AND l.code NOT IN {_PILOTES_SQL}
             """
         )
     ).scalar_one()
@@ -168,14 +171,15 @@ def test_garde_zero_rang_spatial(db_session: Session) -> None:
 
 
 def test_rang_spatial_pilotes_byte_identique(db_session: Session) -> None:
-    """Garde anti-corruption (b) : les rang_spatial des 6 pilotes sont byte-identiques
-    (360 lignes, somme stable). 093 ne doit pas les avoir touches."""
+    """Garde anti-corruption (b) : les rang_spatial version 1 des 6 pilotes sont
+    byte-identiques (360 lignes, somme stable). 093 ne doit pas les avoir touches."""
     n_pilotes = db_session.execute(
         text(
             f"""
             SELECT COUNT(*) FROM grandeurs_metier gm
             JOIN localites l ON l.id = gm.localite_id
-            WHERE gm.grandeur_code = 'rang_referentiel_spatial' AND l.code IN {_PILOTES_SQL}
+            WHERE gm.grandeur_code = 'rang_referentiel_spatial' AND gm.version_formule = 1
+              AND l.code IN {_PILOTES_SQL}
             """
         )
     ).scalar_one()
@@ -183,7 +187,7 @@ def test_rang_spatial_pilotes_byte_identique(db_session: Session) -> None:
     somme = db_session.execute(
         text(
             "SELECT COALESCE(SUM(valeur), 0) FROM grandeurs_metier "
-            "WHERE grandeur_code = 'rang_referentiel_spatial'"
+            "WHERE grandeur_code = 'rang_referentiel_spatial' AND version_formule = 1"
         )
     ).scalar_one()
     assert float(somme) == pytest.approx(_SOMME_RANG_SPATIAL_PILOTES, rel=1e-12)

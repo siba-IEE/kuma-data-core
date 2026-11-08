@@ -66,6 +66,23 @@ le projet suit le versionnement sémantique.
 
 ### Modifié
 
+- `rang_referentiel_spatial` classe désormais chaque mois toutes les
+  localités couvertes : rang de 1 à 34 par moyenne mensuelle croissante du
+  GHI NASA POWER journalier, 2021-2025, au lieu de 1 à 6 parmi Kaloum,
+  Kankan, Kindia, Labé, Mamou et Nzérékoré. Le sens d'une valeur change (un
+  rang 6 n'est plus le maximum) : nouvelle version de formule 2,
+  `version_formule` vaut 2 dans `/v1/series`. Les 360 valeurs de la
+  version 1 sont closes et restent en base pour l'historique ; 2 040 valeurs
+  version 2, confiance B, dont 28 nouvelles séries
+  `<localité>_rang_referentiel_spatial_kuma_calculs_2021_2025`. Huit groupes
+  de localités (20 au total, par exemple Kindia, Mamou et Dalaba) lisent la
+  même cellule de la grille NASA POWER et ont des valeurs identiques : leurs
+  rangs sont consécutifs et leur ordre relatif arbitraire (ordre des codes de
+  localité). La description de la grandeur le dit et la note publique de
+  chacune des 20 séries concernées nomme ses jumelles ; les libellés des six
+  séries existantes emploient le nom de la localité (Kaloum, Labé,
+  Nzérékoré). Fonction
+  `calculer_et_inserer_rang_spatial` (migration 133).
 - `/v1/grandeurs` : le `niveau_confiance` des résultats suit la règle P. Les
   grandeurs paramétrables, `taux_salissure_proxy` et `pr_realiste` restent
   au plus B et passent en C pour les périodes dont une entrée est C ;
@@ -195,7 +212,7 @@ le projet suit le versionnement sémantique.
   `esmap_wapp` situe la station de Kankan à environ 2 km du point de la
   localité (2,14 km, et non « moins de 2 km »). Correction en place, sans
   nouvelle version (migration 132). Les textes de `rang_referentiel_spatial`
-  sont repris à part.
+  sont repris avec sa nouvelle version (migration 133).
 - API : codes internes (dettes « D-n », caveats « L-XXX-n », ADR, codes
   d'étape, convention de nommage « D-32 ») retirés du document OpenAPI
   (descriptions de routes, de schémas et de champs) et des avertissements

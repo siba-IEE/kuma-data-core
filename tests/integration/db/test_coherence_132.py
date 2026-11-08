@@ -8,8 +8,8 @@
 - ``ghi_exceedance``, dont la description annonce les 34 localités, répond
   pour chacune.
 
-Seule exception admise : les textes de ``rang_referentiel_spatial``, repris
-par la migration 133, qui retirera ``_EXCEPTIONS_RANG_SPATIAL``.
+Depuis la migration 133, les textes de ``rang_referentiel_spatial`` suivent les
+mêmes règles, sans exception.
 """
 
 from __future__ import annotations
@@ -27,26 +27,6 @@ from tests.integration.db.test_coherence_128 import _colonnes_texte
 pytestmark = pytest.mark.integration
 
 _PILOTE = re.compile(r"pilote", re.IGNORECASE)
-
-# A retirer par la migration 133, qui récrit ces textes.
-_EXCEPTIONS_RANG_SPATIAL: frozenset[tuple[str, str, str]] = frozenset(
-    {("grandeurs_referentiel", "description", "rang_referentiel_spatial")}
-    | {
-        (
-            "series_metadonnees",
-            "note_publique",
-            f"{alias}_rang_referentiel_spatial_kuma_calculs_2021_2025",
-        )
-        for alias in (
-            "gin_conakry",
-            "gin_kankan",
-            "gin_kindia",
-            "gin_labe",
-            "gin_mamou",
-            "gin_nzerekore",
-        )
-    }
-)
 
 
 def _cle(session: Session, table: str) -> str:
@@ -75,40 +55,18 @@ def test_aucun_texte_publie_ne_parle_de_pilote(db_session: Session, table: str) 
                 f'FROM "{table}" WHERE CAST("{colonne}" AS text) ~* \'pilote\''
             )
         ).all()
-        fautifs.extend(
-            (colonne, r.cle, r.v[:120])
-            for r in lignes
-            if _PILOTE.search(r.v) and (table, colonne, r.cle) not in _EXCEPTIONS_RANG_SPATIAL
-        )
+        fautifs.extend((colonne, r.cle, r.v[:120]) for r in lignes if _PILOTE.search(r.v))
     assert fautifs == []
 
 
-def test_exceptions_rang_spatial_toujours_utiles(db_session: Session) -> None:
-    """Chaque exception couvre encore un texte « pilote » ; la 133 les retirera."""
-    n_desc = db_session.execute(
-        text(
-            "SELECT count(*) FROM grandeurs_referentiel "
-            "WHERE code = 'rang_referentiel_spatial' AND description ~* 'pilote'"
-        )
-    ).scalar_one()
-    n_notes = db_session.execute(
-        text(
-            "SELECT count(*) FROM series_metadonnees "
-            "WHERE grandeur_code = 'rang_referentiel_spatial' AND note_publique ~* 'pilote'"
-        )
-    ).scalar_one()
-    assert n_desc + n_notes == len(_EXCEPTIONS_RANG_SPATIAL)
-
-
 def test_libelles_ecrivent_localites_nom(db_session: Session) -> None:
-    """Hors rang_referentiel_spatial, tout libellé porte le nom exact de sa localité."""
+    """Tout libellé porte le nom exact de sa localité."""
     rows = db_session.execute(
         text(
             """
             SELECT s.code, s.libelle, l.nom FROM series_metadonnees s
             JOIN localites l ON l.id = s.localite_id
-            WHERE s.grandeur_code <> 'rang_referentiel_spatial'
-              AND s.libelle !~ ('(^|[^[:alnum:]_-])' || l.nom || '($|[^[:alnum:]_-])')
+            WHERE s.libelle !~ ('(^|[^[:alnum:]_-])' || l.nom || '($|[^[:alnum:]_-])')
             ORDER BY s.code
             """
         )
@@ -121,8 +79,7 @@ def test_aucune_graphie_approchante(db_session: Session) -> None:
         text(
             """
             SELECT s.code, s.libelle FROM series_metadonnees s
-            WHERE s.grandeur_code <> 'rang_referentiel_spatial'
-              AND s.libelle ~ '(Conakry-Kaloum|Labe([^[:alnum:]_]|$)|Nzerekore([^[:alnum:]_]|$))'
+            WHERE s.libelle ~ '(Conakry-Kaloum|Labe([^[:alnum:]_]|$)|Nzerekore([^[:alnum:]_]|$))'
             ORDER BY s.code
             """
         )

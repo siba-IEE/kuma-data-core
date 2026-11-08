@@ -4,16 +4,20 @@
   POWER journalier agrégé au mois contre PVGIS-SARAH3 ICDR, sur 2021-2023.
 - ``rang_referentiel_temporel`` : percentile de la valeur 2021-2025 dans la
   climatologie NASA POWER 1991-2020 du même mois calendaire (n = 30).
-- ``rang_referentiel_spatial`` : rang 1-6 parmi les six villes pilotes, même mois.
+- ``rang_referentiel_spatial`` : rang 1-N parmi les N localités classées, même
+  mois. Version 1 : Kaloum, Kankan, Kindia, Labé, Mamou et Nzérékoré (orchestrateur combiné) ;
+  version 2 : toutes les localités couvertes (:func:`calculer_et_inserer_rang_spatial`).
 
 Confiance ``B`` partout : l'écart combine deux sources, le quantile mapping
 NASA POWER n'est validé publiquement que pour le rayonnement de grande
-longueur d'onde, et le rang spatial repose sur n = 6.
+longueur d'onde, et le rang spatial classe des données de modèle dont la grille
+donne des valeurs identiques à des localités voisines.
 """
 
 from __future__ import annotations
 
 from collections.abc import Sequence
+from datetime import datetime
 from typing import TypedDict
 
 from sqlalchemy import text
@@ -35,6 +39,7 @@ ANNEE_CLIMATO_DEBUT: int = 1991
 ANNEE_CLIMATO_FIN: int = 2020
 
 N_VILLES_KUMA: int = 6
+"""Taille du pool du rang spatial version 1, figée par :func:`calculer_et_inserer_referentiels`."""
 
 SEUIL_SARAH3_MIN_DEFAUT: float = 0.5
 """SARAH-3 mensuel minimal (kWh/m²/jour) pour calculer un écart relatif.
@@ -327,9 +332,9 @@ def _calcul_ecart_relatif_avec_seuil(
 
 
 def _decouvrir_contextes_villes_depuis_db(session: Session) -> list[ContexteVille]:
-    """Reconstruit depuis ``series_metadonnees`` les contextes des six villes pilotes.
+    """Contextes, lus dans ``series_metadonnees``, des localités GHI NASA POWER + SARAH-3.
 
-    ``RuntimeError`` si les six ne sont pas trouvés.
+    ``RuntimeError`` s'il n'y en a pas exactement ``N_VILLES_KUMA``.
     """
     rows = session.execute(
         text(
@@ -420,7 +425,7 @@ def recalculer_ecart_relatif_referentiel(
         sarah3_mens = _lire_mensuel(session, ctx["code_serie_sarah3"])
         serie_id = serie_id_par_loc.get(loc_id)
         if serie_id is None:
-            # Garde défensive : chaque ville pilote doit avoir sa série d'écart.
+            # Garde défensive : chaque localité doit avoir sa série d'écart.
             continue
 
         lignes: list[dict[str, object]] = []
@@ -544,9 +549,8 @@ def calculer_et_inserer_rang_temporel(
 ) -> int:
     """Rang temporel seul, sans écart ni rang spatial ; renvoie le nombre de lignes.
 
-    Passer par :func:`calculer_et_inserer_referentiels` recalculerait le rang
-    spatial sur un pool élargi et casserait le pool de six villes figé. Même
-    formule que l'orchestrateur.
+    Passer par :func:`calculer_et_inserer_referentiels` réinsérerait aussi un rang
+    spatial (version 1, pool de six localités). Même formule que l'orchestrateur.
     """
     nb_total = 0
     for ctx in contextes:
@@ -584,3 +588,131 @@ def calculer_et_inserer_rang_temporel(
 
     session.flush()
     return nb_total
+
+
+# === Rang spatial seul ====================================================
+
+
+class ContexteRangSpatial(TypedDict):
+    """Série GHI journalière d'une localité du pool et sa série de rang spatial."""
+
+    localite_id: int
+    code_serie_kuma_daily: str
+    series_metadonnees_id: int
+
+
+def _lignes_rang_spatial(
+    *,
+    kuma_par_localite: dict[int, dict[tuple[int, int], float]],
+    serie_id_par_localite: dict[int, int],
+    annee_debut: int,
+    annee_fin: int,
+    version_formule: int,
+    niveau_confiance: str,
+) -> tuple[list[dict[str, object]], list[tuple[int, int]]]:
+    """Lignes de rang 1-N par mois, et mois non classés faute d'une valeur pour chaque localité.
+
+    Ex-aequo départagés par l'ordre d'insertion de ``kuma_par_localite``
+    (:func:`_calcul_rang_spatial`).
+    """
+    lignes: list[dict[str, object]] = []
+    mois_non_classes: list[tuple[int, int]] = []
+    for annee in range(annee_debut, annee_fin + 1):
+        for mois in range(1, 13):
+            valeurs = {
+                loc_id: kuma_mens[(annee, mois)]
+                for loc_id, kuma_mens in kuma_par_localite.items()
+                if (annee, mois) in kuma_mens
+            }
+            if len(valeurs) != len(kuma_par_localite):
+                mois_non_classes.append((annee, mois))
+                continue
+            for loc_id, rang in _calcul_rang_spatial(valeurs).items():
+                lignes.append(
+                    {
+                        "grandeur_code": GRANDEUR_RANG_SPATIAL,
+                        "localite_id": loc_id,
+                        "series_metadonnees_id": serie_id_par_localite[loc_id],
+                        "periode_type": "mensuel",
+                        "annee_debut": annee,
+                        "annee_fin": annee,
+                        "mois": mois,
+                        "version_formule": version_formule,
+                        "valeur": float(rang),
+                        "niveau_confiance_derive": niveau_confiance,
+                    }
+                )
+    return lignes, mois_non_classes
+
+
+def calculer_et_inserer_rang_spatial(
+    *,
+    session: Session,
+    contextes: Sequence[ContexteRangSpatial],
+    version_formule: int,
+    annee_debut: int = ANNEE_KUMA_DEBUT,
+    annee_fin: int = ANNEE_KUMA_FIN,
+    niveau_confiance: str = NIVEAU_CONFIANCE_DERIVE_1_7B,
+    valide_du: datetime | None = None,
+) -> tuple[int, list[tuple[int, int]]]:
+    """Rang spatial sur le pool ``contextes`` (flush, sans commit).
+
+    Un mois n'est classé que si chaque localité du pool a une valeur. Les
+    ex-aequo sont départagés par l'ordre de ``contextes``. ``valide_du`` (défaut
+    ``now()``) date aussi ``cree_le`` et ``modifie_le``, pour enchaîner sur la
+    clôture d'une version antérieure au même instant. Renvoie
+    ``(nb_lignes_inserees, mois_non_classes)`` ; ``RuntimeError`` si
+    ``version_formule`` diffère du référentiel ou si une localité est en double.
+    """
+    version_actuelle = session.execute(
+        text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
+        {"code": GRANDEUR_RANG_SPATIAL},
+    ).scalar()
+    if version_actuelle is None:
+        raise RuntimeError(
+            f"Grandeur {GRANDEUR_RANG_SPATIAL!r} introuvable dans grandeurs_referentiel."
+        )
+    if version_formule != int(version_actuelle):
+        raise RuntimeError(
+            f"Desalignement version_formule : argument={version_formule}, "
+            f"version_formule_actuelle pour {GRANDEUR_RANG_SPATIAL!r}={int(version_actuelle)}."
+        )
+    if len({ctx["localite_id"] for ctx in contextes}) != len(contextes):
+        raise RuntimeError("Rang spatial : localite en double dans le pool.")
+
+    kuma_par_localite = {
+        ctx["localite_id"]: _lire_kuma_mensuel(session, ctx["code_serie_kuma_daily"])
+        for ctx in contextes
+    }
+    lignes, mois_non_classes = _lignes_rang_spatial(
+        kuma_par_localite=kuma_par_localite,
+        serie_id_par_localite={
+            ctx["localite_id"]: ctx["series_metadonnees_id"] for ctx in contextes
+        },
+        annee_debut=annee_debut,
+        annee_fin=annee_fin,
+        version_formule=version_formule,
+        niveau_confiance=niveau_confiance,
+    )
+    if lignes:
+        session.execute(
+            text(
+                """
+                INSERT INTO grandeurs_metier
+                    (grandeur_code, localite_id, series_metadonnees_id,
+                     periode_type, annee_debut, annee_fin, mois,
+                     version_formule, valeur, niveau_confiance_derive,
+                     valide_du, cree_le, modifie_le)
+                VALUES
+                    (:grandeur_code, :localite_id, :series_metadonnees_id,
+                     :periode_type, :annee_debut, :annee_fin, :mois,
+                     :version_formule, :valeur, :niveau_confiance_derive,
+                     COALESCE(CAST(:valide_du AS timestamptz), now()),
+                     COALESCE(CAST(:valide_du AS timestamptz), now()),
+                     COALESCE(CAST(:valide_du AS timestamptz), now()))
+                """
+            ),
+            [{**ligne, "valide_du": valide_du} for ligne in lignes],
+        )
+    session.flush()
+    return len(lignes), mois_non_classes

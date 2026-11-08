@@ -94,8 +94,8 @@ def test_description_ecart_referentiel_decrit_le_calcul_reel(db_session: Session
     assert "moyenne de cette grandeur" not in description
 
 
-def test_rang_spatial_parmi_six_villes_pilotes(db_session: Session) -> None:
-    """La description annonce un rang de 1 à 6 parmi six villes : vrai en base."""
+def test_rang_spatial_parmi_toutes_les_localites(db_session: Session) -> None:
+    """La description annonce un rang de 1 au nombre de localités classées : vrai en base."""
     row = db_session.execute(
         text(
             """
@@ -106,8 +106,9 @@ def test_rang_spatial_parmi_six_villes_pilotes(db_session: Session) -> None:
             """
         )
     ).one()
-    assert (row.n_loc, row.vmin, row.vmax) == (6, 1, 6)
-    assert "de 1 à 6" in _descriptions(db_session)["rang_referentiel_spatial"]
+    assert (row.n_loc, row.vmin, row.vmax) == (34, 1, 34)
+    description = _descriptions(db_session)["rang_referentiel_spatial"]
+    assert "de 1 au nombre de localités classées" in description
 
 
 def test_rang_referentiel_inactive_intacte(db_session: Session) -> None:

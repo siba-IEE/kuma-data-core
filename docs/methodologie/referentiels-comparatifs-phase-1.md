@@ -21,8 +21,9 @@ donnée dans la propre climatologie NASA POWER 1991-2020,
 préservant la cohérence intra-source via le quantile mapping interne
 POWER (Khadka et al. 2023, avec caveat documenté en limitation §5
 ligne 15 sur la validation publique limitée au longwave). (C)
-`rang_referentiel_spatial` mesure le rang ordinal 1-6 d'une localité
-parmi les 6 villes guinéennes au même mois. CAMS-Rad écarté
+`rang_referentiel_spatial` mesure le rang ordinal d'une localité parmi
+toutes les localités couvertes au même mois (1 à 34 depuis la version de
+formule 2 ; 1 à 6 parmi six villes en version 1). CAMS-Rad écarté
 avec cadre de référence quantitatif documenté pour une décision
 de basculement éventuel après validation sol Guinée. Global
 Solar Atlas conservé comme option utilisateur statique. NREL NSRDB et
@@ -69,7 +70,7 @@ hors zone, lu avec les caveats de §6.
 |---|---|---|
 | `ecart_relatif_referentiel` | **PVGIS-SARAH3 ICDR 2021-présent** | Validation empirique Sawadogo et al. 2023 (Burkina Faso/Ghana, 37 stations) + Kakou et al. 2025 (Côte d'Ivoire, 52 stations) ; cohérence architecturale ; reproductibilité opérationnelle figée |
 | `rang_referentiel` temporel | **NASA POWER 1991-2020** (rangement intra-source) | Sémantique propre : position de la donnée Kuma dans sa propre climatologie. Élimine biais inter-source CMSAF/CERES. Cohérence longitudinale assurée par quantile mapping interne POWER (Khadka et al. 2023) avec caveat GHI/LW documenté (cf. §5 ligne 15) |
-| `rang_referentiel` spatial | **NASA POWER intra-périmètre Kuma 2021-2025** | Cohérence interne, classement relatif intra-source 6 villes, limite n=6 documentée |
+| `rang_referentiel` spatial | **NASA POWER intra-périmètre Kuma 2021-2025** | Cohérence interne, classement relatif intra-source de toutes les localités couvertes (version 2 ; version 1 : 6 villes), ex-aequo des localités qui partagent une cellule de grille documentés |
 
 ### 2.2 Niveau de confiance sur les sources retenues
 
@@ -135,10 +136,11 @@ confiance :
 
 | Paramètre | Décision |
 |---|---|
-| Périmètre | Intra-Kuma 6 villes guinéennes (NASA POWER) |
-| Formule | Rang ordinal entier 1-6 |
+| Périmètre | Toutes les localités couvertes (NASA POWER), 34 en version 2 ; 6 villes en version 1 |
+| Formule | Rang ordinal entier 1-N par moyenne mensuelle croissante du GHI journalier ; un mois n'est classé que si toutes les localités ont une valeur |
+| Ex-aequo | Les localités qui lisent la même cellule NASA POWER ont des valeurs identiques : rangs consécutifs, départagés par l'ordre des codes de localité (8 groupes, 20 localités en version 2) |
 | Pas temporel | Mensuel |
-| Sortie attendue | 6 villes × 60 mois = **360 lignes** |
+| Sortie attendue | Version 2 : 34 localités × 60 mois = **2 040 lignes** (version 1 : 6 × 60 = 360, closes) |
 
 ### 3.4 Cohérence inter-grandeurs F1
 
@@ -147,7 +149,7 @@ référence par choix architectural :
 
 - `ecart_relatif_referentiel` : référentiel = SARAH-3 ICDR (source extérieure).
 - `rang_referentiel_temporel` : référentiel = NASA POWER 1991-2020 (cohérence intra-source).
-- `rang_referentiel_spatial` : référentiel = pool NASA POWER 6 villes 2021-2025 (cohérence intra-source intra-périmètre).
+- `rang_referentiel_spatial` : référentiel = pool NASA POWER de toutes les localités couvertes 2021-2025 (cohérence intra-source intra-périmètre).
 
 Cette asymétrie est intentionnelle. Elle reflète la sémantique distincte
 de chaque grandeur : la mesure d'une divergence inter-source pour

@@ -933,7 +933,7 @@ Calculées à partir des grandeurs brutes, persistées dans
 | `ecart_relatif_referentiel` | Écart relatif GHI NASA POWER vs SARAH-3 | % | `(NASA − SARAH-3) / SARAH-3 × 100`, par mois commun aux deux sources | GHI NASA POWER (moyenne mensuelle du journalier) + GHI SARAH-3 mensuel |
 | `ecart_relatif_dni_cams` | Écart relatif DNI NASA POWER vs CAMS | % | `(NASA − CAMS) / CAMS × 100`, par mois commun aux deux sources | DNI NASA POWER et CAMS (moyennes mensuelles) |
 | `rang_referentiel_temporel` | Rang dans la climatologie 1991-2020 | sans dimension | Percentile (0-100) d'une valeur mensuelle dans la distribution 1991-2020 du même mois calendaire | GHI NASA POWER |
-| `rang_referentiel_spatial` | Rang parmi les 6 villes pilotes | sans dimension | Rang ordinal croissant (1 à 6) parmi les 6 villes pilotes pour le même mois | GHI NASA POWER |
+| `rang_referentiel_spatial` | Rang parmi les localités couvertes | sans dimension | Rang ordinal croissant (1 au nombre de localités classées, 34) parmi toutes les localités couvertes pour le même mois ; les localités d'une même cellule NASA POWER, à valeurs identiques, reçoivent des rangs consécutifs dans un ordre arbitraire | GHI NASA POWER (moyenne mensuelle du journalier) |
 
 ### 4.3 Grandeurs F1 calculées à la volée
 

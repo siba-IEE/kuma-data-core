@@ -1,14 +1,19 @@
-"""Tests unitaires des fonctions pures de ``services.grandeurs.referentiels``."""
+"""Tests unitaires de ``services.grandeurs.referentiels``."""
 
 from __future__ import annotations
+
+from unittest.mock import MagicMock
 
 import pytest
 
 from kuma_data_core.services.grandeurs.referentiels import (
+    ContexteRangSpatial,
     _agreger_mensuel,
     _calcul_ecart_relatif,
     _calcul_rang_spatial,
     _calcul_rang_temporel,
+    _lignes_rang_spatial,
+    calculer_et_inserer_rang_spatial,
 )
 
 pytestmark = pytest.mark.unit
@@ -95,3 +100,49 @@ def test_t7_calcul_rang_spatial_6_villes() -> None:
     # Dict vide rejete
     with pytest.raises(ValueError, match="Aucune valeur"):
         _calcul_rang_spatial({})
+
+
+def test_t8_lignes_rang_spatial_mois_incomplet_non_classe() -> None:
+    """Un mois sans valeur pour une localité du pool n'est classé pour aucune."""
+    kuma = {
+        10: {(2021, 1): 5.0, (2021, 2): 6.0},
+        20: {(2021, 1): 4.0},
+        30: {(2021, 1): 5.0, (2021, 2): 3.0},
+    }
+    lignes, non_classes = _lignes_rang_spatial(
+        kuma_par_localite=kuma,
+        serie_id_par_localite={10: 1, 20: 2, 30: 3},
+        annee_debut=2021,
+        annee_fin=2021,
+        version_formule=2,
+        niveau_confiance="B",
+    )
+    assert non_classes == [(2021, m) for m in range(2, 13)]
+    rangs = {(lig["localite_id"], lig["mois"]): lig["valeur"] for lig in lignes}
+    # Ex-aequo 10 et 30 : départagés par l'ordre d'entrée.
+    assert rangs == {(20, 1): 1.0, (10, 1): 2.0, (30, 1): 3.0}
+    assert {lig["version_formule"] for lig in lignes} == {2}
+    assert {lig["series_metadonnees_id"] for lig in lignes} == {1, 2, 3}
+
+
+def test_t9_rang_spatial_version_formule_desalignee() -> None:
+    session = MagicMock()
+    session.execute.return_value.scalar.return_value = 1
+    with pytest.raises(RuntimeError, match="Desalignement version_formule"):
+        calculer_et_inserer_rang_spatial(session=session, contextes=[], version_formule=2)
+
+
+def test_t10_rang_spatial_localite_en_double() -> None:
+    session = MagicMock()
+    session.execute.return_value.scalar.return_value = 2
+    ctx: ContexteRangSpatial = {
+        "localite_id": 1,
+        "code_serie_kuma_daily": "a",
+        "series_metadonnees_id": 9,
+    }
+    with pytest.raises(RuntimeError, match="localite en double"):
+        calculer_et_inserer_rang_spatial(
+            session=session,
+            contextes=[ctx, ctx],
+            version_formule=2,
+        )
