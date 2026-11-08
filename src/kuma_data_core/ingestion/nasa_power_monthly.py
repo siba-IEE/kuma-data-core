@@ -9,21 +9,22 @@ stable et les décomptes déterministes.
 
 from __future__ import annotations
 
-import os
 from collections.abc import Sequence
 from typing import Any
 
 import httpx
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from kuma_data_core.editorial.niveaux_confiance import (
-    calculer_niveau_confiance_derive,
-)
 from kuma_data_core.external.nasa_power import (
     SENTINELLE_VALEUR_MANQUANTE,
     fetch_monthly_raw,
     parser_reponse_nasa,
+)
+from kuma_data_core.ingestion._commun import (
+    contexte_serie,
+    doit_etre_skip,
+    ecart_relatif_max_parametres,
+    inserer_mesures,
 )
 from kuma_data_core.ingestion._mode import est_mode_offline
 
@@ -33,8 +34,7 @@ _VARIABLE_ENV_SKIP_INGESTION: str = "KUMA_SKIP_NASA_POWER_INGESTION"
 
 def _ingestion_doit_etre_skip() -> bool:
     """Vrai si ``KUMA_SKIP_NASA_POWER_INGESTION`` est truthy."""
-    valeur = os.environ.get(_VARIABLE_ENV_SKIP_INGESTION, "").strip().lower()
-    return valeur in ("1", "true", "yes")
+    return doit_etre_skip(_VARIABLE_ENV_SKIP_INGESTION)
 
 
 def _parse_cle_yyyymm(cle: str) -> tuple[int, int] | None:
@@ -152,19 +152,7 @@ def ecart_relatif_max_nasa_monthly(
     La climatologie ne mûrit pas : tout écart signale un retraitement NASA POWER,
     donc un seed à refaire. Paires sentinelles ignorées.
     """
-    seed_params = payload_seed["properties"]["parameter"]
-    live_params = payload_live["properties"]["parameter"]
-    ecart_max = 0.0
-    for nom, seed_vals in seed_params.items():
-        live_vals = live_params.get(nom, {})
-        for cle, v_seed in seed_vals.items():
-            v_live = live_vals.get(cle)
-            if v_live is None:
-                continue
-            if v_seed == SENTINELLE_VALEUR_MANQUANTE or v_live == SENTINELLE_VALEUR_MANQUANTE:
-                continue
-            ecart_max = max(ecart_max, abs(v_live - v_seed) / max(abs(v_seed), 1e-9))
-    return ecart_max
+    return ecart_relatif_max_parametres(payload_live, payload_seed)
 
 
 def ingerer_serie_monthly(
@@ -187,34 +175,12 @@ def ingerer_serie_monthly(
     if _ingestion_doit_etre_skip():
         return 0
 
-    row = session.execute(
-        text(
-            """
-            SELECT
-                sm.id AS serie_id,
-                sm.methode_collecte,
-                s.fiabilite AS fiabilite_source
-            FROM series_metadonnees sm
-            JOIN sources s ON s.id = sm.source_id
-            WHERE sm.code = :code
-            """
-        ),
-        {"code": code_serie},
-    ).first()
-    if row is None:
+    contexte = contexte_serie(session, code_serie)
+    if contexte is None:
         raise RuntimeError(
             f"Serie {code_serie!r} introuvable dans series_metadonnees. "
             f"Verifier que la migration de seed correspondante a bien ete appliquee."
         )
-
-    serie_id: int = int(row.serie_id)
-    methode_collecte: str | None = row.methode_collecte
-    fiabilite_source: str | None = row.fiabilite_source
-
-    niveau_derive = calculer_niveau_confiance_derive(
-        methode_collecte=methode_collecte,
-        fiabilite_source=fiabilite_source,
-    )
 
     payload = _fetch_nasa_monthly_raw(
         latitude=latitude,
@@ -244,27 +210,17 @@ def ingerer_serie_monthly(
         annee, mois = annee_mois
         lignes_a_inserer.append(
             {
-                "serie_id": serie_id,
+                "serie_id": contexte.serie_id,
                 "annee": annee,
                 "mois": mois,
                 "valeur": float(valeur),
-                "niveau_confiance_derive": niveau_derive,
+                "niveau_confiance_derive": contexte.niveau_derive,
             }
         )
 
     if not lignes_a_inserer:
         return 0
 
-    session.execute(
-        text(
-            """
-            INSERT INTO mesures_ressource_mensuelles
-                (serie_id, annee, mois, valeur, niveau_confiance_derive)
-            VALUES
-                (:serie_id, :annee, :mois, :valeur, :niveau_confiance_derive)
-            """
-        ),
-        lignes_a_inserer,
-    )
+    inserer_mesures(session, "mesures_ressource_mensuelles", lignes_a_inserer)
     session.flush()
     return len(lignes_a_inserer)

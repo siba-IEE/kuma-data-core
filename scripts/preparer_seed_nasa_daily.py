@@ -31,9 +31,9 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-from kuma_data_core.db.seeds.localites_prefectures_seed_data import PREFECTURES_GUINEE
 from kuma_data_core.db.seeds.localites_seed_data import LOCALITES_SEED
 from kuma_data_core.external.nasa_power import fetch_daily_raw
+from kuma_data_core.ingestion._canari import coordonnees_points
 from kuma_data_core.ingestion.nasa_power_daily import _cle_ville_offline
 
 # === Périmètre (union des migrations daily 018/020/022/029/048) ============
@@ -47,13 +47,9 @@ LOCALITES_DAILY: tuple[str, ...] = (
     "gin_nzerekore",
 )
 
-# Densification : les 28 nouvelles communes chef-lieu (les 33 prefectures moins
-# les 5 capitales regionales deja ingerees). Coordonnees lues du seed chef-lieu.
-# Les 6 pilotes ci-dessus gardent leur snapshot mûri (zero re-pull) via le
-# skip-if-exists de main().
-LOCALITES_DAILY_DENSIFICATION: tuple[str, ...] = tuple(
-    p["commune_code"] for p in PREFECTURES_GUINEE if p["existante"] is None
-)
+# Densification : les 28 communes de COMMUNES_DENSIFICATION (les 33 prefectures
+# moins les 5 capitales regionales deja ingerees). Les 6 pilotes ci-dessus gardent
+# leur snapshot mûri (zero re-pull) via le skip-if-exists de main().
 
 # Union des paramètres NASA POWER ingérés en daily (code NASA -> grandeur Kuma).
 # Capturés en un seul appel multi-paramètres par ville (NASA autorise 20 max).
@@ -112,12 +108,8 @@ def coordonnees_pilotes() -> dict[str, tuple[float, float]]:
 
 
 def coordonnees_densification() -> dict[str, tuple[float, float]]:
-    """Coordonnées (lat, lon) des 28 nouvelles communes, depuis le référentiel des communes."""
-    return {
-        p["commune_code"]: (float(p["lat"]), float(p["lon"]))
-        for p in PREFECTURES_GUINEE
-        if p["existante"] is None
-    }
+    """Coordonnées (lat, lon) des 28 nouvelles communes, mêmes points que le canari."""
+    return coordonnees_points(())
 
 
 def coordonnees_cibles() -> dict[str, tuple[float, float]]:

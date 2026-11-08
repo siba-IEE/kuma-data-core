@@ -517,6 +517,9 @@ NOUVELLES_COMMUNES: list[dict[str, Any]] = [
     if p["existante"] is None
 ]
 
+# Codes des 28 communes chef-lieu ajoutées, points d'ingestion en plus des pilotes.
+COMMUNES_DENSIFICATION: tuple[str, ...] = tuple(c["code"] for c in NOUVELLES_COMMUNES)
+
 
 # Re-parentage des 5 communes capitales régionales existantes (région -> préfecture).
 REPARENTAGES: list[dict[str, str]] = [

@@ -23,8 +23,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from kuma_data_core.db.seeds.localites_prefectures_seed_data import PREFECTURES_GUINEE
 from kuma_data_core.db.seeds.localites_seed_data import LOCALITES_SEED
+from kuma_data_core.ingestion._canari import coordonnees_points
 from kuma_data_core.ingestion.sarah3_monthly import (
     _cle_payload_offline,
     _fetch_sarah3_monthly_raw,
@@ -40,11 +40,8 @@ LOCALITES_1_7A: tuple[str, ...] = (
     "gin_mamou",
     "gin_nzerekore",
 )
-# Densification : les 28 nouvelles communes chef-lieu. Les 6 pilotes sont charges
-# du seed existant (ICDR fige, zero re-fetch).
-LOCALITES_DENSIFICATION: tuple[str, ...] = tuple(
-    p["commune_code"] for p in PREFECTURES_GUINEE if p["existante"] is None
-)
+# Densification : les 28 communes de COMMUNES_DENSIFICATION. Les 6 pilotes sont
+# charges du seed existant (ICDR fige, zero re-fetch).
 ANNEE_DEBUT, ANNEE_FIN = 2021, 2023
 
 CHEMIN_SEED = Path("src/kuma_data_core/db/seeds/sarah3_monthly_seed_data.py")
@@ -83,12 +80,8 @@ def coordonnees_pilotes() -> dict[str, tuple[float, float]]:
 
 
 def coordonnees_densification() -> dict[str, tuple[float, float]]:
-    """Coordonnées (lat, lon) des 28 nouvelles communes, depuis le référentiel des communes."""
-    return {
-        p["commune_code"]: (float(p["lat"]), float(p["lon"]))
-        for p in PREFECTURES_GUINEE
-        if p["existante"] is None
-    }
+    """Coordonnées (lat, lon) des 28 nouvelles communes, mêmes points que le canari."""
+    return coordonnees_points(())
 
 
 def emettre_seed(payloads: dict[str, Any]) -> None:

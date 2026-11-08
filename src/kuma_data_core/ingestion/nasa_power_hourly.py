@@ -8,20 +8,21 @@ le réseau.
 
 from __future__ import annotations
 
-import os
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from datetime import UTC, date, datetime
 
 import httpx
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from kuma_data_core.editorial.niveaux_confiance import (
-    calculer_niveau_confiance_derive,
-)
 from kuma_data_core.external.nasa_power import (
     SENTINELLE_VALEUR_MANQUANTE,
     fetch_hourly,
+)
+from kuma_data_core.ingestion._commun import (
+    contexte_serie,
+    contexte_series_groupe,
+    doit_etre_skip,
+    inserer_mesures,
 )
 
 _VARIABLE_ENV_SKIP_INGESTION: str = "KUMA_SKIP_NASA_POWER_INGESTION"
@@ -30,8 +31,7 @@ _VARIABLE_ENV_SKIP_INGESTION: str = "KUMA_SKIP_NASA_POWER_INGESTION"
 
 def _ingestion_doit_etre_skip() -> bool:
     """Vrai si ``KUMA_SKIP_NASA_POWER_INGESTION`` est truthy."""
-    valeur = os.environ.get(_VARIABLE_ENV_SKIP_INGESTION, "").strip().lower()
-    return valeur in ("1", "true", "yes")
+    return doit_etre_skip(_VARIABLE_ENV_SKIP_INGESTION)
 
 
 def _parse_cle_yyyymmddhh(cle: str) -> datetime | None:
@@ -45,6 +45,24 @@ def _parse_cle_yyyymmddhh(cle: str) -> datetime | None:
     if not (1 <= mois <= 12 and 1 <= jour <= 31 and 0 <= heure <= 23):
         return None
     return datetime(annee, mois, jour, heure, tzinfo=UTC)
+
+
+def _lignes_mesures(
+    valeurs_par_cle: dict[str, float], serie_id: int, niveau_derive: str
+) -> Iterator[dict[str, object]]:
+    """Lignes d'une série pour une année ; clés non conformes et sentinelles écartées."""
+    for cle, valeur in valeurs_par_cle.items():
+        instant = _parse_cle_yyyymmddhh(cle)
+        if instant is None:
+            continue
+        if valeur == SENTINELLE_VALEUR_MANQUANTE:
+            continue
+        yield {
+            "serie_id": serie_id,
+            "instant_mesure": instant,
+            "valeur": float(valeur),
+            "niveau_confiance_derive": niveau_derive,
+        }
 
 
 def ingerer_serie_horaire(
@@ -67,31 +85,12 @@ def ingerer_serie_horaire(
     if _ingestion_doit_etre_skip():
         return 0
 
-    row = session.execute(
-        text(
-            """
-            SELECT
-                sm.id AS serie_id,
-                sm.methode_collecte,
-                s.fiabilite AS fiabilite_source
-            FROM series_metadonnees sm
-            JOIN sources s ON s.id = sm.source_id
-            WHERE sm.code = :code
-            """
-        ),
-        {"code": code_serie},
-    ).first()
-    if row is None:
+    contexte = contexte_serie(session, code_serie)
+    if contexte is None:
         raise RuntimeError(
             f"Serie {code_serie!r} introuvable dans series_metadonnees. "
             f"Verifier que la migration de seed correspondante a bien ete appliquee."
         )
-
-    serie_id: int = int(row.serie_id)
-    niveau_derive = calculer_niveau_confiance_derive(
-        methode_collecte=row.methode_collecte,
-        fiabilite_source=row.fiabilite_source,
-    )
 
     lignes_a_inserer: list[dict[str, object]] = []
     for annee in range(annee_debut, annee_fin + 1):
@@ -110,35 +109,18 @@ def ingerer_serie_horaire(
                 f"(annee {annee}). Parametres disponibles : "
                 f"{list(response.properties.parameter)}"
             )
-        for cle, valeur in response.properties.parameter[parametre_nasa].items():
-            instant = _parse_cle_yyyymmddhh(cle)
-            if instant is None:
-                continue
-            if valeur == SENTINELLE_VALEUR_MANQUANTE:
-                continue
-            lignes_a_inserer.append(
-                {
-                    "serie_id": serie_id,
-                    "instant_mesure": instant,
-                    "valeur": float(valeur),
-                    "niveau_confiance_derive": niveau_derive,
-                }
+        lignes_a_inserer.extend(
+            _lignes_mesures(
+                response.properties.parameter[parametre_nasa],
+                contexte.serie_id,
+                contexte.niveau_derive,
             )
+        )
 
     if not lignes_a_inserer:
         return 0
 
-    session.execute(
-        text(
-            """
-            INSERT INTO mesures_ressource_horaires
-                (serie_id, instant_mesure, valeur, niveau_confiance_derive)
-            VALUES
-                (:serie_id, :instant_mesure, :valeur, :niveau_confiance_derive)
-            """
-        ),
-        lignes_a_inserer,
-    )
+    inserer_mesures(session, "mesures_ressource_horaires", lignes_a_inserer)
     session.flush()
     return len(lignes_a_inserer)
 
@@ -170,70 +152,25 @@ def ingerer_series_horaires_groupe(
     if not codes_series:
         return {}
 
-    rows = session.execute(
-        text(
-            """
-            SELECT
-                sm.id AS serie_id,
-                sm.code AS code_serie,
-                sm.grandeur_code,
-                sm.methode_collecte,
-                s.fiabilite AS fiabilite_source
-            FROM series_metadonnees sm
-            JOIN sources s ON s.id = sm.source_id
-            WHERE sm.code = ANY(:codes)
-            """
-        ),
-        {"codes": list(codes_series)},
-    ).all()
-    if len(rows) != len(codes_series):
-        codes_trouves = {r.code_serie for r in rows}
-        codes_manquants = set(codes_series) - codes_trouves
-        raise RuntimeError(
-            f"Séries introuvables dans series_metadonnees : {sorted(codes_manquants)}. "
-            f"Vérifier le seed de la migration appelante."
-        )
-    grandeurs_manquantes = {r.grandeur_code for r in rows} - set(mapping_grandeur_parametre_nasa)
-    if grandeurs_manquantes:
-        raise RuntimeError(
-            f"Grandeurs sans paramètre NASA POWER mappé : {sorted(grandeurs_manquantes)}. "
-            f"Vérifier mapping_grandeur_parametre_nasa."
-        )
-
-    contexte_par_grandeur: dict[str, dict[str, object]] = {}
-    for row in rows:
-        niveau_derive = calculer_niveau_confiance_derive(
-            methode_collecte=row.methode_collecte,
-            fiabilite_source=row.fiabilite_source,
-        )
-        contexte_par_grandeur[row.grandeur_code] = {
-            "serie_id": int(row.serie_id),
-            "code_serie": str(row.code_serie),
-            "niveau_derive": niveau_derive,
-        }
+    contexte_par_grandeur = contexte_series_groupe(
+        session,
+        codes_series,
+        mapping_grandeur_parametre_nasa,
+        verification_seed="Vérifier le seed de la migration appelante.",
+    )
 
     parametres_demandes = sorted(
         {mapping_grandeur_parametre_nasa[g] for g in contexte_par_grandeur}
     )
     decompte_par_serie: dict[str, int] = {
-        str(ctx["code_serie"]): 0 for ctx in contexte_par_grandeur.values()
+        ctx.code_serie: 0 for ctx in contexte_par_grandeur.values()
     }
     tampon: list[dict[str, object]] = []
 
     def _vider_tampon() -> None:
         if not tampon:
             return
-        session.execute(
-            text(
-                """
-                INSERT INTO mesures_ressource_horaires
-                    (serie_id, instant_mesure, valeur, niveau_confiance_derive)
-                VALUES
-                    (:serie_id, :instant_mesure, :valeur, :niveau_confiance_derive)
-                """
-            ),
-            tampon,
-        )
+        inserer_mesures(session, "mesures_ressource_horaires", tampon)
         tampon.clear()
 
     for annee in range(annee_debut, annee_fin + 1):
@@ -254,22 +191,11 @@ def ingerer_series_horaires_groupe(
                     f"payload NASA POWER hourly (annee {annee}). Parametres disponibles : "
                     f"{list(response.properties.parameter)}"
                 )
-            code_serie = str(ctx["code_serie"])
-            for cle, valeur in response.properties.parameter[parametre_nasa].items():
-                instant = _parse_cle_yyyymmddhh(cle)
-                if instant is None:
-                    continue
-                if valeur == SENTINELLE_VALEUR_MANQUANTE:
-                    continue
-                tampon.append(
-                    {
-                        "serie_id": ctx["serie_id"],
-                        "instant_mesure": instant,
-                        "valeur": float(valeur),
-                        "niveau_confiance_derive": ctx["niveau_derive"],
-                    }
-                )
-                decompte_par_serie[code_serie] += 1
+            for ligne in _lignes_mesures(
+                response.properties.parameter[parametre_nasa], ctx.serie_id, ctx.niveau_derive
+            ):
+                tampon.append(ligne)
+                decompte_par_serie[ctx.code_serie] += 1
                 if len(tampon) >= _TAILLE_LOT_INSERT:
                     _vider_tampon()
 

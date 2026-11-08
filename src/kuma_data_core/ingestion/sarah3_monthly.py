@@ -12,16 +12,11 @@ committé ; parsing et insertion inchangés.
 from __future__ import annotations
 
 import calendar
-import os
 from typing import Any, cast
 
 import httpx
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from kuma_data_core.editorial.niveaux_confiance import (
-    calculer_niveau_confiance_derive,
-)
 from kuma_data_core.exceptions import (
     PvgisHttpError,
     PvgisRateLimitError,
@@ -32,6 +27,12 @@ from kuma_data_core.external._http_retry import (
     HttpRetryRateLimitError,
     HttpRetryTimeoutError,
     executer_get_avec_retry,
+)
+from kuma_data_core.ingestion._commun import (
+    contexte_serie,
+    doit_etre_skip,
+    ecart_relatif,
+    inserer_mesures,
 )
 from kuma_data_core.ingestion._mode import est_mode_offline
 
@@ -49,8 +50,7 @@ _VARIABLE_ENV_SKIP_INGESTION: str = "KUMA_SKIP_SARAH3_INGESTION"
 
 def _ingestion_doit_etre_skip() -> bool:
     """Vrai si ``KUMA_SKIP_SARAH3_INGESTION`` est truthy."""
-    valeur = os.environ.get(_VARIABLE_ENV_SKIP_INGESTION, "").strip().lower()
-    return valeur in ("1", "true", "yes")
+    return doit_etre_skip(_VARIABLE_ENV_SKIP_INGESTION)
 
 
 # === Chemin offline-seed ==================================================
@@ -103,7 +103,7 @@ def ecart_relatif_max_sarah3(payload_a: dict[str, Any], payload_b: dict[str, Any
         a, b = val_a.get(cle), val_b.get(cle)
         if a is None or b is None:
             return float("inf")
-        ecart_max = max(ecart_max, abs(a - b) / max(abs(b), 1e-9))
+        ecart_max = max(ecart_max, ecart_relatif(a, b))
     return ecart_max
 
 
@@ -238,34 +238,12 @@ def ingerer_serie_sarah3_monthly(
     if _ingestion_doit_etre_skip():
         return 0
 
-    row = session.execute(
-        text(
-            """
-            SELECT
-                sm.id AS serie_id,
-                sm.methode_collecte,
-                s.fiabilite AS fiabilite_source
-            FROM series_metadonnees sm
-            JOIN sources s ON s.id = sm.source_id
-            WHERE sm.code = :code
-            """
-        ),
-        {"code": code_serie},
-    ).first()
-    if row is None:
+    contexte = contexte_serie(session, code_serie)
+    if contexte is None:
         raise RuntimeError(
             f"Serie {code_serie!r} introuvable dans series_metadonnees. "
             f"Verifier que la migration de seed 1-7a a bien ete appliquee."
         )
-
-    serie_id: int = int(row.serie_id)
-    methode_collecte: str | None = row.methode_collecte
-    fiabilite_source: str | None = row.fiabilite_source
-
-    niveau_derive = calculer_niveau_confiance_derive(
-        methode_collecte=methode_collecte,
-        fiabilite_source=fiabilite_source,
-    )
 
     payload = _fetch_sarah3_monthly_raw(
         latitude=latitude,
@@ -282,25 +260,15 @@ def ingerer_serie_sarah3_monthly(
 
     lignes_a_inserer: list[dict[str, object]] = [
         {
-            "serie_id": serie_id,
+            "serie_id": contexte.serie_id,
             "annee": annee,
             "mois": mois,
             "valeur": valeur,
-            "niveau_confiance_derive": niveau_derive,
+            "niveau_confiance_derive": contexte.niveau_derive,
         }
         for annee, mois, valeur in valeurs_mensuelles
     ]
 
-    session.execute(
-        text(
-            """
-            INSERT INTO mesures_ressource_mensuelles
-                (serie_id, annee, mois, valeur, niveau_confiance_derive)
-            VALUES
-                (:serie_id, :annee, :mois, :valeur, :niveau_confiance_derive)
-            """
-        ),
-        lignes_a_inserer,
-    )
+    inserer_mesures(session, "mesures_ressource_mensuelles", lignes_a_inserer)
     session.flush()
     return len(lignes_a_inserer)

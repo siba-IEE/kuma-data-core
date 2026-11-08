@@ -32,9 +32,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from kuma_data_core.db.seeds.localites_prefectures_seed_data import PREFECTURES_GUINEE
 from kuma_data_core.db.seeds.localites_seed_data import LOCALITES_SEED
 from kuma_data_core.external.nasa_power import fetch_monthly_raw
+from kuma_data_core.ingestion._canari import coordonnees_points
 from kuma_data_core.ingestion.nasa_power_monthly import _cle_ville_offline
 
 # === Périmètre : 34 points = 6 pilotes (migration 050) + 28 communes ========
@@ -46,9 +46,6 @@ LOCALITES_PILOTES: tuple[str, ...] = (
     "gin_labe",
     "gin_mamou",
     "gin_nzerekore",
-)
-LOCALITES_DENSIFICATION: tuple[str, ...] = tuple(
-    p["commune_code"] for p in PREFECTURES_GUINEE if p["existante"] is None
 )
 
 # Union des 9 paramètres monthly (code NASA -> grandeur Kuma), fenêtre pleine.
@@ -103,9 +100,7 @@ def coordonnees_tous_points() -> dict[str, tuple[float, float]]:
         if code not in index:
             raise RuntimeError(f"Pilote absent de LOCALITES_SEED : {code}")
         coords[code] = (float(index[code]["latitude"]), float(index[code]["longitude"]))
-    for p in PREFECTURES_GUINEE:
-        if p["existante"] is None:
-            coords[p["commune_code"]] = (float(p["lat"]), float(p["lon"]))
+    coords.update(coordonnees_points(()))
     return coords
 
 

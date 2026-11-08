@@ -26,8 +26,6 @@ from datetime import date
 
 import httpx
 
-from kuma_data_core.db.seeds.localites_prefectures_seed_data import PREFECTURES_GUINEE
-from kuma_data_core.db.seeds.localites_seed_data import LOCALITES_SEED
 from kuma_data_core.db.seeds.nasa_power_daily_seed_data import NASA_DAILY_PAYLOADS
 from kuma_data_core.exceptions import (
     NasaPowerHttpError,
@@ -35,7 +33,8 @@ from kuma_data_core.exceptions import (
     NasaPowerTimeoutError,
 )
 from kuma_data_core.external.nasa_power import fetch_daily_raw
-from kuma_data_core.ingestion._mode import MODE_OFFLINE, mode_ingestion
+from kuma_data_core.ingestion._canari import ERREURS_RESEAU, MessagesCanari
+from kuma_data_core.ingestion._canari import executer_canari as _executer_canari
 from kuma_data_core.ingestion.nasa_power_daily import (
     _cle_ville_offline,
     ecart_relatif_max_nasa_daily,
@@ -49,11 +48,7 @@ LOCALITES_DAILY: tuple[str, ...] = (
     "gin_mamou",
     "gin_nzerekore",
 )
-# Densification : les 28 nouvelles communes chef-lieu, seedees
-# offline en plus des 6 pilotes. Le canari surveille desormais les 34 points.
-LOCALITES_DAILY_DENSIFICATION: tuple[str, ...] = tuple(
-    p["commune_code"] for p in PREFECTURES_GUINEE if p["existante"] is None
-)
+# Le canari surveille aussi les 28 communes densifiees (COMMUNES_DENSIFICATION).
 PARAMETRES_NASA_DAILY: tuple[str, ...] = (
     "ALLSKY_SFC_SW_DWN",
     "ALLSKY_SFC_SW_DNI",
@@ -81,79 +76,46 @@ _ERREURS_FETCH: tuple[type[Exception], ...] = (
     NasaPowerTimeoutError,
     NasaPowerHttpError,
     NasaPowerRateLimitError,
-    httpx.HTTPError,
-    RuntimeError,
+    *ERREURS_RESEAU,
 )
 
-
-def _coordonnees_tous_points() -> dict[str, tuple[float, float]]:
-    """Coordonnees (lat, lon) des 34 points surveilles.
-
-    6 pilotes (``LOCALITES_SEED``) + 28 nouvelles communes (seed
-    densification). Memes coordonnees que les cles offline du seed daily.
-    """
-    index = {e["code"]: e for e in LOCALITES_SEED}
-    coords: dict[str, tuple[float, float]] = {
-        c: (float(index[c]["latitude"]), float(index[c]["longitude"])) for c in LOCALITES_DAILY
-    }
-    for p in PREFECTURES_GUINEE:
-        if p["existante"] is None:
-            coords[p["commune_code"]] = (float(p["lat"]), float(p["lon"]))
-    return coords
+_MESSAGES = MessagesCanari(
+    blip="::warning::Canari NASA {code}: fetch indisponible ({erreur}) - blip reseau, ignore.",
+    point="  {code}: ecart_max_stable={ecart:.2e} [{statut}]",
+    derive=(
+        "::error::Derive NASA daily reelle (seuil {seuil}, fenetre <= {fenetre}): {derives}. "
+        "Reprocessing / version POWER probable -> re-seed "
+        "(scripts/preparer_seed_nasa_daily.py)."
+    ),
+    incomplet=(
+        "::warning::Canari NASA incomplet : {nb_blips} ville(s) injoignable(s) {blips} "
+        "(blip reseau). Aucune derive sur les joignables -> nightly verte."
+    ),
+    ok=(
+        "Canari NASA daily OK : ecart_max_global={ecart_global:.2e} <= {seuil} "
+        "(fenetre stable <= {fenetre})"
+    ),
+)
 
 
 def executer_canari(*, httpx_client: httpx.Client | None = None) -> int:
     """Exécute le canari NASA daily. Retourne le code de sortie (0 OK/blip, 1 dérive)."""
-    if mode_ingestion() == MODE_OFFLINE:
-        raise RuntimeError(
-            "Le canari requiert KUMA_INGESTION_MODE=live (compare le fetch reel au seed)."
-        )
-
-    derives: list[tuple[str, float]] = []
-    blips: list[str] = []
-    ecart_global = 0.0
-
-    for code, (lat, lon) in _coordonnees_tous_points().items():
-        try:
-            live = fetch_daily_raw(
-                latitude=lat,
-                longitude=lon,
-                parameters=list(PARAMETRES_NASA_DAILY),
-                start=date(ANNEE_DEBUT, 1, 1),
-                end=date(ANNEE_FIN, 12, 31),
-                httpx_client=httpx_client,
-            )
-        except _ERREURS_FETCH as exc:
-            print(
-                f"::warning::Canari NASA {code}: fetch indisponible "
-                f"({type(exc).__name__}) - blip reseau, ignore."
-            )
-            blips.append(code)
-            continue
-
-        seed = NASA_DAILY_PAYLOADS[_cle_ville_offline(lat, lon)]
-        ecart = ecart_relatif_max_nasa_daily(live, seed, derniere_date_stable=DERNIERE_DATE_STABLE)
-        ecart_global = max(ecart_global, ecart)
-        statut = "DERIVE" if ecart > SEUIL_DERIVE else "OK"
-        if ecart > SEUIL_DERIVE:
-            derives.append((code, ecart))
-        print(f"  {code}: ecart_max_stable={ecart:.2e} [{statut}]")
-
-    if derives:
-        print(
-            f"::error::Derive NASA daily reelle (seuil {SEUIL_DERIVE}, fenetre "
-            f"<= {DERNIERE_DATE_STABLE}): {derives}. Reprocessing / version POWER "
-            f"probable -> re-seed (scripts/preparer_seed_nasa_daily.py)."
-        )
-        return 1
-    if blips:
-        print(
-            f"::warning::Canari NASA incomplet : {len(blips)} ville(s) injoignable(s) "
-            f"{blips} (blip reseau). Aucune derive sur les joignables -> nightly verte."
-        )
-        return 0
-    print(
-        f"Canari NASA daily OK : ecart_max_global={ecart_global:.2e} <= {SEUIL_DERIVE} "
-        f"(fenetre stable <= {DERNIERE_DATE_STABLE})"
+    return _executer_canari(
+        pilotes=LOCALITES_DAILY,
+        fetch=lambda lat, lon: fetch_daily_raw(
+            latitude=lat,
+            longitude=lon,
+            parameters=list(PARAMETRES_NASA_DAILY),
+            start=date(ANNEE_DEBUT, 1, 1),
+            end=date(ANNEE_FIN, 12, 31),
+            httpx_client=httpx_client,
+        ),
+        seed=lambda lat, lon: NASA_DAILY_PAYLOADS[_cle_ville_offline(lat, lon)],
+        ecart=lambda live, seed: ecart_relatif_max_nasa_daily(
+            live, seed, derniere_date_stable=DERNIERE_DATE_STABLE
+        ),
+        erreurs_fetch=_ERREURS_FETCH,
+        seuil=SEUIL_DERIVE,
+        messages=_MESSAGES,
+        contexte={"fenetre": DERNIERE_DATE_STABLE},
     )
-    return 0
