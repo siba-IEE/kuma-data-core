@@ -127,6 +127,33 @@ le projet suit le versionnement sémantique.
   porte GHI, DNI et DHI ; la communauté NASA POWER utilisée (RE) est fixée.
   Correction en place, sans nouvelle version ni changement de valeur, de
   période, de statut ou de confiance (migration 128).
+- Données publiées dans l'édition : vocabulaire des fiches de compilation
+  retiré. Notes de 76 localités (renvois au cahier des charges remplacés par
+  la règle qu'ils désignent, code de décision « (D7) », « verifiee par
+  superviseur », « migration 011 », étiquettes « post-audit »), notes de 9
+  sources (codes de décisions techniques et de garde-fous « DT-n » et
+  « GF-n », statut « β2 » du vecteur hydro, passes de compilation) et trois
+  valeurs de `sources.metadonnees` (« en passe 2 ») : les codes sont retirés
+  ou remplacés par leur contenu. `series_metadonnees.methode_collecte_doc`
+  et `url_documentation` (198 séries calculées) portaient un chemin du dépôt
+  (`docs/methodologie/grandeurs/*.md`) : ils portent désormais le lien du
+  document dans le dépôt public ; le chemin donné pour
+  `rang_referentiel_temporel` ne désignait aucun fichier et vise la note des
+  référentiels comparatifs qui documente sa méthode. Correction en place,
+  sans nouvelle version (migration 129).
+- API : codes internes (dettes « D-n », caveats « L-XXX-n », ADR, codes
+  d'étape, convention de nommage « D-32 ») retirés du document OpenAPI
+  (descriptions de routes, de schémas et de champs) et des avertissements
+  `limite` de la salissure, du PR réaliste, de l'exceedance GHI et de
+  l'incertitude inter-source, leur contenu restant dit en clair. Le message
+  404 de `ghi_exceedance` annonçait une disponibilité limitée aux « 6 villes
+  pilotes » : il nomme la condition réelle (une série GHI mensuelle NASA
+  POWER 1991-2020, portée par 34 localités).
+- Code : les textes historiques des migrations immuables 085, 090 et 101 sont
+  isolés et figés par test ; `calculer_et_inserer_degenerescence_pixel`
+  écrit le commentaire courant sans code interne,
+  `calculer_et_inserer_degenerescence` reste la variante historique importée
+  par la migration 090.
 
 ## 1.0.0
 

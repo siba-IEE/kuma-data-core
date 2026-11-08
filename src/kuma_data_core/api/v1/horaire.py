@@ -295,15 +295,16 @@ def grandeur_horaire(
     statut éditorial ``passe_plat_non_valide``).
 
     Pré-validation : la fenêtre demandée doit être incluse dans la
-    plage disponible (option B1 statique). Sinon : 400
-    ``PLAGE_TEMPORELLE_NON_DISPONIBLE`` avec détails enrichis.
+    plage disponible (du 2001-01-01 à la date du jour moins 5 mois
+    environ). Sinon : 400 ``PLAGE_TEMPORELLE_NON_DISPONIBLE`` avec
+    détails enrichis.
 
     Erreurs :
 
     - 401 ``AUTH_HEADER_MANQUANT`` / ``AUTH_CLE_INVALIDE`` (auth Bearer).
     - 422 ``VALIDATION_VALEUR_INVALIDE`` (paramètre Pydantic hors plage).
     - 400 ``PLAGE_TEMPORELLE_NON_DISPONIBLE`` (plage demandée hors
-      disponibilité ; ou, en profil édition figée ADR-0003 D6, plage
+      disponibilité ; ou, sur une édition publique figée, plage
       non couverte par le stocké - aucun relais amont n'est tenté).
     - 503 ``PASSE_PLAT_INDISPONIBLE`` (service amont indisponible
       après retry).

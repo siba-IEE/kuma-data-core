@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 import kuma_data_core.db.models  # noqa: F401  (enregistre toutes les tables)
 from kuma_data_core.db.base import Base
-from tests.integration.db._jargon import JARGON_INTERNE
+from tests._jargon import JARGON_INTERNE
 
 pytestmark = pytest.mark.integration
 

@@ -120,7 +120,7 @@ def _valider_format(format_demande: str) -> str:
         "Retourne la liste paginee des series presentes dans "
         "`series_metadonnees`, dans une envelope "
         "`{items, total, limit, offset}`. Filtrage optionnel par "
-        "localite, grandeur, source, ou statut actif. Cf. ADR-0001."
+        "localite, grandeur, source, ou statut actif."
     ),
 )
 def lister_series(
@@ -488,8 +488,8 @@ def _serialiser_csv(serie_detail: SerieDetail) -> str:
     status_code=status.HTTP_200_OK,
     summary="Detail d'une serie avec ses mesures",
     description=(
-        "Retourne le detail d'une serie identifiee par son code naming "
-        "D-32, avec ses mesures resolues sur la table-cible adequate "
+        "Retourne le detail d'une serie identifiee par son code, "
+        "avec ses mesures resolues sur la table-cible adequate "
         "(mesures_ressource, mesures_ressource_mensuelles, ou "
         "grandeurs_metier via v_grandeurs_metier_courantes)."
     ),

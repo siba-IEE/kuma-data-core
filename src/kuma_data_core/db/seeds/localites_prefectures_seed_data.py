@@ -447,8 +447,18 @@ for _p in PREFECTURES_GUINEE:
 del _p
 
 
-def _note_prefecture(p: dict[str, Any]) -> str:
-    """Note du nœud préfecture (code décret + traçabilité coordonnée)."""
+# Textes historiques de la migration 085 (immuable), qui importe
+# ``PREFECTURE_NODES`` et ``NOUVELLES_COMMUNES`` : ils sont gardés à l'octet près
+# pour qu'une base neuve reconstruite de 001 à la tête passe par le même état.
+# Leurs codes internes (« Sec. 5.3 », « (D7) », « Densification prefectorale
+# Etape 1 ») et ceux des champs ``coord`` (« migration 011 », « superviseur »)
+# sont retirés des notes publiées par les migrations 128 et 129 sous garde md5.
+# Aucun autre code ne lit ces notes ; ne pas les réutiliser pour un nouveau texte.
+# Leur sortie est figée par ``tests/unit/db/test_seeds_textes_historiques.py``.
+
+
+def _note_prefecture_historique_085(p: dict[str, Any]) -> str:
+    """Note du nœud préfecture telle qu'écrite par la migration 085."""
     return (
         f"Prefecture de {p['nom']}, code administratif national {p['code_admin']} "
         f"(decret guineen de codification 2025). Coordonnees du chef-lieu (Sec. 5.3), "
@@ -458,8 +468,8 @@ def _note_prefecture(p: dict[str, Any]) -> str:
     )
 
 
-def _note_commune(p: dict[str, Any]) -> str:
-    """Note de la commune chef-lieu (point d'ingestion solaire)."""
+def _note_commune_historique_085(p: dict[str, Any]) -> str:
+    """Note de la commune chef-lieu telle qu'écrite par la migration 085."""
     return (
         f"Chef-lieu de la prefecture de {p['nom']}, point d'ingestion solaire uniforme "
         f"(modelisation (a), spec Etape 1 Sec. 5.3). {p['coord']} "
@@ -483,7 +493,7 @@ PREFECTURE_NODES: list[dict[str, Any]] = [
         "population_estimee": None,
         "annee_population": None,
         "fuseau_horaire": "Africa/Conakry",
-        "notes": _note_prefecture(p),
+        "notes": _note_prefecture_historique_085(p),
     }
     for p in PREFECTURES_GUINEE
 ]
@@ -505,7 +515,7 @@ NOUVELLES_COMMUNES: list[dict[str, Any]] = [
         "population_estimee": None,
         "annee_population": None,
         "fuseau_horaire": "Africa/Conakry",
-        "notes": _note_commune(p),
+        "notes": _note_commune_historique_085(p),
     }
     for p in PREFECTURES_GUINEE
     if p["existante"] is None

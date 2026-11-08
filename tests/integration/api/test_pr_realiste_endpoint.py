@@ -74,7 +74,8 @@ def test_pr_realiste_temperature_salissure_fenetre_pm(
         assert 0.0 <= m["pr_realiste"] <= 1.0
         assert m["niveau_confiance"] == "B"
     assert "PR-reference" in p["limite"]
-    assert "L-TR-6" in p["limite"]  # caveat thermique optimiste
+    assert "biais de moyennage journalier" in p["limite"]  # caveat thermique optimiste
+    assert "L-TR-6" not in p["limite"]
     assert "spin-up" in p["limite"]  # caveat salissure
 
 

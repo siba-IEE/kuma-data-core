@@ -66,9 +66,8 @@ GRAMMES_PAR_MICROGRAMME: float = 1e-6
 
 CAVEAT_SPIN_UP: str = (
     "Modele HSU initialise propre (salissure nulle) : les premiers jours de la "
-    "fenetre sous-estiment la salissure reelle (spin-up, L-SOIL-3). Proxy modele, "
-    "pas une mesure de salissure (L-SOIL-1, terrain D-67) ; PM EAC4 grille grossiere "
-    "0,75 deg (L-SOIL-4)."
+    "fenetre sous-estiment la salissure reelle (spin-up). Proxy modele, "
+    "pas une mesure de salissure au sol ; PM EAC4 grille grossiere 0,75 deg."
 )
 
 

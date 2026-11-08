@@ -86,13 +86,13 @@ chaque mesure retournée.
 
 
 class SerieListee(BaseModel):
-    """Ligne du listing `GET /api/v1/series` (contrat enrichi, ADR-0001).
+    """Ligne du listing `GET /api/v1/series` (contrat enrichi).
 
     Vue catalogue dénormalisée couvrant identifiants, localité (code +
     nom + iso3), grandeur (code + label + unit), source (id + code +
     label + url), période, méthode, notes éditoriales, audit.
 
-    Conventions de nommage (cf. ADR-0001 Data Core §nommage public) :
+    Conventions de nommage des champs publics :
 
     - Les noms exposés côté API publique alignent avec le contrat
       attendu côté consommateur Kuma Science. Ils
@@ -148,16 +148,15 @@ class SerieListee(BaseModel):
 
 
 class SerieListeePaginee(BaseModel):
-    """Envelope paginée du listing `GET /api/v1/series` (ADR-0001).
+    """Envelope paginée du listing `GET /api/v1/series`.
 
     Structure standard de pagination offset-based (et non un tableau
     JSON nu). Le champ ``total`` permet aux consommateurs de connaître
     le nombre total de séries matchant les filtres sans avoir à boucler
     jusqu'à une page vide.
 
-    Note : le seul consommateur connu (Kuma Science) adapte son schéma
-    Zod ``dataCorePaginatedResponseSchema`` dans le cycle de
-    synchronisation parallèle (cf. ADR-0012 Kuma Science).
+    Note : le seul consommateur connu (Kuma Science) aligne son schéma
+    Zod ``dataCorePaginatedResponseSchema`` sur cette enveloppe.
     """
 
     items: list[SerieListee]

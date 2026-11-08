@@ -19,7 +19,12 @@ code ``gin_kankan``), pas seedé en dur.
 
 from __future__ import annotations
 
-_PROVENANCE = (
+# Texte historique de la migration 101 (immuable), qui importe
+# ``REFERENTIELS_CALAGE_101_SEED`` : gardé à l'octet près pour qu'une base neuve
+# passe par le même état ; la migration 128 en remplace les chemins du dépôt
+# dans le texte publié, sous garde. Aucun autre code ne le lit. Sortie figée par
+# ``tests/unit/db/test_seeds_textes_historiques.py``.
+_PROVENANCE_HISTORIQUE_101 = (
     "Biais satellite moins sol mesure au pixel co-localise de la "
     "station ESMAP/WAPP de Kankan (serie sol "
     "gin_kankan_ghi_esmap_wapp_2021_2023, confiance A, 17 520 h, "
@@ -44,7 +49,7 @@ REFERENTIELS_CALAGE_101_SEED: list[dict[str, object]] = [
         "saison": "harmattan",
         "mois": [11, 12, 1, 2, 3],
         "biais": "0.044",
-        "provenance": _PROVENANCE,
+        "provenance": _PROVENANCE_HISTORIQUE_101,
         "portee": _PORTEE,
         "version": "v1",
     },
@@ -54,7 +59,7 @@ REFERENTIELS_CALAGE_101_SEED: list[dict[str, object]] = [
         "saison": "mousson",
         "mois": [6, 7, 8, 9],
         "biais": "0.015",
-        "provenance": _PROVENANCE,
+        "provenance": _PROVENANCE_HISTORIQUE_101,
         "portee": _PORTEE,
         "version": "v1",
     },
@@ -64,7 +69,7 @@ REFERENTIELS_CALAGE_101_SEED: list[dict[str, object]] = [
         "saison": "intersaison",
         "mois": [4, 5, 10],
         "biais": "0.019",
-        "provenance": _PROVENANCE,
+        "provenance": _PROVENANCE_HISTORIQUE_101,
         "portee": _PORTEE,
         "version": "v1",
     },

@@ -924,7 +924,8 @@ def test_ti117_ghi_exceedance_ville_pilote_succes(
     assert body["p90"] < body["p50"]
     # Limite presente, mention "inter-annuelle" garantie.
     assert "inter-annuelle" in body["limite"]
-    # Conakry-Kaloum n'est pas dans une paire D-29 : pas de mention D-29.
+    # Conakry-Kaloum n'est pas dans une paire co-localisee : pas de mention.
+    assert "Co-localisation" not in body["limite"]
     assert "D-29" not in body["limite"]
 
 
@@ -945,7 +946,7 @@ def test_ti119_ghi_exceedance_d29_kindia_mamou_identiques(
     """Kindia et Mamou retournent strictement les memes P50 / P90
     (co-localisation meme pixel CERES SYN1deg).
 
-    Verifie aussi que le champ `limite` mentionne explicitement D-29 et
+    Verifie aussi que le champ `limite` mentionne explicitement la co-localisation et
     la ville jumelle pour chacune des deux.
     """
     r_kindia = client.get("/v1/grandeurs/ghi_exceedance/gin_kindia", headers=headers_auth)
@@ -957,11 +958,12 @@ def test_ti119_ghi_exceedance_d29_kindia_mamou_identiques(
     # Identite stricte des percentiles (consequence directe du pixel commun).
     assert b_kindia["p50"] == b_mamou["p50"]
     assert b_kindia["p90"] == b_mamou["p90"]
-    # Mentions explicites D-29 + ville jumelle dans le champ limite.
-    assert "D-29" in b_kindia["limite"]
-    assert "gin_mamou" in b_kindia["limite"]
-    assert "D-29" in b_mamou["limite"]
-    assert "gin_kindia" in b_mamou["limite"]
+    # Mention explicite de la co-localisation + ville jumelle dans le champ
+    # limite, sans le code de dette interne.
+    for corps, jumelle in ((b_kindia, "gin_mamou"), (b_mamou, "gin_kindia")):
+        assert "Co-localisation" in corps["limite"]
+        assert jumelle in corps["limite"]
+        assert "D-29" not in corps["limite"]
 
 
 def test_ti120_ghi_exceedance_plausibilite_6_villes(
@@ -999,7 +1001,7 @@ def test_ti121_ghi_exceedance_ville_hors_d29_limite_sans_mention(
     assert response.status_code == 200
     body = response.json()
     assert "inter-annuelle" in body["limite"]
-    assert "D-29" not in body["limite"]
+    assert "Co-localisation" not in body["limite"]
     assert "pixel" not in body["limite"]
 
 

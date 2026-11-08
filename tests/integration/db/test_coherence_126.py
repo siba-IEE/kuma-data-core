@@ -17,7 +17,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from tests.integration.db._jargon import JARGON_INTERNE as _JARGON_INTERNE
+from tests._jargon import JARGON_INTERNE as _JARGON_INTERNE
 
 pytestmark = pytest.mark.integration
 

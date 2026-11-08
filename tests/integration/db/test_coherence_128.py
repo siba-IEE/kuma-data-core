@@ -1,19 +1,22 @@
 """Tests d'intégration de la migration 128 (jargon interne des données publiées).
 
 Garde définitive : aucune colonne de texte (``text``, ``varchar``, tableau,
-``jsonb``) d'une table publiée telle quelle (``TABLES_PUBLIEES`` du manifeste
-de publication), hors colonnes neutralisées par ``ASSAINISSEMENTS``, ne porte
-de vocabulaire de chantier interne (``JARGON_INTERNE``). Les colonnes sont
-lues dans le catalogue : une colonne ajoutée plus tard est couverte d'office.
+``jsonb``) d'une table publiée (``TABLES_PUBLIEES`` du manifeste de
+publication, et colonnes non neutralisées par ``ASSAINISSEMENTS`` des
+``TABLES_ASSAINIES`` depuis la migration 129) ne porte de vocabulaire de
+chantier interne (``JARGON_INTERNE``, étendu par la migration 129). Les
+colonnes sont lues dans le catalogue : une colonne ajoutée plus tard est
+couverte d'office.
 
 Chaque colonne est lue en valeurs distinctes non nulles, sans exclusion : les
 tables de mesures (plusieurs millions de lignes) n'ont comme texte que des
 codes courts (statut, niveaux de confiance) et un ``commentaire_editorial``
 presque toujours nul, ce qui garde la lecture sous quelques secondes.
 
-Les tables assainies (``series_metadonnees``, ``contributeurs``) sont hors de
-cette garde : la note publique des séries a sa propre garde
-(``test_note_publique_series.py``).
+Pour les tables assainies (``series_metadonnees``, ``contributeurs``), seules
+les colonnes masquées (``commentaire_editorial``, courriel, biographie, notes
+internes) sont hors de cette garde ; la note publique des séries a en outre
+sa propre garde (``test_note_publique_series.py``).
 
 S'y ajoutent la note de dégénérescence servie par l'API (sans « D-29 », règle
 conservée en clair) et les corrections de fond de la migration.
@@ -26,8 +29,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.v1.grandeurs import _lire_degenerescence_localite
-from kuma_data_core.publication.manifeste import ASSAINISSEMENTS, TABLES_PUBLIEES
-from tests.integration.db._jargon import JARGON_INTERNE
+from kuma_data_core.publication.manifeste import (
+    ASSAINISSEMENTS,
+    TABLES_ASSAINIES,
+    TABLES_PUBLIEES,
+)
+from tests._jargon import JARGON_INTERNE
 
 pytestmark = pytest.mark.integration
 
@@ -54,7 +61,7 @@ def _colonnes_texte(session: Session, table: str) -> list[str]:
     return [c for c in colonnes if c not in masquees]
 
 
-@pytest.mark.parametrize("table", sorted(TABLES_PUBLIEES))
+@pytest.mark.parametrize("table", sorted(TABLES_PUBLIEES | TABLES_ASSAINIES))
 def test_table_publiee_sans_jargon_interne(db_session: Session, table: str) -> None:
     colonnes = _colonnes_texte(db_session, table)
     assert colonnes, f"aucune colonne de texte lue pour {table}"

@@ -83,10 +83,9 @@ class LocaliteListee(BaseModel):
 
 
 class LocaliteListeePaginee(BaseModel):
-    """Envelope paginée du listing `GET /api/v1/localites` (ADR-0002).
+    """Envelope paginée du listing `GET /api/v1/localites`.
 
-    Pattern identique à :class:`SerieListeePaginee` mergée en cycle
-    1-7d (ADR-0001). Le champ ``total`` permet aux consommateurs de
+    Pattern identique à :class:`SerieListeePaginee`. Le champ ``total`` permet aux consommateurs de
     connaître le nombre total de localités matchant les filtres sans
     avoir à boucler jusqu'à une page vide.
     """

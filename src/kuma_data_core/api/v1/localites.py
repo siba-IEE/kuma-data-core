@@ -103,7 +103,7 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
         "Retourne la liste paginee des localites de la table "
         "`localites`, dans une envelope `{items, total, limit, offset}`. "
         "Filtrage optionnel par pays_iso3, type_localite, parent_code "
-        "ou statut actif. Cf. ADR-0002 Data Core."
+        "ou statut actif."
     ),
 )
 def lister_localites(

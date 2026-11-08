@@ -66,12 +66,13 @@ def test_abs_primaire_signe_orientationnel(
 
 
 def test_anti_survente_b_inter_source(client: TestClient, headers_auth: dict[str, str]) -> None:
-    """Confiance B ; 'inter_source' dans code_grandeur ; 'd-67' dans limite."""
+    """Confiance B ; 'inter_source' dans code_grandeur ; limite anti-survente sans D-67."""
     p = _get(client, headers_auth, "gin_boffa").json()
     assert p["niveau_confiance"] == "B"
     assert "inter_source" in p["code_grandeur"]
     assert "inter-source" in p["limite"].lower()
-    assert "d-67" in p["limite"].lower()
+    assert "mesure sol" in p["limite"]
+    assert "D-67" not in p["limite"]
 
 
 def test_degenerescence_niveau_localite_d29(

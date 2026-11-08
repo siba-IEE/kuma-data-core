@@ -44,7 +44,8 @@ def test_item_structure_complete(client: TestClient, headers_auth: dict[str, str
         assert isinstance(it["latitude_deg"], (int, float))
         assert isinstance(it["longitude_deg"], (int, float))
         assert it["niveau_confiance"] == "B"
-        assert "d-67" in it["limite"].lower()
+        assert "mesure sol" in it["limite"]
+        assert "D-67" not in it["limite"]
 
 
 def test_recoupe_unitaire_gin_boffa(client: TestClient, headers_auth: dict[str, str]) -> None:

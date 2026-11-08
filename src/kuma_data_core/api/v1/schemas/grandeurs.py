@@ -330,7 +330,7 @@ class ReponseGhiExceedance(BaseModel):
     code_serie_source: str = Field(
         ...,
         description=(
-            "Code D-32 de la serie GHI mensuelle source 1991-2020 utilisee "
+            "Code de la serie GHI mensuelle source 1991-2020 utilisee "
             "pour le calcul (ex. gin_kankan_ghi_power_1991_2020)."
         ),
     )
@@ -377,7 +377,7 @@ class ReponseGhiExceedance(BaseModel):
         description=(
             "Avertissement editorial sur la portee du resultat : exceedance "
             "inter-annuelle uniquement, pas un P90 bancable complet. Pour les "
-            "villes co-localisees (dette D-29 Kindia/Mamou), mention "
+            "localites co-localisees dans un meme pixel CERES (ex. Kindia/Mamou), mention "
             "explicite de l'identite des P50/P90 avec la ville jumelle."
         ),
     )
@@ -445,7 +445,7 @@ class ReponseTauxSalissureProxy(BaseModel):
     """
 
     code_grandeur: Literal["taux_salissure_proxy"] = "taux_salissure_proxy"
-    code_serie_source: str = Field(..., description="Code D-32 de la serie PM2.5 source (EAC4).")
+    code_serie_source: str = Field(..., description="Code de la serie PM2.5 source (EAC4).")
     code_localite: str = Field(..., description="Code de la localite (derive de la serie source).")
     periode: str = Field(
         ...,
@@ -460,9 +460,8 @@ class ReponseTauxSalissureProxy(BaseModel):
     limite: str = Field(
         ...,
         description=(
-            "Avertissement editorial : proxy modele (pas une mesure, terrain D-67) ; "
-            "spin-up (premiers jours sous-estimes, L-SOIL-3) ; grille EAC4 grossiere "
-            "(L-SOIL-4)."
+            "Avertissement editorial : proxy modele (pas une mesure de salissure au sol) ; "
+            "spin-up (premiers jours sous-estimes) ; grille EAC4 grossiere (0,75 deg)."
         ),
     )
 
@@ -528,7 +527,7 @@ class ReponsePRRealiste(BaseModel):
     """Réponse de ``/v1/grandeurs/pr_realiste/{code_serie_source}`` (calculée à la volée)."""
 
     code_grandeur: Literal["pr_realiste"] = "pr_realiste"
-    code_serie_source: str = Field(..., description="Code D-32 de la serie GHI source.")
+    code_serie_source: str = Field(..., description="Code de la serie GHI source.")
     code_localite: str = Field(..., description="Code de la localite (derive de la serie GHI).")
     periode: str = Field(
         ..., description="Fenetre effective (intersection selon le mode), YYYY-MM-DD/YYYY-MM-DD."
@@ -540,7 +539,14 @@ class ReponsePRRealiste(BaseModel):
     mesures_mensuel: list[MesureMoisPR] = Field(
         ..., description="PR realiste moyen par mois (courbe saisonniere, creux Harmattan)."
     )
-    limite: str = Field(..., description="Caveats : doctrine PR-reference, L-PR/L-SOIL/L-TR-6.")
+    limite: str = Field(
+        ...,
+        description=(
+            "Caveats : doctrine PR-reference (PR fourni hors salissure et hors "
+            "temperature), proxy de salissure (spin-up), biais de moyennage journalier "
+            "du facteur thermique."
+        ),
+    )
 
 
 # === Réponse complète =====================================================
@@ -592,7 +598,7 @@ class EcartPaireInterSource(BaseModel):
         description=(
             "Moyenne signee des ecarts mensuels (%). Orientation SEULEMENT (ex. negatif = "
             "NASA < reference) ; jamais une correction de biais (l'atlas est inter-source / "
-            "relatif, pas l'absolu vs sol, D-67)."
+            "relatif, pas l'absolu vs mesure sol)."
         ),
     )
     n_mois: int = Field(
@@ -646,7 +652,7 @@ class ReponseIncertitudeInterSource(BaseModel):
         ...,
         description=(
             "Avertissement editorial : incertitude inter-source / relative, confiance B ; "
-            "ne quantifie PAS l'incertitude absolue vs mesure sol (terrain, D-67)."
+            "ne quantifie PAS l'incertitude absolue vs mesure sol."
         ),
     )
 

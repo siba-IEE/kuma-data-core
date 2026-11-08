@@ -74,15 +74,15 @@ _WATT_PAR_KILOWATT: float = 1000.0
 _CAVEAT_PR_REFERENCE: str = (
     "PR_fourni suppose hors salissure ET hors temperature (corrections "
     "multiplicatives separables ; un PR plaque tout-compris double-compterait, "
-    "doctrine PR-reference L-PR-2). Proxy API (confiance au plus B), pas un PR mesure sol "
-    "(D-67, L-PR-1). v1 : facteurs thermique et salissure independants (L-PR-3)."
+    "doctrine PR-reference). Proxy API (confiance au plus B), pas un PR mesure sol. "
+    "v1 : facteurs thermique et salissure independants."
 )
 _CAVEAT_SPIN_UP: str = (
     " Salissure : modele HSU initialise propre, premiers jours de la fenetre "
-    "sous-estimes (spin-up, L-SOIL-3) ; fenetre bornee a l'overlap PM EAC4 (L-PR-4)."
+    "sous-estimes (spin-up) ; fenetre bornee a l'overlap PM EAC4."
 )
 _CAVEAT_L_TR_6: str = (
-    " Thermique : le facteur ratio_T herite du biais L-TR-6 (la moyenne 24 h "
+    " Thermique : le facteur ratio_T herite du biais de moyennage journalier (la moyenne 24 h "
     "sous-estime le pic d'irradiance de midi, donc T_cell, donc surestime legerement "
     "le PR : 'realiste' un poil optimiste cote chaleur)."
 )

@@ -46,6 +46,12 @@ GRANDEUR_DEGENERESCENCE: str = "degenerescence_pixel"
 NIVEAU_CONFIANCE_DERIVE: str = "B"
 VERSION_FORMULE: int = 1
 
+# Mention historique de la migration 090 (immuable), gardee a l'identique pour
+# qu'une base neuve reconstruite de 001 a la tete passe par le meme etat : la
+# migration 128 la retire ensuite des textes publies sous garde md5. Aucun
+# nouveau texte ne la porte (``texte_historique_090=False`` par defaut).
+_MENTION_HISTORIQUE_090: str = " (D-29 generalise)"
+
 # Caveat de nature appose sur chaque ligne : dit l'exactitude SANS usurper le
 # palier A (reserve terrain). La degenerescence est un fait structurel exact, mais
 # A/B/C classe la fiabilite d'une mesure de substrat, pas la certitude d'un fait.
@@ -191,9 +197,21 @@ def _grouper_par_pixel(vecteurs: dict[int, tuple[float, ...]]) -> dict[int, list
     return jumeaux
 
 
-def _commentaire(cfg: _ConfigSource, grandeur: str, codes_jumeaux: list[str]) -> str:
+def _commentaire(
+    cfg: _ConfigSource,
+    grandeur: str,
+    codes_jumeaux: list[str],
+    *,
+    texte_historique_090: bool = False,
+) -> str:
     """Texte d'honnetete : groupe de jumeaux pour les grilles fixes, caveat de
-    resolution pour les sources interpolees."""
+    resolution pour les sources interpolees.
+
+    ``texte_historique_090`` reproduit a l'octet pres le texte ecrit par la
+    migration 090 (mention interne ``_MENTION_HISTORIQUE_090`` en fin de phrase
+    des jumeaux-pixel) ; il n'est utilise que par
+    :func:`calculer_et_inserer_degenerescence`, que cette migration importe.
+    """
     if not cfg["grille_fixe"]:
         base = (
             f"Source interpolee au point ({cfg['grille']}, {cfg['resolution']}) : valeurs "
@@ -205,8 +223,8 @@ def _commentaire(cfg: _ConfigSource, grandeur: str, codes_jumeaux: list[str]) ->
         base = (
             f"Degenerescence de pixel : partage la cellule {cfg['grille']} ({cfg['resolution']}) "
             f"avec {len(codes_jumeaux)} autre(s) point(s) ({liste}). Series {grandeur} identiques "
-            f"(meme pixel source) -> ne pas presenter comme des mesures independantes "
-            f"(D-29 generalise)."
+            f"(meme pixel source) -> ne pas presenter comme des mesures independantes"
+            f"{_MENTION_HISTORIQUE_090 if texte_historique_090 else ''}."
         )
     else:
         base = (
@@ -219,12 +237,13 @@ def _commentaire(cfg: _ConfigSource, grandeur: str, codes_jumeaux: list[str]) ->
 # === Orchestrateur I/O =====================================================
 
 
-def calculer_et_inserer_degenerescence(session: Session) -> int:
+def calculer_et_inserer_degenerescence_pixel(session: Session) -> int:
     """Calcule et insere ``degenerescence_pixel`` dans ``grandeurs_metier``.
 
     Pour chaque (source, parametre) de l'epine radiative, lit les series climato
     mensuelles de toutes les localites, groupe par vecteur identique (jumeaux-pixel),
-    et insere 1 ligne statique par localite (valeur = nombre de jumeaux).
+    et insere 1 ligne statique par localite (valeur = nombre de jumeaux). Le
+    commentaire editorial est le texte publie courant (sans code interne).
 
     Args:
         session : session SQLAlchemy active (l'appelant commit).
@@ -232,6 +251,23 @@ def calculer_et_inserer_degenerescence(session: Session) -> int:
     Returns:
         Nombre de lignes inserees.
     """
+    return _calculer_et_inserer(session, texte_historique_090=False)
+
+
+def calculer_et_inserer_degenerescence(session: Session) -> int:
+    """Variante figee pour la migration 090 (immuable), qui importe ce nom.
+
+    Meme calcul que :func:`calculer_et_inserer_degenerescence_pixel`, avec le
+    commentaire historique de 090 (mention ``_MENTION_HISTORIQUE_090``), pour
+    qu'une base neuve passe par l'etat que les migrations 128 et suivantes
+    attendent. Tout nouvel appel utilise
+    :func:`calculer_et_inserer_degenerescence_pixel`.
+    """
+    return _calculer_et_inserer(session, texte_historique_090=True)
+
+
+def _calculer_et_inserer(session: Session, *, texte_historique_090: bool) -> int:
+    """Corps commun des deux orchestrateurs (seul le commentaire differe)."""
     nb_insere = 0
     for cfg in _CONFIG:
         rows = session.execute(
@@ -294,7 +330,12 @@ def calculer_et_inserer_degenerescence(session: Session) -> int:
                     "version_formule": VERSION_FORMULE,
                     "valeur": float(len(ids_jumeaux)),
                     "niveau_confiance_derive": NIVEAU_CONFIANCE_DERIVE,
-                    "commentaire": _commentaire(cfg, cfg["grandeur_code"], codes_jumeaux),
+                    "commentaire": _commentaire(
+                        cfg,
+                        cfg["grandeur_code"],
+                        codes_jumeaux,
+                        texte_historique_090=texte_historique_090,
+                    ),
                 }
             )
 

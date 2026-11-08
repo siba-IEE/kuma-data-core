@@ -1502,7 +1502,9 @@ def _resoudre_serie_ghi_mensuelle_1991_2020(
                 f"Aucune serie GHI mensuelle {ANNEE_DEBUT_CLIMATOLOGIE}-"
                 f"{ANNEE_FIN_CLIMATOLOGIE} trouvee pour la localite "
                 f"{code_localite!r}. La grandeur ghi_exceedance n'est "
-                f"disponible que pour les 6 villes pilotes phase 1."
+                f"disponible que pour les localites dotees d'une serie GHI "
+                f"mensuelle NASA POWER {ANNEE_DEBUT_CLIMATOLOGIE}-"
+                f"{ANNEE_FIN_CLIMATOLOGIE}."
             ),
             statut_http=status.HTTP_404_NOT_FOUND,
         )
@@ -1555,7 +1557,7 @@ def _construire_limite_ghi_exceedance(code_localite: str) -> str:
     jumelle = PAIRES_COLOCALISEES_D29.get(code_localite)
     if jumelle is not None:
         base += (
-            f" Dette D-29 : cette localite et {jumelle!r} tombent dans le meme "
+            f" Co-localisation : cette localite et {jumelle!r} tombent dans le meme "
             f"pixel CERES SYN1deg NASA POWER (110 km a 10 deg N) ; leurs "
             f"series GHI mensuelles 1991-2020 sont strictement identiques "
             f"et leurs P50 / P90 le sont donc aussi."
@@ -2056,7 +2058,7 @@ def _assurer_confiance_b(
             message=(
                 f"Incoherence de confiance pour {code_localite!r} : la fiche inter-source "
                 f"attend des donnees en confiance B, trouve {sorted(effectifs)}. "
-                "L'atlas est inter-source (B) ; A est reserve au terrain (D-67)."
+                "L'atlas est inter-source (B) ; A est reserve aux mesures terrain."
             ),
             statut_http=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
@@ -2068,7 +2070,7 @@ def _construire_limite_incertitude_inter_source() -> str:
     return (
         "Incertitude inter-source / relative : divergence entre NASA POWER et les references "
         "satellite (SARAH-3 pour le GHI, CAMS pour le DNI), fenetre 2021-2023, confiance B. "
-        "Ne quantifie PAS l'incertitude absolue vs mesure sol (regime terrain, dette D-67) : "
+        "Ne quantifie PAS l'incertitude absolue vs mesure sol (qui exige des mesures terrain) : "
         "ce n'est pas une barre d'erreur calibree au sol."
     )
 

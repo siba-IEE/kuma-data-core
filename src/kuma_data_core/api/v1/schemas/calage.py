@@ -24,8 +24,9 @@ class ReponseCalage(BaseModel):
     """Référentiel de calage d'un couple (station, grandeur).
 
     ``localites_couvertes`` porte le domaine de couverture du
-    transport (ADR-0004, couverture progressive) : les codes des
-    localités qualifiées, triés. C'est la donnée qui pilote la
+    transport (couverture progressive : le domaine s'étend localité par
+    localité à mesure que la recherche qualifie le transport) : les
+    codes des localités qualifiées, triés. C'est la donnée qui pilote la
     couverture géographique des consommateurs - une étude calée
     n'est permise que si la localité résolue du site en fait partie.
     ``justification_couverture`` en donne la provenance.
