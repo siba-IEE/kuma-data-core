@@ -26,6 +26,11 @@ from kuma_data_core.editorial.niveaux_confiance import (
     propager_niveau_confiance,
 )
 from kuma_data_core.editorial.statuts import filtre_mesure_utilisable
+from kuma_data_core.services.grandeurs._commun import (
+    inserer_lignes_grandeurs_metier,
+    resoudre_serie_cible,
+    verifier_version_formule,
+)
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Méta-indicateur sur une série : au plus B."""
@@ -81,7 +86,7 @@ def _calculer_score(
     nb_mesures_courantes: int,
     nb_jours_attendus: int,
     niveaux_confiance: Sequence[str],
-    fiabilite_source: str,
+    fiabilite_source: str | None,
 ) -> _CalculScoreResultat:
     """Composantes C1-C3, score continu et classe (pur)."""
     c1 = min(nb_mesures_courantes / nb_jours_attendus, 1.0) if nb_jours_attendus > 0 else 0.0
@@ -92,7 +97,7 @@ def _calculer_score(
     else:
         c2 = 0.0
 
-    c3 = FIABILITE_VALEUR.get(fiabilite_source, 0.0)
+    c3 = 0.0 if fiabilite_source is None else FIABILITE_VALEUR.get(fiabilite_source, 0.0)
 
     score_continu = (
         POIDS_COMPLETUDE * c1 + POIDS_CONFIANCE_MOYENNE * c2 + POIDS_FIABILITE_SOURCE * c3
@@ -130,40 +135,15 @@ def calculer_et_inserer_indicateur_qualite_donnees(
     ``RuntimeError`` si ``version_formule`` diffère de la version du
     référentiel, ou si la série ou sa source est introuvable.
     """
-    version_actuelle = session.execute(
-        text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
-        {"code": GRANDEUR_CODE_INDICATEUR},
-    ).scalar()
-    if version_actuelle is None:
-        raise RuntimeError(
-            f"Grandeur {GRANDEUR_CODE_INDICATEUR!r} introuvable dans grandeurs_referentiel."
-        )
-    if version_formule != int(version_actuelle):
-        raise RuntimeError(
-            f"Desalignement version_formule : argument={version_formule}, "
-            f"version_formule_actuelle pour {GRANDEUR_CODE_INDICATEUR!r}={int(version_actuelle)}."
-        )
-
-    serie = session.execute(
-        text(
-            """
-            SELECT
-                sm.id AS serie_id,
-                sm.localite_id,
-                sm.grandeur_code AS grandeur_code_evaluee,
-                sm.methode_collecte,
-                s.fiabilite AS fiabilite_source
-            FROM series_metadonnees sm
-            JOIN sources s ON s.id = sm.source_id
-            WHERE sm.code = :code
-            """
-        ),
-        {"code": code_serie_evaluee},
-    ).first()
-    if serie is None:
-        raise RuntimeError(
+    verifier_version_formule(session, GRANDEUR_CODE_INDICATEUR, version_formule)
+    # Pas de contrôle de grandeur ni de méthode : la série évaluée est une série brute.
+    serie = resoudre_serie_cible(
+        session,
+        code_serie_evaluee,
+        message_introuvable=(
             f"Serie evaluee {code_serie_evaluee!r} introuvable dans series_metadonnees."
-        )
+        ),
+    )
 
     rows = session.execute(
         text(
@@ -175,7 +155,7 @@ def calculer_et_inserer_indicateur_qualite_donnees(
               AND {filtre_mesure_utilisable()}
             """
         ),
-        {"serie_id": int(serie.serie_id)},
+        {"serie_id": serie.serie_id},
     ).all()
     niveaux_confiance: list[str] = [r.niveau_confiance_derive for r in rows]
     # Règle P : l'indicateur ne peut pas être plus sûr que les mesures qu'il évalue
@@ -191,34 +171,25 @@ def calculer_et_inserer_indicateur_qualite_donnees(
         nb_mesures_courantes=nb_mesures_courantes,
         nb_jours_attendus=nb_jours_attendus,
         niveaux_confiance=niveaux_confiance,
-        fiabilite_source=serie.fiabilite_source,
+        fiabilite_source=serie.confiance.fiabilite_source,
     )
 
-    session.execute(
-        text(
-            """
-            INSERT INTO grandeurs_metier (
-                grandeur_code, localite_id, series_metadonnees_id,
-                periode_type, annee_debut, annee_fin, mois,
-                version_formule, valeur, niveau_confiance_derive
-            )
-            VALUES (
-                :grandeur_code, :localite_id, :series_metadonnees_id,
-                'statique', :annee_debut, :annee_fin, NULL,
-                :version_formule, :valeur, :niveau
-            )
-            """
-        ),
-        {
-            "grandeur_code": GRANDEUR_CODE_INDICATEUR,
-            "localite_id": int(serie.localite_id),
-            "series_metadonnees_id": int(serie.serie_id),
-            "annee_debut": annee_debut,
-            "annee_fin": annee_fin,
-            "version_formule": version_formule,
-            "valeur": score["score_discret"],
-            "niveau": niveau_indicateur,
-        },
+    inserer_lignes_grandeurs_metier(
+        session,
+        [
+            {
+                "grandeur_code": GRANDEUR_CODE_INDICATEUR,
+                "localite_id": serie.localite_id,
+                "series_metadonnees_id": serie.serie_id,
+                "periode_type": "statique",
+                "annee_debut": annee_debut,
+                "annee_fin": annee_fin,
+                "mois": None,
+                "version_formule": version_formule,
+                "valeur": score["score_discret"],
+                "niveau_confiance_derive": niveau_indicateur,
+            }
+        ],
     )
     session.flush()
 

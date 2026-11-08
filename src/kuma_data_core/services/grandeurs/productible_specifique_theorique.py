@@ -7,14 +7,20 @@ complétude est donc celle de ``hep``.
 from __future__ import annotations
 
 from collections.abc import Sequence
-from typing import Any, TypedDict
+from typing import TypedDict
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from kuma_data_core.editorial.niveaux_confiance import (
-    NiveauConfiance,
-    calculer_niveau_confiance_derive,
+from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+from kuma_data_core.services.grandeurs._commun import (
+    LignePeriode,
+    inserer_lignes_grandeurs_metier,
+    ligne_grandeur_metier,
+    resoudre_serie_amont,
+    resoudre_serie_cible,
+    verifier_localite_amont,
+    verifier_version_formule,
 )
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
@@ -37,14 +43,6 @@ class CalculProductibleResultat(TypedDict):
     pr_theorique_applique: float
 
 
-class _LigneAgregeeProductible(TypedDict):
-    periode_type: str
-    annee_debut: int
-    annee_fin: int
-    mois: int | None
-    valeur: float
-
-
 def _appliquer_pr_theorique(valeur_hep: float, pr_theorique: float) -> float:
     """HEP (h_eq) x PR ; à 1 kW/m² STC, h_eq et kWh/kWc coïncident."""
     return float(valeur_hep) * float(pr_theorique)
@@ -63,71 +61,24 @@ def calculer_et_inserer_productible_specifique_theorique(
     ``RuntimeError`` si une série est introuvable ou non conforme, si les
     localités diffèrent, ou si ``version_formule`` diffère du référentiel.
     """
-    version_actuelle = session.execute(
-        text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
-        {"code": GRANDEUR_CODE_PRODUCTIBLE},
-    ).scalar()
-    if version_actuelle is None:
-        raise RuntimeError(
-            f"Grandeur {GRANDEUR_CODE_PRODUCTIBLE!r} introuvable dans grandeurs_referentiel."
-        )
-    if version_formule != int(version_actuelle):
-        raise RuntimeError(
-            f"Desalignement version_formule : argument={version_formule}, "
-            f"version_formule_actuelle pour {GRANDEUR_CODE_PRODUCTIBLE!r}={int(version_actuelle)}."
-        )
-
-    serie_cible = session.execute(
-        text(
-            """
-            SELECT
-                sm.id AS serie_id,
-                sm.localite_id,
-                sm.grandeur_code,
-                sm.methode_collecte,
-                s.fiabilite AS fiabilite_source
-            FROM series_metadonnees sm
-            JOIN sources s ON s.id = sm.source_id
-            WHERE sm.code = :code
-            """
-        ),
-        {"code": code_serie_productible},
-    ).first()
-    if serie_cible is None:
-        raise RuntimeError(f"Serie productible cible {code_serie_productible!r} introuvable.")
-    if serie_cible.grandeur_code != GRANDEUR_CODE_PRODUCTIBLE:
-        raise RuntimeError(
-            f"Serie cible {code_serie_productible!r} : grandeur_code="
-            f"{serie_cible.grandeur_code!r}, attendu {GRANDEUR_CODE_PRODUCTIBLE!r}."
-        )
-    if serie_cible.methode_collecte != METHODE_COLLECTE_PRODUCTIBLE:
-        raise RuntimeError(
-            f"Serie cible {code_serie_productible!r} : methode_collecte="
-            f"{serie_cible.methode_collecte!r}, attendu {METHODE_COLLECTE_PRODUCTIBLE!r}."
-        )
-
-    serie_hep = session.execute(
-        text(
-            "SELECT id AS serie_id, localite_id, grandeur_code "
-            "FROM series_metadonnees WHERE code = :code"
-        ),
-        {"code": code_serie_hep_amont},
-    ).first()
-    if serie_hep is None:
-        raise RuntimeError(f"Serie HEP amont {code_serie_hep_amont!r} introuvable.")
-    if serie_hep.grandeur_code != GRANDEUR_CODE_HEP:
-        raise RuntimeError(
-            f"Serie {code_serie_hep_amont!r} : grandeur_code="
-            f"{serie_hep.grandeur_code!r}, attendu {GRANDEUR_CODE_HEP!r}."
-        )
-
-    localite_cible = int(serie_cible.localite_id)
-    if int(serie_hep.localite_id) != localite_cible:
-        raise RuntimeError(
-            f"Incoherence localite : serie cible {code_serie_productible!r} "
-            f"localite_id={localite_cible} vs serie HEP amont "
-            f"{code_serie_hep_amont!r} localite_id={int(serie_hep.localite_id)}."
-        )
+    verifier_version_formule(session, GRANDEUR_CODE_PRODUCTIBLE, version_formule)
+    cible = resoudre_serie_cible(
+        session,
+        code_serie_productible,
+        message_introuvable=f"Serie productible cible {code_serie_productible!r} introuvable.",
+        grandeur_attendue=GRANDEUR_CODE_PRODUCTIBLE,
+        methode_attendue=METHODE_COLLECTE_PRODUCTIBLE,
+    )
+    serie_hep = resoudre_serie_amont(
+        session, code_serie_hep_amont, libelle="HEP", grandeur_attendue=GRANDEUR_CODE_HEP
+    )
+    verifier_localite_amont(
+        code_cible=code_serie_productible,
+        cible=cible,
+        code_amont=code_serie_hep_amont,
+        libelle="HEP",
+        amont=serie_hep,
+    )
 
     rows_hep = session.execute(
         text(
@@ -142,7 +93,7 @@ def calculer_et_inserer_productible_specifique_theorique(
             """
         ),
         {
-            "serie_id": int(serie_hep.serie_id),
+            "serie_id": serie_hep.serie_id,
             "grandeur_code": GRANDEUR_CODE_HEP,
         },
     ).all()
@@ -153,7 +104,7 @@ def calculer_et_inserer_productible_specifique_theorique(
             "Verifier que 1-5D-iii (migration 027) a bien ete applique."
         )
 
-    lignes_a_inserer: list[_LigneAgregeeProductible] = [
+    lignes_a_inserer: list[LignePeriode] = [
         {
             "periode_type": r.periode_type,
             "annee_debut": int(r.annee_debut),
@@ -167,41 +118,20 @@ def calculer_et_inserer_productible_specifique_theorique(
     nb_annuel = sum(1 for ligne in lignes_a_inserer if ligne["periode_type"] == "annuel")
     nb_mensuel = sum(1 for ligne in lignes_a_inserer if ligne["periode_type"] == "mensuel")
 
-    params: list[dict[str, Any]] = [
-        {
-            "grandeur_code": GRANDEUR_CODE_PRODUCTIBLE,
-            "localite_id": localite_cible,
-            "series_metadonnees_id": int(serie_cible.serie_id),
-            "periode_type": ligne["periode_type"],
-            "annee_debut": ligne["annee_debut"],
-            "annee_fin": ligne["annee_fin"],
-            "mois": ligne["mois"],
-            "version_formule": version_formule,
-            "valeur": ligne["valeur"],
-            # Règle P : chaque ligne prend le niveau de la ligne HEP dont elle est tirée
-            "niveau_confiance_derive": calculer_niveau_confiance_derive(
-                methode_collecte=serie_cible.methode_collecte,
-                fiabilite_source=serie_cible.fiabilite_source,
+    inserer_lignes_grandeurs_metier(
+        session,
+        [
+            ligne_grandeur_metier(
+                grandeur_code=GRANDEUR_CODE_PRODUCTIBLE,
+                cible=cible,
+                version_formule=version_formule,
+                ligne=ligne,
                 plafond=PLAFOND_CONFIANCE,
+                # Règle P : chaque ligne prend le niveau de la ligne HEP dont elle est tirée
                 niveaux_entrees={r.niveau},
-            ),
-        }
-        for ligne, r in zip(lignes_a_inserer, rows_hep, strict=True)
-    ]
-    session.execute(
-        text(
-            """
-            INSERT INTO grandeurs_metier
-                (grandeur_code, localite_id, series_metadonnees_id,
-                 periode_type, annee_debut, annee_fin, mois,
-                 version_formule, valeur, niveau_confiance_derive)
-            VALUES
-                (:grandeur_code, :localite_id, :series_metadonnees_id,
-                 :periode_type, :annee_debut, :annee_fin, :mois,
-                 :version_formule, :valeur, :niveau_confiance_derive)
-            """
-        ),
-        params,
+            )
+            for ligne, r in zip(lignes_a_inserer, rows_hep, strict=True)
+        ],
     )
     session.flush()
 

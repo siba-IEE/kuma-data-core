@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import datetime
-from typing import NamedTuple, TypedDict
+from typing import TypedDict
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -30,6 +30,12 @@ from kuma_data_core.editorial.niveaux_confiance import (
     calculer_niveau_confiance_derive,
 )
 from kuma_data_core.editorial.statuts import filtre_mesure_utilisable
+from kuma_data_core.services.grandeurs._commun import (
+    CibleConfiance,
+    inserer_lignes_grandeurs_metier,
+    lire_cible,
+    verifier_version_formule,
+)
 
 # === Constantes module =====================================================
 
@@ -77,13 +83,6 @@ class CalculReferentielsResultat(TypedDict):
     nb_rang_temporel_insere: int
     nb_rang_spatial_insere: int
     nb_total: int
-
-
-class CibleConfiance(NamedTuple):
-    """Méthode de la série calculée et fiabilité de sa source (entrées de R1-R4)."""
-
-    methode_collecte: str | None
-    fiabilite_source: str | None
 
 
 # === Fonctions pures ======================================================
@@ -197,43 +196,6 @@ def _lire_mensuel(
     return {(int(r.annee), int(r.mois)): float(r.valeur) for r in rows}
 
 
-def _lire_cible(session: Session, serie_id: int) -> CibleConfiance:
-    """Méthode et fiabilité de source de la série calculée ``serie_id``."""
-    row = session.execute(
-        text(
-            """
-            SELECT sm.methode_collecte, s.fiabilite
-            FROM series_metadonnees sm
-            JOIN sources s ON s.id = sm.source_id
-            WHERE sm.id = :id
-            """
-        ),
-        {"id": serie_id},
-    ).one()
-    return CibleConfiance(row.methode_collecte, row.fiabilite)
-
-
-def _bulk_insert_grandeurs_metier(session: Session, lignes: list[dict[str, object]]) -> None:
-    """Insert bulk dans ``grandeurs_metier`` (helper interne)."""
-    if not lignes:
-        return
-    session.execute(
-        text(
-            """
-            INSERT INTO grandeurs_metier
-                (grandeur_code, localite_id, series_metadonnees_id,
-                 periode_type, annee_debut, annee_fin, mois,
-                 version_formule, valeur, niveau_confiance_derive)
-            VALUES
-                (:grandeur_code, :localite_id, :series_metadonnees_id,
-                 :periode_type, :annee_debut, :annee_fin, :mois,
-                 :version_formule, :valeur, :niveau_confiance_derive)
-            """
-        ),
-        lignes,
-    )
-
-
 # === Orchestrateur I/O ====================================================
 
 
@@ -268,7 +230,7 @@ def calculer_et_inserer_referentiels(
         niveaux_sarah3 = NiveauxEntrees()
         sarah3 = _lire_mensuel(session, ctx["code_serie_sarah3"], niveaux_sarah3)
         serie_id = serie_id_par_grandeur_localite[(GRANDEUR_ECART, loc_id)]
-        cible = _lire_cible(session, serie_id)
+        cible = lire_cible(session, serie_id)
 
         lignes: list[dict[str, object]] = []
         for annee in range(ANNEE_KUMA_DEBUT, ANNEE_SARAH3_FIN + 1):
@@ -296,7 +258,7 @@ def calculer_et_inserer_referentiels(
                         ),
                     }
                 )
-        _bulk_insert_grandeurs_metier(session, lignes)
+        inserer_lignes_grandeurs_metier(session, lignes)
         nb_ecart += len(lignes)
 
     # === rang_referentiel_temporel (360 lignes attendues) ====================
@@ -312,7 +274,7 @@ def calculer_et_inserer_referentiels(
                 distribution_par_mois[mois_clim].append(valeur)
 
         serie_id = serie_id_par_grandeur_localite[(GRANDEUR_RANG_TEMPOREL, loc_id)]
-        cible = _lire_cible(session, serie_id)
+        cible = lire_cible(session, serie_id)
 
         lignes = []
         for annee in range(ANNEE_KUMA_DEBUT, ANNEE_KUMA_FIN + 1):
@@ -342,7 +304,7 @@ def calculer_et_inserer_referentiels(
                         ),
                     }
                 )
-        _bulk_insert_grandeurs_metier(session, lignes)
+        inserer_lignes_grandeurs_metier(session, lignes)
         nb_rang_temporel += len(lignes)
 
     # === rang_referentiel_spatial (360 lignes attendues) =====================
@@ -365,7 +327,7 @@ def calculer_et_inserer_referentiels(
             for loc_id, rang in rangs.items():
                 serie_id = serie_id_par_grandeur_localite[(GRANDEUR_RANG_SPATIAL, loc_id)]
                 if serie_id not in cibles_spatial:
-                    cibles_spatial[serie_id] = _lire_cible(session, serie_id)
+                    cibles_spatial[serie_id] = lire_cible(session, serie_id)
                 lignes_spatial.append(
                     {
                         "grandeur_code": GRANDEUR_RANG_SPATIAL,
@@ -383,7 +345,7 @@ def calculer_et_inserer_referentiels(
                     }
                 )
 
-    _bulk_insert_grandeurs_metier(session, lignes_spatial)
+    inserer_lignes_grandeurs_metier(session, lignes_spatial)
     nb_rang_spatial += len(lignes_spatial)
 
     session.flush()
@@ -511,7 +473,7 @@ def recalculer_ecart_relatif_referentiel(
         if serie_id is None:
             # Garde défensive : chaque localité doit avoir sa série d'écart.
             continue
-        cible = _lire_cible(session, serie_id)
+        cible = lire_cible(session, serie_id)
 
         lignes: list[dict[str, object]] = []
         for annee in range(ANNEE_KUMA_DEBUT, ANNEE_SARAH3_FIN + 1):
@@ -539,7 +501,7 @@ def recalculer_ecart_relatif_referentiel(
                         ),
                     }
                 )
-        _bulk_insert_grandeurs_metier(session, lignes)
+        inserer_lignes_grandeurs_metier(session, lignes)
         nb_total += len(lignes)
 
     session.flush()
@@ -579,7 +541,7 @@ def calculer_et_inserer_ecart_inter_source(
         niveaux = NiveauxEntrees()
         nasa = _lire_kuma_mensuel(session, ctx["code_serie_nasa_daily"], niveaux)
         reference = _lire_mensuel(session, ctx["code_serie_reference"], niveaux)
-        cible = _lire_cible(session, ctx["series_metadonnees_id"])
+        cible = lire_cible(session, ctx["series_metadonnees_id"])
 
         lignes: list[dict[str, object]] = []
         for annee in range(annee_debut, annee_fin + 1):
@@ -609,7 +571,7 @@ def calculer_et_inserer_ecart_inter_source(
                         ),
                     }
                 )
-        _bulk_insert_grandeurs_metier(session, lignes)
+        inserer_lignes_grandeurs_metier(session, lignes)
         nb_total += len(lignes)
 
     session.flush()
@@ -651,7 +613,7 @@ def calculer_et_inserer_rang_temporel(
                 distribution_par_mois[mois_clim].append(valeur)
         niveaux_kuma = NiveauxEntrees()
         kuma = _lire_kuma_mensuel(session, ctx["code_serie_kuma_daily"], niveaux_kuma)
-        cible = _lire_cible(session, ctx["series_metadonnees_id"])
+        cible = lire_cible(session, ctx["series_metadonnees_id"])
 
         lignes: list[dict[str, object]] = []
         for annee in range(annee_debut, annee_fin + 1):
@@ -681,7 +643,7 @@ def calculer_et_inserer_rang_temporel(
                         ),
                     }
                 )
-        _bulk_insert_grandeurs_metier(session, lignes)
+        inserer_lignes_grandeurs_metier(session, lignes)
         nb_total += len(lignes)
 
     session.flush()
@@ -766,19 +728,7 @@ def calculer_et_inserer_rang_spatial(
     ``(nb_lignes_inserees, mois_non_classes)`` ; ``RuntimeError`` si
     ``version_formule`` diffère du référentiel ou si une localité est en double.
     """
-    version_actuelle = session.execute(
-        text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
-        {"code": GRANDEUR_RANG_SPATIAL},
-    ).scalar()
-    if version_actuelle is None:
-        raise RuntimeError(
-            f"Grandeur {GRANDEUR_RANG_SPATIAL!r} introuvable dans grandeurs_referentiel."
-        )
-    if version_formule != int(version_actuelle):
-        raise RuntimeError(
-            f"Desalignement version_formule : argument={version_formule}, "
-            f"version_formule_actuelle pour {GRANDEUR_RANG_SPATIAL!r}={int(version_actuelle)}."
-        )
+    verifier_version_formule(session, GRANDEUR_RANG_SPATIAL, version_formule)
     if len({ctx["localite_id"] for ctx in contextes}) != len(contextes):
         raise RuntimeError("Rang spatial : localite en double dans le pool.")
 
@@ -797,7 +747,7 @@ def calculer_et_inserer_rang_spatial(
         version_formule=version_formule,
         niveaux_pool=niveaux_pool,
         cible_par_localite={
-            ctx["localite_id"]: _lire_cible(session, ctx["series_metadonnees_id"])
+            ctx["localite_id"]: lire_cible(session, ctx["series_metadonnees_id"])
             for ctx in contextes
         },
     )

@@ -179,9 +179,9 @@ def _lecteur(
 def lignes_inserees(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
     lignes: list[dict[str, object]] = []
     for module in (referentiels, ecart_dni_cams):
-        monkeypatch.setattr(module, "_lire_cible", lambda _s, _id: _CIBLE)
+        monkeypatch.setattr(module, "lire_cible", lambda _s, _id: _CIBLE)
         monkeypatch.setattr(
-            module, "_bulk_insert_grandeurs_metier", lambda _s, ls: lignes.extend(ls)
+            module, "inserer_lignes_grandeurs_metier", lambda _s, ls: lignes.extend(ls)
         )
     return lignes
 

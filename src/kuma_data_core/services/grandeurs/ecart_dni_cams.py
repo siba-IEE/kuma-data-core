@@ -14,10 +14,9 @@ from typing import TypedDict
 from sqlalchemy.orm import Session
 
 from kuma_data_core.editorial.niveaux_confiance import NiveauxEntrees
+from kuma_data_core.services.grandeurs._commun import inserer_lignes_grandeurs_metier, lire_cible
 from kuma_data_core.services.grandeurs.referentiels import (
-    _bulk_insert_grandeurs_metier,
     _calcul_ecart_relatif,
-    _lire_cible,
     _lire_mensuel,
     _niveau_derive,
 )
@@ -64,7 +63,7 @@ def calculer_et_inserer_ecart_dni_cams(
         niveaux = NiveauxEntrees()
         nasa = _lire_mensuel(session, ctx["code_serie_nasa"], niveaux)
         cams = _lire_mensuel(session, ctx["code_serie_cams"], niveaux)
-        cible = _lire_cible(session, ctx["series_metadonnees_id"])
+        cible = lire_cible(session, ctx["series_metadonnees_id"])
 
         lignes: list[dict[str, object]] = []
         for annee, mois in sorted(set(nasa) & set(cams)):
@@ -83,7 +82,7 @@ def calculer_et_inserer_ecart_dni_cams(
                     "niveau_confiance_derive": _niveau_derive(cible, niveaux.du_mois(annee, mois)),
                 }
             )
-        _bulk_insert_grandeurs_metier(session, lignes)
+        inserer_lignes_grandeurs_metier(session, lignes)
         nb_insere += len(lignes)
 
     session.flush()

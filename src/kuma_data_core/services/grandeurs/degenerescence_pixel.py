@@ -21,6 +21,7 @@ from sqlalchemy.orm import Session
 
 from kuma_data_core.editorial.niveaux_confiance import NIVEAU_CONFIANCE_DEGENERESCENCE_PIXEL
 from kuma_data_core.editorial.statuts import filtre_mesure_utilisable
+from kuma_data_core.services.grandeurs._commun import inserer_lignes_grandeurs_metier
 
 # === Constantes module =====================================================
 
@@ -285,7 +286,7 @@ def _calculer_et_inserer(session: Session, *, texte_historique_090: bool) -> int
                     "version_formule": VERSION_FORMULE,
                     "valeur": float(len(ids_jumeaux)),
                     "niveau_confiance_derive": NIVEAU_CONFIANCE_DEGENERESCENCE_PIXEL,
-                    "commentaire": _commentaire(
+                    "commentaire_editorial": _commentaire(
                         cfg,
                         cfg["grandeur_code"],
                         codes_jumeaux,
@@ -294,25 +295,10 @@ def _calculer_et_inserer(session: Session, *, texte_historique_090: bool) -> int
                 }
             )
 
-        if lignes:
-            session.execute(
-                text(
-                    """
-                    INSERT INTO grandeurs_metier
-                        (grandeur_code, localite_id, series_metadonnees_id,
-                         periode_type, annee_debut, annee_fin, mois,
-                         version_formule, valeur, niveau_confiance_derive,
-                         commentaire_editorial)
-                    VALUES
-                        (:grandeur_code, :localite_id, :series_metadonnees_id,
-                         :periode_type, :annee_debut, :annee_fin, :mois,
-                         :version_formule, :valeur, :niveau_confiance_derive,
-                         :commentaire)
-                    """
-                ),
-                lignes,
-            )
-            nb_insere += len(lignes)
+        inserer_lignes_grandeurs_metier(
+            session, lignes, colonnes_supplementaires=("commentaire_editorial",)
+        )
+        nb_insere += len(lignes)
 
     session.flush()
     return nb_insere

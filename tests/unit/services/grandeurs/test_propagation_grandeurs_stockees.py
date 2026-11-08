@@ -161,7 +161,7 @@ def test_indicateur_qualite_au_plus_b(jour_c: date | None, attendu: str) -> None
         session=session, code_serie_evaluee="gin_test_ghi", annee_debut=2025, annee_fin=2025
     )
 
-    assert session.execute.call_args_list[-1].args[1]["niveau"] == attendu
+    assert session.execute.call_args_list[-1].args[1][0]["niveau_confiance_derive"] == attendu
 
 
 def test_fraction_diffuse_prend_le_niveau_de_ses_deux_entrees() -> None:
