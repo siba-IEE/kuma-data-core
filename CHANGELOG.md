@@ -26,6 +26,10 @@ le projet suit le versionnement sémantique.
 
 ### Corrigé
 
+- `/v1/series/{code_serie}` répondait `500` pour une série mensuelle remontant
+  avant 1991 : le schéma de réponse exigeait `annee >= 1991` alors que la base
+  admet les mois depuis 1981.
+
 - Une requête incohérente sur `/v1/grandeurs` ou l'horaire (période
   inversée, paramètre requis par un autre) reçoit `422` et non plus `500`.
 - Le choix d'une série parmi plusieurs candidates est ordonné : deux
