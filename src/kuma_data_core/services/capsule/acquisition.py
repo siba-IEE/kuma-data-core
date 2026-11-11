@@ -8,7 +8,7 @@ Lit trois choses au point :
 - la climatologie mensuelle : moyenne par mois calendaire sur 1991-2020 des
   mesures mensuelles de cette série (12 valeurs, kWh/m²/j = HEP) ;
 - la séquence horaire satellite : la série GHI horaire NASA de la localité,
-  le brut au point (heure UTC = heure locale en Guinée).
+  le brut au point, mois et heures comptés dans le fuseau de la localité.
 
 Rien de calé ici : la séquence et la climatologie sortent brutes, le moteur cale
 via le champ ``calage``, présent en ligne seulement. Aucun appel à kuma-calage
@@ -48,9 +48,9 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
 class SourceCore:
     """Source d'acquisition adossée à une session du Core.
 
-    ``annee_min`` / ``annee_max`` fenêtrent la séquence horaire (bornes UTC
-    incluses). ``None`` prend toute la profondeur stockée : honnête mais lourd
-    (25 ans ~ 219 000 points). L'appelant fixe le compromis.
+    ``annee_min`` / ``annee_max`` fenêtrent la séquence horaire (années
+    locales, bornes incluses). ``None`` prend toute la profondeur stockée :
+    honnête mais lourd (25 ans ~ 219 000 points). L'appelant fixe le compromis.
     """
 
     session: Session
@@ -263,13 +263,19 @@ class SourceCore:
     def _sequence_horaire(
         self, localite_id: int
     ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
-        """Séquence GHI horaire satellite de la localité : (séquence, période, provenance)."""
+        """Séquence GHI horaire satellite de la localité : (séquence, période, provenance).
+
+        Mois, heures et années de la fenêtre sont ceux du fuseau de la localité
+        (``localites.fuseau_horaire``, UTC si elle n'en a pas).
+        """
         meta = self.session.execute(
             text(
                 """
                 SELECT sm.code, sm.libelle, sm.methode_collecte,
-                       sm.periode_debut, sm.periode_fin, s.code AS source_code, s.titre
+                       sm.periode_debut, sm.periode_fin, s.code AS source_code, s.titre,
+                       COALESCE(l.fuseau_horaire, 'UTC') AS fuseau
                 FROM series_metadonnees sm
+                JOIN localites l ON l.id = sm.localite_id
                 LEFT JOIN sources s ON s.id = sm.source_id
                 WHERE sm.localite_id = :loc AND sm.grandeur_code = 'ghi'
                   AND sm.granularite = 'horaire' AND sm.actif
@@ -290,20 +296,20 @@ class SourceCore:
             "mh.statut = 'valide_auto'",
             "mh.valide_au IS NULL",
         ]
-        params: dict[str, object] = {"code": meta.code}
+        params: dict[str, object] = {"code": meta.code, "fuseau": meta.fuseau}
         if self.annee_min is not None:
-            clauses.append("extract(year from mh.instant_mesure at time zone 'UTC') >= :amin")
+            clauses.append("extract(year from mh.instant_mesure at time zone :fuseau) >= :amin")
             params["amin"] = self.annee_min
         if self.annee_max is not None:
-            clauses.append("extract(year from mh.instant_mesure at time zone 'UTC') <= :amax")
+            clauses.append("extract(year from mh.instant_mesure at time zone :fuseau) <= :amax")
             params["amax"] = self.annee_max
         where = " AND ".join(clauses)
 
         rows = self.session.execute(
             text(
                 f"""
-                SELECT extract(month from mh.instant_mesure at time zone 'UTC')::int AS mois,
-                       extract(hour from mh.instant_mesure at time zone 'UTC')::int AS heure,
+                SELECT extract(month from mh.instant_mesure at time zone :fuseau)::int AS mois,
+                       extract(hour from mh.instant_mesure at time zone :fuseau)::int AS heure,
                        mh.valeur
                 FROM mesures_ressource_horaires mh
                 JOIN series_metadonnees sm ON sm.id = mh.serie_id

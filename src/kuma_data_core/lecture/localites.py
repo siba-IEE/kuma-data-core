@@ -184,6 +184,28 @@ def localite_active_existe(session: Session, code: str) -> bool:
     return existe is not None
 
 
+def lister_localites_de_code_court(session: Session, code_court: str) -> list[str]:
+    """Codes, triés, des localités actives nommées ``<code d'un pays>_<code_court>``.
+
+    Le préfixe est le code d'une localité de type ``pays`` du référentiel : le
+    même code court peut désigner une localité dans plusieurs pays.
+    """
+    rows = session.execute(
+        text(
+            """
+            SELECT l.code
+            FROM localites l
+            JOIN localites p
+              ON p.type_localite = 'pays' AND l.code = p.code || '_' || :code_court
+            WHERE l.actif = TRUE
+            ORDER BY l.code
+            """
+        ),
+        {"code_court": code_court},
+    ).all()
+    return [str(r.code) for r in rows]
+
+
 def compter_localites_actives(session: Session) -> int:
     """Nombre de localités actives."""
     total = session.execute(text("SELECT count(*) FROM localites WHERE actif = TRUE")).scalar()

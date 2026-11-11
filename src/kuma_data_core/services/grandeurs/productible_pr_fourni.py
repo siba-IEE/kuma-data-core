@@ -248,7 +248,7 @@ def calculer_productible_pr_fourni_horaire(
     """Productible journalier (kWh) avec PR fourni, par intégration horaire.
 
     Le calcul est fait heure par heure (``T_cell`` sur l'irradiance horaire pour
-    le PR_T), puis l'énergie est sommée par jour calendaire UTC.
+    le PR_T), puis l'énergie est sommée par jour (date de ``instant_mesure``).
 
     Avec ``correction='aucune'`` le calcul est linéaire en G : la somme horaire
     égale le résultat journalier. L'intégration horaire ne change le résultat

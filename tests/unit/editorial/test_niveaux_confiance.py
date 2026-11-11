@@ -313,7 +313,7 @@ def test_niveaux_entrees_niveau_invalide_refuse() -> None:
 
 
 def test_niveaux_entrees_refuse_un_instant_horaire() -> None:
-    """Une heure se range sous son jour UTC, calculé par l'appelant."""
+    """Une heure se range sous son jour local, calculé par l'appelant."""
     with pytest.raises(TypeError):
         NiveauxEntrees().ajouter(datetime(2021, 1, 1, 12, tzinfo=UTC), "A")
 

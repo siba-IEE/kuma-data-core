@@ -7,8 +7,6 @@ Couvre :
   valeur).
 - T-EXC-5, T-EXC-6 : ``calculer_totaux_annuels`` (ponderation par
   jours du mois, annee bissextile vs commune).
-- T-EXC-7 : constante de co-localisation (Kindia / Mamou
-  reciproques).
 
 Fonctions pures, aucun mock DB.
 """
@@ -19,7 +17,6 @@ import pytest
 
 from kuma_data_core.services.grandeurs.ghi_exceedance import (
     NOMBRE_ANNEES_BASE,
-    PAIRES_COLOCALISEES_D29,
     calculer_ghi_exceedance,
     calculer_totaux_annuels,
 )
@@ -99,14 +96,6 @@ def test_t_exc_6_totaux_annuels_pondere_par_jours_mois() -> None:
     totaux = calculer_totaux_annuels(mesures)
     attendu = sum(float(m) * nb_jours_2023[m - 1] for m in range(1, 13))
     assert totaux[2023] == attendu
-
-
-def test_t_exc_7_paires_colocalisees_d29_reciproques() -> None:
-    """T-EXC-7 : Kindia et Mamou se referencent mutuellement."""
-    assert PAIRES_COLOCALISEES_D29["gin_kindia"] == "gin_mamou"
-    assert PAIRES_COLOCALISEES_D29["gin_mamou"] == "gin_kindia"
-    # Ces 2 paires sont les seules connues a date.
-    assert set(PAIRES_COLOCALISEES_D29.keys()) == {"gin_kindia", "gin_mamou"}
 
 
 def test_t_exc_8_nombre_annees_base_constant() -> None:

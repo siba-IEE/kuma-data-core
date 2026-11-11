@@ -22,13 +22,15 @@ confiance A/B/C, et un guide pour un contributeur pays ou terrain.
 
 ## Jalon 2 : multi-pays
 
-Le schéma n'a aucune notion de pays en dur : le pays est un axe de
-classification. L'objectif est de le rendre explicite et de construire le
-**pont** qui verse un RDS national dans le Core, sans qu'un contributeur ait à
-écrire une migration.
+Le pays est une donnée : un niveau de la hiérarchie des localités, que le
+moteur lit dans la base. La [note
+d'architecture](docs/contribution/genericite-pays.md) dit ce qui est générique
+et ce qui reste propre à l'instance Guinée ; un test de bout en bout sur un
+pays fictif (`tests/integration/api/test_pays_fictif.py`,
+[issue #6](https://github.com/siba-IEE/kuma-data-core/issues/6)) le vérifie.
+Reste à construire le **pont** qui verse un RDS national dans le Core, sans
+qu'un contributeur ait à écrire une migration.
 
-- Rendre explicite la généricité pays (note d'architecture) et la prouver par
-  un test de bout en bout sur un pays fictif.
 - Pont RDS national vers Core : un loader qui réutilise la couche d'ingestion
   existante (fonctions `session`-based), hors migrations.
 - Template de RDS national réutilisable, sur le modèle de rds-guinee.

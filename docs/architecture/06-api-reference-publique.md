@@ -393,8 +393,9 @@ paramètre libre, path-based).
 
 `methode=integration_horaire` exige une série source de granularité
 `horaire` (plus les compagnes horaires requises) ; elle lève le biais de
-moyennage journalier. Une série non horaire avec ce mode renvoie
-`400 VALIDATION_VALEUR_INVALIDE`.
+moyennage journalier. La fenêtre demandée et le regroupement par jour
+suivent le fuseau de la localité (`fuseau_horaire`, UTC à défaut). Une
+série non horaire avec ce mode renvoie `400 VALIDATION_VALEUR_INVALIDE`.
 
 #### 3.7.4 Pattern auto-compagne (F2)
 
@@ -466,7 +467,9 @@ conservateur, P90 < P50 par construction). Réponse : `p50`, `p90` en
 kWh/m²/an, `base_annees`, `methode_percentile`, `niveau_confiance`,
 `limite`. 404 `RESSOURCE_LOCALITE_INCONNUE` si la localité n'a pas de
 série climatologique. Le `limite` signale que c'est de la variabilité
-inter-annuelle, pas un P90 bancable propageant l'incertitude de modèle.
+inter-annuelle, pas un P90 bancable propageant l'incertitude de modèle ;
+il nomme aussi les autres localités dont la série mensuelle est
+identique (même cellule de la source).
 
 `taux_salissure_proxy/{code_serie_source}` : perte de transmission par
 salissure (`% = (1 − ratio HSU) × 100`, modèle HSU pvlib), à partir
@@ -521,11 +524,13 @@ portant l'écart inter-source récent), robuste à une densification.
 ### 3.8 `GET /v1/horaire/{localite}/{grandeur}`
 
 Localités : toute localité du référentiel par son **code complet**
-(ex. `gin_kankan`) ; les codes courts historiques des 6 villes
-pilotes (`kankan`, `kindia`...) restent acceptés en alias de
-compatibilité. Un code inconnu répond 404
+(ex. `gin_kankan`). Un code court, sans le préfixe du pays (`kankan`),
+reste accepté : le préfixe est cherché parmi les codes des pays du
+référentiel. Un code inconnu répond 404
 `RESSOURCE_LOCALITE_INCONNUE` (et non plus 422 : l'énumération fermée
-a disparu avec la généricité pays).
+a disparu avec la généricité pays) ; un code court porté par des
+localités de plusieurs pays aussi, avec la liste des codes complets
+dans `details.candidats`.
 
 Cet endpoint sert d'abord l'horaire stocké et validé par contrôle
 qualité, avec repli passe-plat sur la source amont sinon. Il n'est plus

@@ -114,10 +114,20 @@ def grandeur_productible_correction_thermique(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_h = lire_valeurs_horaires(
-            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+            session,
+            serie.serie_id,
+            params.periode_debut,
+            params.periode_fin,
+            fuseau=serie.fuseau_horaire,
+            niveaux=niveaux,
         )
         t2m_h = lire_valeurs_horaires(
-            session, t2m_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+            session,
+            t2m_serie_id,
+            params.periode_debut,
+            params.periode_fin,
+            fuseau=serie.fuseau_horaire,
+            niveaux=niveaux,
         )
         mesures_horaires: list[MesureHeureThermique] = [
             {"instant_mesure": instant, "t_amb_degc": t2m_h[instant], "irradiance_w_par_m2": ghi}
@@ -241,7 +251,12 @@ def grandeur_productible_pr_fourni(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_h = lire_valeurs_horaires(
-            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+            session,
+            serie.serie_id,
+            params.periode_debut,
+            params.periode_fin,
+            fuseau=serie.fuseau_horaire,
+            niveaux=niveaux,
         )
         mesures_horaires: list[MesureHeurePRFourni]
         if params.correction == "temperature":
@@ -264,7 +279,12 @@ def grandeur_productible_pr_fourni(
                     statut_http=status.HTTP_400_BAD_REQUEST,
                 )
             t2m_h = lire_valeurs_horaires(
-                session, t2m_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+                session,
+                t2m_serie_id,
+                params.periode_debut,
+                params.periode_fin,
+                fuseau=serie.fuseau_horaire,
+                niveaux=niveaux,
             )
             mesures_horaires = [
                 {

@@ -21,8 +21,9 @@ Limites (reprises dans le champ ``limite`` de la réponse API) :
 - exceedance inter-annuelle uniquement : l'incertitude du modèle satellitaire
   n'est pas propagée. Ce n'est pas un P90 bancable complet, qui demanderait
   un modèle d'erreur explicite et idéalement une calibration au sol ;
-- Kindia et Mamou tombent dans le même pixel CERES SYN1deg de NASA POWER :
-  leurs séries mensuelles, donc leurs P50/P90, sont identiques ;
+- deux localités d'une même cellule CERES SYN1deg de NASA POWER ont la même
+  série mensuelle, donc les mêmes P50/P90 : la route les détecte à l'identité
+  de leurs séries et les nomme ;
 - sur 30 ans, le 10ᵉ percentile repose sur 3 valeurs en queue de
   distribution : incertitude d'échantillonnage sur P90.
 
@@ -68,14 +69,6 @@ ANNEE_FIN_CLIMATOLOGIE: int = 2020
 
 NOMBRE_ANNEES_BASE: int = ANNEE_FIN_CLIMATOLOGIE - ANNEE_DEBUT_CLIMATOLOGIE + 1
 """30 années : base d'échantillonnage des percentiles."""
-
-
-PAIRES_COLOCALISEES_D29: dict[str, str] = {
-    "gin_kindia": "gin_mamou",
-    "gin_mamou": "gin_kindia",
-}
-"""Villes partageant le même pixel CERES SYN1deg de NASA POWER : leurs P50/P90
-sont identiques à ceux de la ville jumelle."""
 
 
 class ResultatGhiExceedance(BaseModel):

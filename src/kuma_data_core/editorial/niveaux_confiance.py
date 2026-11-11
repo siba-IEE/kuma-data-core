@@ -106,7 +106,7 @@ class NiveauxEntrees:
     """Niveaux effectifs des valeurs d'entrée d'un calcul, par jour et par mois.
 
     Une entrée journalière est rangée sous son jour, une entrée horaire sous
-    son jour UTC, une entrée mensuelle sous son mois. Chaque valeur calculée
+    son jour local, une entrée mensuelle sous son mois. Chaque valeur calculée
     prend le niveau des seules entrées de sa période.
     """
 
@@ -119,10 +119,12 @@ class NiveauxEntrees:
         """Range le niveau d'une entrée sous son jour ou sous son mois ``(année, mois)``.
 
         Lève ``TypeError`` pour un ``datetime`` : une heure se range sous son
-        jour UTC, que l'appelant calcule.
+        jour local, que l'appelant calcule.
         """
         if isinstance(instant, datetime):
-            raise TypeError("Ranger une entrée horaire sous son jour UTC (date), pas son instant.")
+            raise TypeError(
+                "Ranger une entrée horaire sous son jour local (date), pas son instant."
+            )
         valider_niveau_confiance(niveau)
         if isinstance(instant, date):
             self._jours[instant].add(niveau)

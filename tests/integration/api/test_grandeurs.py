@@ -35,7 +35,9 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
-from kuma_data_core.db.session import get_engine, obtenir_session
+from kuma_data_core.db.session import get_engine, get_session_factory, obtenir_session
+from kuma_data_core.lecture.mesures import lister_localites_de_meme_serie_mensuelle
+from kuma_data_core.lecture.series import chercher_serie_ghi_nasa_power
 
 pytestmark = pytest.mark.integration
 
@@ -924,8 +926,6 @@ def test_ti117_ghi_exceedance_ville_pilote_succes(
     assert body["p90"] < body["p50"]
     # Limite presente, mention "inter-annuelle" garantie.
     assert "inter-annuelle" in body["limite"]
-    # Conakry-Kaloum ne partage pas sa cellule : pas de mention de localité jumelle.
-    assert "même cellule" not in body["limite"]
 
 
 def test_ti118_ghi_exceedance_localite_inconnue_404(
@@ -940,14 +940,14 @@ def test_ti118_ghi_exceedance_localite_inconnue_404(
     assert "gin_inexistante_xyz" in body["erreur"]["message"]
 
 
-def test_ti119_ghi_exceedance_d29_kindia_mamou_identiques(
+def test_ti119_ghi_exceedance_kindia_mamou_identiques(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
     """Kindia et Mamou retournent strictement les memes P50 / P90
-    (co-localisation meme pixel CERES SYN1deg).
+    (meme cellule CERES SYN1deg, qu'elles partagent aussi avec Dalaba).
 
     Verifie aussi que le champ `limite` dit la cellule partagee et nomme
-    la ville jumelle pour chacune des deux.
+    les localites jumelles pour chacune des deux.
     """
     r_kindia = client.get("/v1/grandeurs/ghi_exceedance/gin_kindia", headers=headers_auth)
     r_mamou = client.get("/v1/grandeurs/ghi_exceedance/gin_mamou", headers=headers_auth)
@@ -958,11 +958,15 @@ def test_ti119_ghi_exceedance_d29_kindia_mamou_identiques(
     # Identite stricte des percentiles (consequence directe du pixel commun).
     assert b_kindia["p50"] == b_mamou["p50"]
     assert b_kindia["p90"] == b_mamou["p90"]
-    # Le champ limite dit la cellule partagée et nomme la localité jumelle.
-    assert "même cellule" in b_kindia["limite"]
-    assert "gin_mamou" in b_kindia["limite"]
-    assert "même cellule" in b_mamou["limite"]
-    assert "gin_kindia" in b_mamou["limite"]
+    # Le champ limite dit la cellule partagée et nomme les localités jumelles.
+    assert (
+        "Cette localité, 'gin_dalaba' et 'gin_mamou' tombent dans la même cellule"
+        in (b_kindia["limite"])
+    )
+    assert (
+        "Cette localité, 'gin_dalaba' et 'gin_kindia' tombent dans la même cellule"
+        in (b_mamou["limite"])
+    )
 
 
 def test_ti120_ghi_exceedance_plausibilite_6_villes(
@@ -988,20 +992,84 @@ def test_ti120_ghi_exceedance_plausibilite_6_villes(
         assert body["p90"] < body["p50"], f"{code_localite} P90 >= P50 (violation)"
 
 
-def test_ti121_ghi_exceedance_ville_hors_d29_limite_sans_mention(
+def test_ti121_ghi_exceedance_localite_seule_limite_sans_mention(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """Conakry-Kaloum (seule dans sa cellule) -> limite sans localite jumelle.
+    """Siguiri (seule dans sa cellule) -> limite sans localite jumelle.
 
     Test miroir du cas Kindia/Mamou : la mention de cellule partagee
     n'apparait que pour les localites jumelles.
     """
-    response = client.get("/v1/grandeurs/ghi_exceedance/gin_conakry_kaloum", headers=headers_auth)
+    response = client.get("/v1/grandeurs/ghi_exceedance/gin_siguiri", headers=headers_auth)
     assert response.status_code == 200
     body = response.json()
     assert "inter-annuelle" in body["limite"]
     assert "même cellule" not in body["limite"]
     assert "gin_" not in body["limite"]
+
+
+# Localités dont les séries GHI mensuelles 1991-2020 NASA POWER sont identiques.
+_GROUPES_DE_MEME_CELLULE = [
+    ["gin_boffa", "gin_boke_centre"],
+    ["gin_conakry_kaloum", "gin_coyah", "gin_dubreka", "gin_forecariah"],
+    ["gin_dalaba", "gin_kindia", "gin_mamou"],
+    ["gin_fria", "gin_telimele"],
+    ["gin_kankan", "gin_kouroussa"],
+    ["gin_koubia", "gin_tougue"],
+    ["gin_labe", "gin_lelouma", "gin_pita"],
+    ["gin_lola", "gin_nzerekore"],
+]
+
+
+@pytest.mark.parametrize(
+    ("code_localite", "jumelles"),
+    [
+        ("gin_kindia", ["gin_dalaba", "gin_mamou"]),
+        ("gin_kankan", ["gin_kouroussa"]),
+        ("gin_conakry_kaloum", ["gin_coyah", "gin_dubreka", "gin_forecariah"]),
+        ("gin_siguiri", []),
+    ],
+)
+def test_localites_de_meme_serie_ghi_mensuelle(code_localite: str, jumelles: list[str]) -> None:
+    """Les localités de même cellule se reconnaissent à l'identité de leur série mensuelle."""
+    with get_session_factory()() as session:
+        serie = chercher_serie_ghi_nasa_power(session, code_localite, 1991)
+        assert serie is not None
+        assert lister_localites_de_meme_serie_mensuelle(session, serie.serie_id) == jumelles
+
+
+def test_groupes_de_meme_cellule_du_referentiel() -> None:
+    """Sur toutes les localités à série GHI 1991-2020, la lecture rend ces groupes et eux seuls."""
+    with get_session_factory()() as session:
+        codes = session.scalars(
+            text(
+                "SELECT DISTINCT l.code FROM localites l "
+                "JOIN series_metadonnees sm ON sm.localite_id = l.id "
+                "JOIN sources s ON s.id = sm.source_id "
+                "WHERE s.code = 'nasa_power' AND sm.grandeur_code = 'ghi' "
+                "AND sm.periode_debut = '1991-01-01' AND sm.actif"
+            )
+        ).all()
+        groupes = set()
+        for code in codes:
+            serie = chercher_serie_ghi_nasa_power(session, code, 1991)
+            assert serie is not None
+            jumelles = lister_localites_de_meme_serie_mensuelle(session, serie.serie_id)
+            if jumelles:
+                groupes.add(tuple(sorted([code, *jumelles])))
+    assert sorted(groupes) == [tuple(g) for g in _GROUPES_DE_MEME_CELLULE]
+
+
+def test_ghi_exceedance_nomme_toutes_les_jumelles(
+    client: TestClient, headers_auth: dict[str, str]
+) -> None:
+    """Conakry-Kaloum partage sa cellule avec trois localités : `limite` les nomme toutes."""
+    response = client.get("/v1/grandeurs/ghi_exceedance/gin_conakry_kaloum", headers=headers_auth)
+    assert response.status_code == 200
+    assert (
+        "Cette localité, 'gin_coyah', 'gin_dubreka' et 'gin_forecariah' tombent dans la même "
+        "cellule" in response.json()["limite"]
+    )
 
 
 # === PR & ECS par integration horaire =====================================
@@ -1364,10 +1432,10 @@ def test_propagation_salissure_cumulative(
     assert {m["niveau_confiance"] for m in response.json()["mesures"]} == {"C"}
 
 
-def test_propagation_lecteur_horaire_par_jour_utc(
+def test_propagation_lecteur_horaire_par_jour_local(
     client: TestClient, headers_auth: dict[str, str], session_api: Session
 ) -> None:
-    """Productible horaire sur Kankan : une heure en C met son jour UTC en C."""
+    """Productible horaire sur Kankan (UTC+0) : une heure en C met son jour local en C."""
     resultat = session_api.execute(
         text(
             "UPDATE mesures_ressource_horaires SET niveau_confiance_override = 'C', "
