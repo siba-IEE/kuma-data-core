@@ -1,4 +1,4 @@
-"""Tests unitaires de `api/services/serie_lecture.resolve_table_from_series_metadata`.
+"""Tests unitaires de `lecture/tables.resolve_table_from_series_metadata`.
 
 Routage source-first puis granularite. 6 tests
 T-1 a T-6 couvrant les 4 tables-cibles + les cas fail-fast. Fonction pure
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from kuma_data_core.api.services.serie_lecture import (
+from kuma_data_core.lecture.tables import (
     TableMesures,
     resolve_table_from_series_metadata,
 )

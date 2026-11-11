@@ -43,11 +43,11 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from kuma_data_core.api.services.serie_lecture import (
+from kuma_data_core.db.session import get_session_factory
+from kuma_data_core.lecture.tables import (
     TableMesures,
     resolve_table_from_series_metadata,
 )
-from kuma_data_core.db.session import get_session_factory
 
 # === Constantes périmètre ===================================================
 

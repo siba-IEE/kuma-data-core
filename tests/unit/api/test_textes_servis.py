@@ -7,15 +7,19 @@ renvoyées dans le champ ``limite`` et les messages d'erreur des routes ``/v1``.
 from __future__ import annotations
 
 import ast
+import importlib
 import inspect
+import pkgutil
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import get_args
 
 import pytest
 
+from kuma_data_core.api import v1 as routes_v1
 from kuma_data_core.api.main import app
 from kuma_data_core.api.v1 import grandeurs as routes_grandeurs
+from kuma_data_core.api.v1.grandeurs import exceedance, incertitude
 from kuma_data_core.services.grandeurs import pr_realiste, soiling_hsu
 from kuma_data_core.services.grandeurs.ghi_exceedance import PAIRES_COLOCALISEES_D29
 from kuma_data_core.services.grandeurs.types import ModeCorrectionPR
@@ -23,7 +27,7 @@ from tests.jargon import A_ADMETTRE, A_DETECTER, correspondances
 
 pytestmark = pytest.mark.unit
 
-_DOSSIER_ROUTES = Path(inspect.getfile(routes_grandeurs)).parent
+_DOSSIER_ROUTES = Path(inspect.getfile(routes_v1)).parent
 
 
 def _chaines(noeud: object, chemin: str = "") -> Iterator[tuple[str, str]]:
@@ -81,14 +85,22 @@ def test_limites_des_routes_grandeurs_sans_vocabulaire_interne() -> None:
     jumelee = next(iter(PAIRES_COLOCALISEES_D29))
     appels: dict[str, list[Callable[[], str]]] = {
         "_construire_limite_ghi_exceedance": [
-            lambda: routes_grandeurs._construire_limite_ghi_exceedance(jumelee),
-            lambda: routes_grandeurs._construire_limite_ghi_exceedance("gin_conakry_kaloum"),
+            lambda: exceedance._construire_limite_ghi_exceedance(jumelee),
+            lambda: exceedance._construire_limite_ghi_exceedance("gin_conakry_kaloum"),
         ],
         "_construire_limite_incertitude_inter_source": [
-            routes_grandeurs._construire_limite_incertitude_inter_source,
+            incertitude._construire_limite_incertitude_inter_source,
         ],
     }
-    constructeurs = {nom for nom in vars(routes_grandeurs) if nom.startswith("_construire_limite_")}
+    modules = [
+        importlib.import_module(info.name)
+        for info in pkgutil.walk_packages(
+            routes_grandeurs.__path__, f"{routes_grandeurs.__name__}."
+        )
+    ]
+    constructeurs = {
+        nom for module in modules for nom in vars(module) if nom.startswith("_construire_limite_")
+    }
     # Un nouveau constructeur de limite doit être ajouté ici, pas ignoré.
     assert constructeurs == set(appels)
     textes = {
@@ -113,12 +125,13 @@ def _messages_d_erreur(fichier: Path) -> Iterator[tuple[str, str]]:
                 for c in ast.walk(argument.value)
                 if isinstance(c, ast.Constant) and isinstance(c.value, str)
             ]
-            yield f"{fichier.name}:{noeud.lineno}", " ".join(litteraux)
+            chemin = fichier.relative_to(_DOSSIER_ROUTES).as_posix()
+            yield f"{chemin}:{noeud.lineno}", " ".join(litteraux)
 
 
 def test_messages_d_erreur_des_routes_sans_vocabulaire_interne() -> None:
     textes: dict[str, str] = {}
-    for fichier in sorted(_DOSSIER_ROUTES.glob("*.py")):
+    for fichier in sorted(_DOSSIER_ROUTES.rglob("*.py")):
         textes.update(_messages_d_erreur(fichier))
     assert len(textes) > 20, "le parcours des messages d'erreur n'a presque rien trouvé"
     assert _fautifs(textes) == {}

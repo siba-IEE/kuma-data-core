@@ -228,7 +228,7 @@ Deux régimes coexistent :
   (`mesures_ressource` journalier, `mesures_ressource_mensuelles`
   mensuel brut, ou `grandeurs_metier` valeurs calculées Kuma via la vue
   `v_grandeurs_metier_courantes`) à partir de `source.code` et
-  `periode_debut` (`api/services/serie_lecture.py`).
+  `periode_debut` (`lecture/tables.py`).
 
 - Réponse 200 JSON, exemple série journalière NASA POWER :
 

@@ -15,7 +15,6 @@ from __future__ import annotations
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
@@ -28,6 +27,12 @@ from kuma_data_core.api.v1.schemas.calage import (
     SaisonCalage,
 )
 from kuma_data_core.db.session import obtenir_session
+from kuma_data_core.lecture.calage import (
+    lire_couverture_referentiel,
+    lire_couvertures_par_referentiel,
+    lire_saisons_referentiel,
+    lister_referentiels,
+)
 
 routeur = APIRouter(prefix="/calage", tags=["calage"])
 
@@ -48,44 +53,19 @@ def lister_referentiels_calage(
     laquelle il est fondé et localités couvertes. La liste permet de découvrir
     les stations disponibles sans les connaître d'avance.
     """
-    rows = session.execute(
-        text(
-            """
-            SELECT rc.code, l.code AS localite, rc.grandeur_code,
-                   MIN(rc.version) AS version, MIN(rc.serie_sol) AS serie_sol
-            FROM referentiels_calage rc
-            JOIN localites l ON l.id = rc.localite_id
-            WHERE rc.actif = TRUE
-            GROUP BY rc.code, l.code, rc.grandeur_code
-            ORDER BY rc.code
-            """
-        )
-    ).all()
-    couvertures = session.execute(
-        text(
-            """
-            SELECT cc.referentiel_code, l.code
-            FROM calage_couverture cc
-            JOIN localites l ON l.id = cc.localite_id
-            WHERE cc.actif = TRUE
-            ORDER BY cc.referentiel_code, l.code
-            """
-        )
-    ).all()
-    par_referentiel: dict[str, list[str]] = {}
-    for c in couvertures:
-        par_referentiel.setdefault(str(c.referentiel_code), []).append(str(c.code))
+    referentiels = lister_referentiels(session)
+    par_referentiel = lire_couvertures_par_referentiel(session)
 
     items = [
         ReferentielListe(
-            code=str(r.code),
-            localite=str(r.localite),
-            grandeur=str(r.grandeur_code),
-            version=str(r.version),
-            serie_sol=str(r.serie_sol),
-            localites_couvertes=par_referentiel.get(str(r.code), []),
+            code=r.code,
+            localite=r.localite,
+            grandeur=r.grandeur_code,
+            version=r.version,
+            serie_sol=r.serie_sol,
+            localites_couvertes=par_referentiel.get(r.code, []),
         )
-        for r in rows
+        for r in referentiels
     ]
     return ReponseCalageListe(items=items, total=len(items))
 
@@ -110,60 +90,34 @@ def referentiel_calage(
     la portée de transport accompagnent les chiffres : jamais un
     nombre nu.
     """
-    rows = session.execute(
-        text(
-            """
-            SELECT rc.code, rc.saison, rc.mois, rc.biais, rc.provenance,
-                   rc.portee, rc.version, rc.serie_sol
-            FROM referentiels_calage rc
-            JOIN localites l ON l.id = rc.localite_id
-            WHERE l.code = :localite
-              AND rc.grandeur_code = :grandeur
-              AND rc.actif = TRUE
-            ORDER BY rc.id
-            """
-        ),
-        {"localite": localite, "grandeur": grandeur},
-    ).all()
-    if not rows:
+    saisons = lire_saisons_referentiel(session, localite, grandeur)
+    if not saisons:
         raise ExceptionKuma(
             code=CodeErreur.RESSOURCE_INTROUVABLE,
             message=("Aucun referentiel de calage publie pour cette station et cette grandeur."),
             statut_http=status.HTTP_404_NOT_FOUND,
         )
 
-    premiere = rows[0]
-    couverture = session.execute(
-        text(
-            """
-            SELECT l.code, cc.justification
-            FROM calage_couverture cc
-            JOIN localites l ON l.id = cc.localite_id
-            WHERE cc.referentiel_code = :code
-              AND cc.actif = TRUE
-            ORDER BY l.code
-            """
-        ),
-        {"code": str(premiere.code)},
-    ).all()
+    premiere = saisons[0]
+    couverture = lire_couverture_referentiel(session, premiere.code)
 
     return ReponseCalage(
         localite=localite,
         grandeur=grandeur,
-        code=str(premiere.code),
-        version=str(premiere.version),
+        code=premiere.code,
+        version=premiere.version,
         saisons=[
             SaisonCalage(
-                nom=str(row.saison),
-                mois=[int(m) for m in row.mois],
-                biais=float(row.biais),
-                k=1.0 / (1.0 + float(row.biais)),
+                nom=saison.saison,
+                mois=saison.mois,
+                biais=saison.biais,
+                k=1.0 / (1.0 + saison.biais),
             )
-            for row in rows
+            for saison in saisons
         ],
-        provenance=str(premiere.provenance),
-        portee=str(premiere.portee),
-        localites_couvertes=[str(c.code) for c in couverture],
-        justification_couverture=str(couverture[0].justification) if couverture else None,
-        serie_sol=str(premiere.serie_sol),
+        provenance=premiere.provenance,
+        portee=premiere.portee,
+        localites_couvertes=[c.code for c in couverture],
+        justification_couverture=couverture[0].justification if couverture else None,
+        serie_sol=premiere.serie_sol,
     )

@@ -24,7 +24,6 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, status
 from fastapi.responses import JSONResponse, Response
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
@@ -46,6 +45,9 @@ from kuma_data_core.exceptions import (
     NasaPowerTimeoutError,
 )
 from kuma_data_core.external.nasa_power import fetch_hourly
+from kuma_data_core.lecture.localites import localite_active_existe
+from kuma_data_core.lecture.mesures import lire_points_horaires
+from kuma_data_core.lecture.series import chercher_serie_horaire_stockee
 from kuma_data_core.services.horaire import (
     ResultatHoraire,
     code_parametre_amont,
@@ -71,11 +73,7 @@ def _resoudre_localite(session: Session, localite: str) -> str:
     ``RESSOURCE_LOCALITE_INCONNUE`` si aucun des deux n'existe.
     """
     for candidat in (localite, f"{_PREFIXE_ALIAS_HISTORIQUE}{localite}"):
-        existe = session.execute(
-            text("SELECT 1 FROM localites WHERE code = :code AND actif = TRUE"),
-            {"code": candidat},
-        ).first()
-        if existe is not None:
+        if localite_active_existe(session, candidat):
             return candidat
     raise ExceptionKuma(
         code=CodeErreur.RESSOURCE_LOCALITE_INCONNUE,
@@ -128,42 +126,6 @@ def _gerer_erreur_amont(exc: Exception) -> None:
     raise exc
 
 
-def _chercher_serie_horaire_stockee(
-    session: Session, localite_code_complet: str, grandeur: str
-) -> tuple[int, date, date] | None:
-    """``(serie_id, periode_debut, periode_fin)`` de la série horaire stockée, ou ``None``.
-
-    Seules comptent les séries actives qui portent des mesures : une série sans
-    aucune ligne dans ``mesures_ressource_horaires`` couvrirait la fenêtre
-    demandée et ferait répondre 200 sans résultat. ``ORDER BY sm.id`` rend le
-    choix déterministe si plusieurs séries conviennent. La jointure sur
-    ``localites.code`` évite de dépendre du nom de la série.
-    """
-    row = session.execute(
-        text(
-            """
-            SELECT sm.id, sm.periode_debut, sm.periode_fin
-            FROM series_metadonnees sm
-            JOIN localites l ON l.id = sm.localite_id
-            WHERE l.code = :localite
-              AND sm.grandeur_code = :grandeur
-              AND sm.granularite = 'horaire'
-              AND sm.actif = TRUE
-              AND EXISTS (
-                  SELECT 1 FROM mesures_ressource_horaires m
-                  WHERE m.serie_id = sm.id
-              )
-            ORDER BY sm.id
-            LIMIT 1
-            """
-        ),
-        {"localite": localite_code_complet, "grandeur": grandeur},
-    ).first()
-    if row is None or row.periode_fin is None:
-        return None
-    return int(row.id), row.periode_debut, row.periode_fin
-
-
 def _lire_horaire_validee(
     session: Session,
     serie_id: int,
@@ -173,33 +135,18 @@ def _lire_horaire_validee(
 ) -> list[ResultatHoraire]:
     """Points horaires validés d'une série sur la plage.
 
-    Les lignes rejetées par le contrôle qualité (statut ``brut``) sont exclues.
     Instant rendu en UTC sans fuseau, comme le passe-plat.
     """
-    rows = session.execute(
-        text(
-            """
-            SELECT instant_mesure, valeur
-            FROM mesures_ressource_horaires
-            WHERE serie_id = :serie_id
-              AND statut IN ('valide_auto', 'valide_humain', 'publie')
-              AND valide_au IS NULL
-              AND (instant_mesure AT TIME ZONE 'UTC')::date >= :debut
-              AND (instant_mesure AT TIME ZONE 'UTC')::date <= :fin
-            ORDER BY instant_mesure
-            """
-        ),
-        {"serie_id": serie_id, "debut": periode_debut, "fin": periode_fin},
-    ).all()
+    points = lire_points_horaires(session, serie_id, periode_debut, periode_fin)
     unite = unite_cible(grandeur)
     return [
         ResultatHoraire(
-            instant=r.instant_mesure.astimezone(UTC).replace(tzinfo=None),
-            valeur=float(r.valeur),
+            instant=point.instant_mesure.astimezone(UTC).replace(tzinfo=None),
+            valeur=point.valeur,
             unite=unite,
             statut_editorial="valide_auto",
         )
-        for r in rows
+        for point in points
     ]
 
 
@@ -263,7 +210,7 @@ def grandeur_horaire(
 
     # Si une série horaire stockée couvre la plage, servir ses valeurs
     # validées plutôt que relayer la source amont.
-    serie_stockee = _chercher_serie_horaire_stockee(session, localite_complet, params.grandeur)
+    serie_stockee = chercher_serie_horaire_stockee(session, localite_complet, params.grandeur)
     if serie_stockee is not None:
         serie_id, periode_debut_serie, periode_fin_serie = serie_stockee
         if periode_debut_serie <= params.periode_debut and params.periode_fin <= periode_fin_serie:
