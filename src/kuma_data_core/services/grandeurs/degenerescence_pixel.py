@@ -174,6 +174,8 @@ def _grouper_par_pixel(vecteurs: dict[int, tuple[float, ...]]) -> dict[int, list
     return jumeaux
 
 
+# Texte figé à l'octet près : les migrations qui ont créé ces lignes le rejouent sur une base
+# neuve ; la migration ``reecrire_commentaires_degenerescence_pixel`` le réécrit ensuite en clair.
 def _commentaire(cfg: _ConfigSource, grandeur: str, codes_jumeaux: list[str]) -> str:
     """Commentaire éditorial de la ligne : groupe de jumeaux sur grille fixe, mise en
     garde de résolution pour une source interpolée."""

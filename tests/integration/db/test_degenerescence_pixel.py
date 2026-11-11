@@ -107,7 +107,7 @@ def test_confiance_b_avec_caveat_exactitude(db_session: Session) -> None:
         {"c": _GRANDEUR},
     ).scalar_one()
     assert "exact" in comm.lower()
-    assert "terrain" in comm.lower()  # le caveat dit pourquoi B et pas A
+    assert "mesures au sol" in comm  # le commentaire dit pourquoi B et pas A
 
 
 def test_radiation_ceres_8_groupes(db_session: Session) -> None:
@@ -157,8 +157,8 @@ def test_caveat_resolution_sur_interpolees(db_session: Session) -> None:
         ),
         {"gr": _GRANDEUR},
     ).scalar_one()
-    assert "interpolee" in comm.lower()
-    assert "resolution" in comm.lower()
+    assert "interpolée" in comm.lower()
+    assert "résolution" in comm.lower()
 
 
 def test_d29_kindia_mamou_dalaba_co_pixel(db_session: Session) -> None:
