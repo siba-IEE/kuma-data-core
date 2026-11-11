@@ -1,22 +1,7 @@
-"""Résolution de la table de mesures cible pour une série.
+"""Table de mesures où lire une série, d'après ses métadonnées.
 
-Fonction utilitaire pure (sans I/O) qui résout la table-cible des mesures
-d'une série à partir de ses métadonnées. Routage **source-first puis
-granularité** :
-
-- Les séries ``kuma_calculs`` vont dans ``grandeurs_metier`` (routées par
-  source ; ``granularite`` NULL pour ces séries).
-- Les autres séries sont routées par leur ``granularite``
-  (``journalier`` / ``mensuel`` / ``horaire``), discriminant posé en
-  migration 052 sur ``series_metadonnees``.
-
-Auparavant le routage des séries ``nasa_power`` reposait sur
-``periode_debut.year`` (bascule 2021). Cette heuristique ne
-distinguait pas une série horaire d'une série journalière de même source
-et même année de début ; elle est remplacée par la granularité explicite.
-
-Fail-fast (``ValueError``) sur combinaison (source, granularité) non
-résolue : force la mise à jour explicite quand un cas non prévu apparaît.
+Les séries ``kuma_calculs`` sont dans ``grandeurs_metier`` (leur granularité
+est NULL) ; les autres sont routées par ``series_metadonnees.granularite``.
 """
 
 from __future__ import annotations
@@ -25,7 +10,7 @@ from enum import StrEnum
 
 
 class TableMesures(StrEnum):
-    """Tables-cibles des mesures pour les endpoints `/api/v1/series`."""
+    """Tables de mesures lues par les endpoints ``/v1/series``."""
 
     JOURNALIER = "mesures_ressource"
     MENSUEL_RESSOURCE = "mesures_ressource_mensuelles"
@@ -37,33 +22,12 @@ def resolve_table_from_series_metadata(
     source_code: str,
     granularite: str | None,
 ) -> TableMesures:
-    """Résout la table-cible des mesures d'une série.
+    """Table de mesures d'une série : par source d'abord, par granularité ensuite.
 
-    Fonction pure (sans I/O). Routage source-first puis granularité :
-
-    - ``source_code == 'kuma_calculs'`` -> ``grandeurs_metier`` (quelle
-      que soit la granularité, NULL pour ces séries).
-    - sinon, routage par ``granularite`` (``journalier`` / ``mensuel`` /
-      ``horaire``).
-
-    Args:
-        source_code : valeur de ``sources.code`` de la série (lookup
-            préétabli par le caller via JOIN ``series_metadonnees`` /
-            ``sources``).
-        granularite : valeur de ``series_metadonnees.granularite``. ``NULL``
-            uniquement pour les séries ``kuma_calculs`` (traitées avant
-            que la granularité ne soit consultée).
-
-    Returns:
-        :class:`TableMesures` indiquant la table SQL où trouver les
-        mesures de la série.
-
-    Raises:
-        ValueError : si la combinaison (source, granularité) n'est pas
-            résolue. Une série non-``kuma_calculs`` doit porter une
-            granularité valide ; un ``NULL`` ou une valeur inconnue sur
-            une telle série déclenche le fail-fast (incohérence de
-            métadonnée détectée, pas silencieuse).
+    ``source_code`` est ``sources.code``, ``granularite`` est
+    ``series_metadonnees.granularite``. Lève ``ValueError`` si une série hors
+    ``kuma_calculs`` n'a pas une granularité ``journalier``, ``mensuel`` ou
+    ``horaire`` : une métadonnée incohérente ne doit pas passer en silence.
     """
     if source_code == "kuma_calculs":
         return TableMesures.GRANDEURS_METIER

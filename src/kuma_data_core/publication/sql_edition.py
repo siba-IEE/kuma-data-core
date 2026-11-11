@@ -1,24 +1,21 @@
-"""Génération du SQL de construction d'une édition publique (ADR-0003, WP1).
+"""SQL de construction d'une édition publique (ADR-0003).
 
 Le script d'export (``scripts/publication/exporter-edition.ps1``) n'encode
-aucune règle de filtre : il consomme le SQL produit ici, qui dérive
-entièrement du manifeste (``publication/manifeste.py``). Une seule source
-de vérité, testable.
+aucune règle de filtre : il exécute le SQL produit ici, entièrement dérivé
+du manifeste (``publication/manifeste.py``).
 
 Trois commandes, exécutées dans cet ordre sur la base d'édition
-intermédiaire LOCALE (copie de la référence, cf. ADR-0003 D5) :
+intermédiaire locale (copie de la référence) :
 
-1. ``construction`` : purge de l'audit (fonction + triggers, AVANT tout
-   UPDATE, sinon les triggers rejoueraient sur l'assainissement), drop
-   des tables exclues, puis assainissement des tables classées ainsi.
-2. ``controles`` : garde anti-fuite exécutable - un bloc ``DO`` qui lève
-   si un objet exclu subsiste ou si une règle d'assainissement n'a pas
-   été appliquée (l'expression est recalculée et comparée ligne à ligne).
-   Un échec fait échouer ``psql`` (``ON_ERROR_STOP``), donc l'export.
-3. ``metadonnees`` : table ``edition_metadonnees`` (une ligne), produite
-   au moment de la publication (ADR-0003 D7). Cette table n'existe QUE
-   dans l'édition - elle est hors schéma de référence et hors lignée
-   Alembic ; l'endpoint ``GET /v1/edition`` (WP5) la lira.
+1. ``construction`` : purge de l'audit (fonction et triggers, avant tout
+   UPDATE, sinon les triggers se déclencheraient sur l'assainissement),
+   suppression des tables exclues, puis assainissement.
+2. ``controles`` : un bloc ``DO`` qui lève si un objet exclu subsiste ou si
+   une règle d'assainissement n'a pas été appliquée. Un échec fait échouer
+   ``psql`` (``ON_ERROR_STOP``), donc l'export.
+3. ``metadonnees`` : table ``edition_metadonnees`` (une ligne), qui n'existe
+   que dans l'édition, hors schéma de référence et hors lignée Alembic ;
+   ``GET /v1/edition`` la lit.
 
 Usage : ``python -m kuma_data_core.publication.sql_edition <commande>``,
 le SQL est écrit sur stdout.
@@ -37,28 +34,23 @@ from kuma_data_core.publication.manifeste import (
     TABLES_EXCLUES,
 )
 
-# Formats imposés aux métadonnées d'édition. Les valeurs sont interpolées
-# dans du SQL : tout ce qui ne matche pas est rejeté (pas d'échappement,
-# un format strict suffit puisque c'est nous qui produisons ces valeurs).
+# Les métadonnées d'édition sont interpolées dans du SQL sans échappement :
+# un format strict tient lieu de garde, tout le reste est rejeté.
 _RE_EDITION_ID = re.compile(r"^edition_\d{8}$")
 _RE_DATE_PUBLICATION = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _RE_REVISION_SOURCE = re.compile(r"^[0-9a-f]{7,40}$")
 
 
 def instructions_construction() -> list[str]:
-    """Instructions de purge + assainissement, une par élément.
+    """Instructions de purge et d'assainissement, une par élément.
 
-    Exposées individuellement pour les exécuteurs qui ne savent pas
-    découper un script multi-instructions (psycopg n'accepte qu'une
-    instruction par ``execute``, et le bloc ``DO`` contient des ``;``
-    internes) : le test de non-fuite (WP9) les rejoue une à une dans
-    une transaction annulée.
+    Séparées pour les exécuteurs qui n'acceptent qu'une instruction par
+    appel (psycopg), le bloc ``DO`` contenant des ``;`` internes.
     """
     morceaux: list[str] = []
 
-    # 1. Fonction d'audit : le CASCADE emporte tous les triggers qui la
-    #    référencent. Le bloc DO qui suit ramasse d'éventuels triggers
-    #    du préfixe d'audit non liés à la fonction (ceinture et bretelles).
+    # Le CASCADE emporte les triggers liés à la fonction d'audit ; le bloc DO
+    # ramasse ceux du préfixe d'audit qui ne le seraient pas.
     morceaux.append(f"DROP FUNCTION IF EXISTS {FONCTION_AUDIT}() CASCADE;")
     morceaux.append(
         f"""\
@@ -79,11 +71,9 @@ END
 $purge_triggers$;"""
     )
 
-    # 2. Tables exclues.
     for table in sorted(TABLES_EXCLUES):
         morceaux.append(f"DROP TABLE IF EXISTS {table} CASCADE;")
 
-    # 3. Assainissement : un UPDATE par table, toutes colonnes d'un coup.
     for table in sorted(ASSAINISSEMENTS):
         regles = ASSAINISSEMENTS[table]
         affectations = ",\n    ".join(
@@ -151,8 +141,7 @@ $controles_edition$;
 def sql_metadonnees(edition_id: str, date_publication: str, revision_source: str) -> str:
     """Table ``edition_metadonnees`` (une ligne), injectée dans l'édition."""
     # fullmatch (et non match) : ancre la fin sans laisser passer un retour
-    # ligne final, que ``$`` autoriserait. Ceinture-bretelle même si ces
-    # valeurs viennent d'un contexte local de confiance (date, hash git).
+    # à la ligne final, que ``$`` autoriserait.
     if not _RE_EDITION_ID.fullmatch(edition_id):
         raise ValueError(f"edition_id invalide (attendu edition_AAAAMMJJ) : {edition_id!r}")
     if not _RE_DATE_PUBLICATION.fullmatch(date_publication):

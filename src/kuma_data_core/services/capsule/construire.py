@@ -1,16 +1,13 @@
 """Orchestration de l'émetteur de capsule, du point au fichier Kuma.
 
-Deux étages, séparés pour rester prouvables :
+- ``construire_capsule`` prend les entrées déjà acquises et le calage
+  éventuel, appelle l'assembleur et sérialise, sans entrée-sortie.
+- ``assembler_capsule`` résout le point via une source d'acquisition
+  injectée (les données du Core) et, en ligne seulement, appelle
+  kuma-calage.
 
-- ``construire_capsule`` — **pur**. Prend les entrées déjà acquises et le calage
-  éventuel, appelle l'assembleur, sérialise. Aucune I/O, testable sur valeurs.
-- ``assembler_capsule`` — l'orchestrateur. Résout le point via une **source
-  d'acquisition injectée** (les données du Core), et en ligne seulement appelle
-  kuma-calage. La source réelle (accès base) se branche à l'endpoint ; les tests
-  injectent une source factice.
-
-La frontière tient : hors-ligne, aucune touche à kuma-calage, la capsule est
-brute. En ligne, le calage entre, et seulement ses facteurs par saison.
+Hors-ligne, kuma-calage n'est jamais appelé et la capsule est brute. En
+ligne, seuls ses facteurs par saison entrent dans la ressource.
 """
 
 from __future__ import annotations
@@ -37,8 +34,8 @@ class EntreesRessource:
     sequence: dict[str, Any]
     sequence_contraignant: dict[str, Any] | None = None
     corrections: dict[str, Any] | None = None
-    # Extremes de temperature au point (records froid/chaud, bruts NASA), ou
-    # None tant que le Core ne les sert pas : la capsule omet alors le bloc.
+    # Extrêmes de température au point (records froid et chaud, bruts NASA) ;
+    # ``None`` si le Core ne les sert pas : la capsule omet alors le bloc.
     temperatures_conception: dict[str, Any] | None = None
 
 
@@ -53,7 +50,7 @@ class CalageRequisError(ValueError):
 
 
 def construire_capsule(entrees: EntreesRessource, *, calage: dict[str, Any] | None = None) -> str:
-    """Assemble puis sérialise. Pur : mêmes entrées, même fichier.
+    """Assemble puis sérialise : mêmes entrées, même fichier.
 
     ``calage=None`` produit la capsule brute (hors-ligne) ; un calage présent
     produit la ressource calibrée (en ligne).

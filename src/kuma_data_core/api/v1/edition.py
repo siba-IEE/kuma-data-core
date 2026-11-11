@@ -1,4 +1,4 @@
-"""Endpoint ``GET /v1/edition`` - fraîcheur affichée (ADR-0003, D7).
+"""Route ``GET /v1/edition`` : fraîcheur affichée (ADR-0003).
 
 Le retard de l'édition publiée sur la base de référence est assumé,
 donc affiché : « un retard documenté est une propriété, un retard
@@ -69,7 +69,7 @@ def _lire_edition(session: Session) -> tuple[str, date, str] | None:
 def edition_courante(
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> ReponseEdition:
-    """Expose les métadonnées de l'édition courante (ADR-0003, D7)."""
+    """Métadonnées de l'édition servie ; 404 si le déploiement n'en sert pas."""
     edition = _lire_edition(session)
     if edition is None:
         raise ExceptionKuma(

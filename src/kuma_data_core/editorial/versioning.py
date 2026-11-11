@@ -1,26 +1,10 @@
-"""Rotation versionnée des lignes versionnées temporellement.
+"""Rotation versionnée d'une ligne de ``mesures_ressource``.
 
-Périmètre tables : ``mesures_ressource``, ``grandeurs_metier``.
-
-La rotation versionnée est l'opération **atomique** qui révise la valeur
-d'une donnée versionnée tout en préservant son historique. Algorithme
-canonique :
-
-1. Capture du timestamp PostgreSQL ``now()`` (un seul appel SQL par
-   transaction → ``valide_au`` ancienne et ``valide_du`` nouvelle
-   strictement égales).
-2. Fermeture de la ligne courante : pose ``valide_au = instant`` +
-   ``modifie_le = instant`` + ``modifie_par = auteur_id``.
-3. Insertion de la remplaçante : mêmes colonnes d'identité métier,
-   nouvelles valeurs, ``valide_du = instant``, ``valide_au = None``,
-   ``statut = 'brut'`` (défense en profondeur).
-
-L'atomicité est garantie par la transaction unique : si la contrainte
-EXCLUDE refuse l'INSERT (cas de concurrence imprévue), la transaction
-est rollback et l'ancienne ligne reste courante.
-
-Identité métier de ``mesures_ressource`` : 2-uplet
-``(serie_id, instant_mesure)``.
+Réviser une valeur sans perdre l'historique : la ligne courante est fermée
+(``valide_au``) et une remplaçante de même identité ``(serie_id,
+instant_mesure)`` est insérée, dans la même transaction. Si la contrainte
+EXCLUDE refuse l'insertion, la transaction est annulée et l'ancienne ligne
+reste courante.
 """
 
 from __future__ import annotations
@@ -33,9 +17,7 @@ from sqlalchemy.orm import Session
 
 from kuma_data_core.db.models.mesures_ressource import MesureRessource
 
-# Colonnes d'identité métier de ``mesures_ressource`` :
-# 2-uplet ``(serie_id, instant_mesure)``. Conservé sur la nouvelle ligne lors
-# d'une rotation pour préserver l'identité versionnée.
+# Identité métier, reportée telle quelle sur la ligne remplaçante.
 COLONNES_IDENTITE_MESURES_RESSOURCE: tuple[str, ...] = ("serie_id", "instant_mesure")
 
 
@@ -45,48 +27,14 @@ def roter_ligne_versionnee(
     auteur_id: int | None,
     session: Session,
 ) -> MesureRessource:
-    """Ferme la ligne courante et insère une remplaçante avec nouvelles valeurs.
+    """Ferme la ligne courante et insère sa remplaçante ; flush sans commit.
 
-    Args:
-        ligne_courante : instance ``MesureRessource`` actuellement
-            courante (``valide_au IS NULL``).
-        nouvelles_valeurs : dict des colonnes mutables à mettre à jour
-            sur la nouvelle ligne. Typiquement ``{'valeur': 5.42}``.
-            Les colonnes d'identité métier (``serie_id``, ``instant_mesure``)
-            sont **conservées** de la ligne courante et ne doivent pas
-            figurer dans ce dict (sinon `ValueError`).
-        auteur_id : id du contributeur responsable de la rotation
-            (``contributeurs.id``). ``None`` pour les rotations
-            automatiques sans auteur applicatif.
-        session : session SQLAlchemy active. La fonction ajoute la
-            nouvelle ligne via ``session.add()`` et flush ; le caller
-            est responsable du commit.
-
-    Returns:
-        La nouvelle ligne ``MesureRessource`` insérée et flushée.
-
-    Raises:
-        ValueError : si ``nouvelles_valeurs`` contient une colonne
-            d'identité métier (``serie_id``, ``instant_mesure``).
-
-    Side-effects :
-        - Mute ``ligne_courante.valide_au``, ``modifie_le``, ``modifie_par``
-        - Ajoute une nouvelle ligne en session et flush
-
-    Notes:
-        Le pattern utilise ``SELECT now()`` côté PostgreSQL pour capturer
-        le timestamp de début de transaction (un seul appel), réutilisé
-        pour les deux opérations. Cela garantit l'égalité stricte entre
-        ``valide_au`` (ancienne) et ``valide_du`` (nouvelle) - la
-        sémantique ``tstzrange [)`` (lower inclusive, upper exclusive)
-        est ainsi respectée sans micro-trou temporel.
-
-        La nouvelle ligne reçoit ``statut='brut'`` par construction
-        (défense en profondeur DDL + service). Une override éditoriale
-        directe vers ``valide_humain`` ou autre est possible par appel
-        séparé à ``transition_statut`` dans la même transaction.
+    ``nouvelles_valeurs`` porte les colonnes révisées (``{'valeur': 5.42}``) ;
+    une colonne d'identité y lève ``ValueError``. ``auteur_id`` vaut ``None``
+    pour une rotation automatique. La remplaçante naît ``brut`` sauf statut
+    fourni, et garde le niveau de confiance dérivé de l'ancienne ligne si
+    l'appelant ne le recalcule pas.
     """
-    # Garde-fou : pas de modification d'identité métier dans une rotation
     intersection = set(nouvelles_valeurs) & set(COLONNES_IDENTITE_MESURES_RESSOURCE)
     if intersection:
         raise ValueError(
@@ -94,24 +42,22 @@ def roter_ligne_versionnee(
             f"{sorted(intersection)}. La rotation versionnée préserve l'identité."
         )
 
-    # 1. Capture un seul timestamp PostgreSQL (start-of-transaction)
+    # Un seul ``now()`` (début de transaction) pour les deux lignes : ``valide_au``
+    # de l'ancienne égale ``valide_du`` de la nouvelle, sans trou ni recouvrement
+    # dans l'intervalle ``[)``.
     instant: datetime = session.execute(text("SELECT now()")).scalar_one()
 
-    # 2. Fermer la ligne courante
     ligne_courante.valide_au = instant
     ligne_courante.modifie_le = instant
     ligne_courante.modifie_par = auteur_id
 
-    # 3. Insérer la remplaçante (mêmes colonnes d'identité, nouvelles valeurs)
     payload: dict[str, Any] = {
         col: getattr(ligne_courante, col) for col in COLONNES_IDENTITE_MESURES_RESSOURCE
     }
     payload.update(nouvelles_valeurs)
-    # Valeurs editoriales par défaut sur la nouvelle ligne
     payload.setdefault("statut", "brut")
-    # Le niveau_confiance_derive doit être recalculé par le caller selon
-    # methode_collecte/fiabilite de la série. On laisse le caller décider
-    # plutôt que d'imposer une valeur par défaut potentiellement fausse.
+    # Le niveau dérivé dépend de la série (méthode, fiabilité de la source) :
+    # à l'appelant de le recalculer, sinon celui de l'ancienne ligne est repris.
     if "niveau_confiance_derive" not in payload:
         payload["niveau_confiance_derive"] = ligne_courante.niveau_confiance_derive
 

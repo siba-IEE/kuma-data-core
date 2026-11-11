@@ -1,6 +1,6 @@
 """Client serveur à serveur du service de calage (kuma-calage).
 
-En mode EN LIGNE, l'émetteur de capsule appelle kuma-calage pour un point et en
+En ligne, l'émetteur de capsule appelle kuma-calage pour un point et en
 extrait le référentiel de calage (les saisons et leurs biais) à cuire dans la
 ressource. La loi ne sort jamais de kuma-calage ; seuls ses résultats (les
 facteurs par saison) entrent dans la capsule, et seulement en ligne.

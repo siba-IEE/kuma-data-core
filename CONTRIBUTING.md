@@ -68,8 +68,35 @@ mergée est immuable ; toute correction passe par une nouvelle migration.
 ## Style
 
 Commits atomiques, message à l'impératif. Le code se lit comme le code
-alentour : mêmes idiomes, commentaires sur le pourquoi non évident, pas de
-remplissage.
+alentour : mêmes idiomes, pas de remplissage.
+
+### Commentaires et docstrings
+
+- Un commentaire dit pourquoi (contrainte non évidente, piège, référence à
+  une source ou une norme), pas ce que fait le code.
+- Docstring d'une ligne par défaut ; trois à cinq lignes quand le contrat
+  n'est pas évident (unités, invariants, exceptions levées). Plus long
+  seulement pour un texte servi (docstrings de routes et de modèles Pydantic,
+  qui alimentent l'OpenAPI) ou un module dont la méthode scientifique doit
+  être énoncée (formule et référence bibliographique).
+- Pas d'historique du projet : ni phase, lot, étape, identifiant de dette,
+  numéro de pull request ou de migration, ni récit de revue. Cela relève de
+  l'historique git, du CHANGELOG et des décisions d'architecture.
+- Pas de paraphrase des annotations de type, pas de bloc `Args:` /
+  `Returns:` qui ne fait que répéter noms et types.
+- À garder : références scientifiques, unités, conventions de signe, raison
+  d'une valeur numérique.
+
+### Textes servis
+
+Ce qui sort de l'API (descriptions de routes et de champs, messages
+d'erreur, mises en garde du champ `limite`) s'adresse à un utilisateur
+extérieur : pas de code interne, pas de renvoi à un document de travail,
+pas de décompte figé. Un test balaie le document OpenAPI et refuse ce
+vocabulaire.
+
+Les migrations mergées restent immuables : ces règles valent pour `src/`,
+`tests/` et le code neuf.
 
 ## Accord de licence de contribution (CLA)
 

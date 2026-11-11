@@ -1,58 +1,34 @@
-"""Calcul à la volée de la grandeur F1 ``ghi_exceedance``.
+"""Grandeur F1 ``ghi_exceedance`` : P50 et P90 de l'irradiation annuelle.
 
-Exceedance inter-annuelle de l'irradiation annuelle, dérivée de la série
-GHI mensuelle 1991-2020 NASA POWER (climatologie OMM, 6 villes pilotes).
+Exceedance inter-annuelle dérivée de la série GHI mensuelle 1991-2020 NASA
+POWER (fenêtre climatologique OMM).
 
 Méthode :
 
-1. **Totaux annuels** (orchestrateur amont) : pour chaque année y de la
-   fenêtre 1991-2020, le total annuel est calculé par pondération
-   journalière de la valeur mensuelle (unité source kWh/m²/jour) :
+1. Totaux annuels : total_annuel(y) = Σ_mois [GHI(y, m) x nb_jours(m, y)],
+   GHI mensuel en kWh/m²/jour, nb_jours réel du mois (années bissextiles
+   incluses).
+2. Percentiles ``numpy.percentile`` (interpolation linéaire) sur les totaux
+   annuels : P50 = médiane ; P90 = 10ᵉ percentile, valeur dépassée 90 % des
+   années (et non le 90ᵉ percentile), donc P90 ≤ P50.
 
-       total_annuel(y) = Σ_mois [GHI(y, m) x nb_jours(m, y)]
-
-   ``nb_jours`` vient de ``calendar.monthrange(y, m)[1]`` (stdlib),
-   années bissextiles incluses (1992, 1996, 2000, 2004, 2008, 2012,
-   2016, 2020 = 8 sur 30).
-
-2. **Percentiles** (fonction pure ci-dessous) : sur les 30 totaux annuels,
-   extraction de deux percentiles via ``numpy.percentile`` (interpolation
-   ``'linear'``, méthode par défaut) :
-
-   - **P50** = percentile 50 = médiane (irradiation annuelle typique)
-   - **P90** = percentile **10** = valeur dépassée 90 % des années
-     (scénario conservateur, fréquemment utilisé en bancable)
-
-**Piège documenté** : P90 = dépassement 90 % => 10ᵉ percentile (et non
-90ᵉ). La fonction garantit ``P90 < P50`` par construction.
-
-Niveau de confiance : le plus bas des mesures mensuelles lues, jusqu'à A
-(percentiles exacts), par la règle de propagation P que la route applique
+Niveau de confiance : le plus bas des mesures mensuelles lues, plafonné à A
+(percentiles exacts), par la règle de propagation que la route applique
 (ADR-0008).
 
-Pattern fonctions pures + orchestrateur I/O : la fonction
-``calculer_ghi_exceedance`` est pure (``Sequence[float]`` en entrée,
-``ResultatGhiExceedance`` en sortie), aucune dépendance SQL.
-L'orchestrateur de lecture (helper local dans ``api/v1/grandeurs.py``)
-charge la série mensuelle et calcule les totaux annuels avant l'appel.
+Limites (reprises dans le champ ``limite`` de la réponse API) :
 
-Limites documentées (cf. champ ``limite`` de la réponse API) :
+- exceedance inter-annuelle uniquement : l'incertitude du modèle satellitaire
+  n'est pas propagée. Ce n'est pas un P90 bancable complet, qui demanderait
+  un modèle d'erreur explicite et idéalement une calibration au sol ;
+- Kindia et Mamou tombent dans le même pixel CERES SYN1deg de NASA POWER :
+  leurs séries mensuelles, donc leurs P50/P90, sont identiques ;
+- sur 30 ans, le 10ᵉ percentile repose sur 3 valeurs en queue de
+  distribution : incertitude d'échantillonnage sur P90.
 
-- exceedance **inter-annuelle uniquement** (variabilité année à année),
-  ne propage pas l'incertitude de modèle satellitaire. Ce n'est pas un
-  P90 bancable complet (qui nécessiterait un modèle d'erreur explicite,
-  type PRUVE, et idéalement une calibration sol).
-- Kindia et Mamou tombent dans le même pixel CERES SYN1deg NASA POWER
-  (110 km à 10° N) ; leurs séries mensuelles 1991-2020 sont
-  strictement identiques et leurs P50/P90 le sont donc aussi. Note
-  ajoutée au champ ``limite`` pour ces deux villes.
-- base 30 ans, **incertitude d'échantillonnage** sur P90 (10ᵉ
-  percentile sur 30 valeurs = 3 valeurs en queue). Mention qualitative
-  dans le champ ``limite``.
-
-Référence bibliographique : exceedance probabiliste P50/P90, pratique
-courante en évaluation de ressource solaire bancable (cf. IEA PVPS
-Task 16 / "Best Practices for Solar Resource Assessment").
+Référence : exceedance probabiliste P50/P90, pratique courante en évaluation
+de ressource solaire (IEA PVPS Task 16, « Best Practices for Solar Resource
+Assessment »).
 """
 
 from __future__ import annotations
@@ -69,7 +45,6 @@ from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
 PLAFOND_CONFIANCE: NiveauConfiance = "A"
 """Plafond de confiance : percentiles exacts des totaux annuels, sans modèle ni hypothèse."""
 
-# === Constantes module ====================================================
 
 UNITE_GHI_EXCEEDANCE: str = "kWh/m²/an"
 """Unité de sortie : irradiation annuelle (énergie cumulée sur l'année)."""
@@ -81,10 +56,10 @@ PERCENTILE_P90: float = 10.0
 """P90 (exceedance) = 10ᵉ percentile : valeur dépassée 90 % des années."""
 
 METHODE_PERCENTILE: Literal["linear"] = "linear"
-"""Méthode d'interpolation numpy.percentile (défaut, IEEE).
+"""Interpolation de ``numpy.percentile`` (défaut).
 
-Typée ``Literal["linear"]`` (et non ``str``) pour satisfaire les
-overloads stricts de ``numpy.percentile`` côté mypy strict.
+``Literal`` et non ``str`` : exigé par les surcharges de ``numpy.percentile``
+sous mypy strict.
 """
 
 ANNEE_DEBUT_CLIMATOLOGIE: int = 1991
@@ -95,19 +70,12 @@ NOMBRE_ANNEES_BASE: int = ANNEE_FIN_CLIMATOLOGIE - ANNEE_DEBUT_CLIMATOLOGIE + 1
 """30 années : base d'échantillonnage des percentiles."""
 
 
-# === Constantes co-localisation ===========================================
-
 PAIRES_COLOCALISEES_D29: dict[str, str] = {
     "gin_kindia": "gin_mamou",
     "gin_mamou": "gin_kindia",
 }
-"""Paires de villes co-localisées dans le même pixel CERES SYN1deg NASA
-POWER (110 km à 10° N). Pour ces villes, P50/P90 sont strictement
-identiques à la ville jumelle. Mention au champ ``limite`` de la
-réponse API."""
-
-
-# === Modele de resultat ===================================================
+"""Villes partageant le même pixel CERES SYN1deg de NASA POWER : leurs P50/P90
+sont identiques à ceux de la ville jumelle."""
 
 
 class ResultatGhiExceedance(BaseModel):
@@ -126,30 +94,12 @@ class ResultatGhiExceedance(BaseModel):
     )
 
 
-# === Fonction publique pure ===============================================
-
-
 def calculer_ghi_exceedance(
     totaux_annuels: Sequence[float],
 ) -> ResultatGhiExceedance:
-    """Calcule P50 et P90 (exceedance) sur une série de totaux annuels.
+    """Calcule P50 et P90 (10ᵉ percentile) de totaux annuels en kWh/m²/an.
 
-    Args:
-        totaux_annuels : Séquence de totaux annuels en kWh/m²/an
-            (typiquement 30 valeurs pour la climatologie OMM 1991-2020).
-            Le caller (orchestrateur) calcule ces totaux par pondération
-            journalière de la série mensuelle (kWh/m²/jour).
-
-    Returns:
-        ResultatGhiExceedance avec ``p50`` (médiane) et ``p90``
-        (percentile 10 = dépassement 90 %).
-
-    Raises:
-        ValueError : si la séquence est vide ou contient moins de 2
-            valeurs (percentile non défini).
-
-    Note : P90 < P50 par construction (10ᵉ percentile < 50ᵉ percentile
-    sur une distribution non dégénérée). Garantie testée unitairement.
+    Lève ``ValueError`` s'il y a moins de 2 valeurs.
     """
     if len(totaux_annuels) < 2:
         raise ValueError(
@@ -162,28 +112,14 @@ def calculer_ghi_exceedance(
     return ResultatGhiExceedance(p50=p50, p90=p90)
 
 
-# === Utilitaires de l'orchestrateur (pures, sans I/O) =====================
-
-
 def calculer_totaux_annuels(
     mesures_mensuelles: Sequence[tuple[int, int, float]],
 ) -> dict[int, float]:
-    """Reconstruit les totaux annuels à partir des mesures mensuelles.
+    """Somme par année les valeurs mensuelles pondérées par les jours du mois.
 
-    Pondère chaque valeur mensuelle (kWh/m²/jour) par le nombre réel de
-    jours du mois (``calendar.monthrange(annee, mois)[1]``, stdlib) ;
-    années bissextiles correctement traitées (février = 29 jours en
-    1992, 1996, 2000, 2004, 2008, 2012, 2016, 2020).
-
-    Args:
-        mesures_mensuelles : Séquence de tuples ``(annee, mois, valeur)``
-            avec ``valeur`` en kWh/m²/jour. Typiquement 360 lignes
-            pour la climatologie 1991-2020.
-
-    Returns:
-        Dict ``{annee: total_annuel_kwh_par_m2}``. Une année est présente
-        dans le résultat dès qu'elle a au moins une mesure mensuelle ;
-        c'est au caller de filtrer les années incomplètes si requis.
+    ``mesures_mensuelles`` : tuples ``(annee, mois, valeur)``, valeur en
+    kWh/m²/jour. Une année figure dans le résultat dès qu'elle a une mesure :
+    l'appelant écarte les années incomplètes.
     """
     totaux: dict[int, float] = {}
     for annee, mois, valeur in mesures_mensuelles:

@@ -1,13 +1,9 @@
-"""Dépendances FastAPI partagées.
+"""Dépendances FastAPI partagées : authentification par clé API et plafond de débit.
 
-Contient l'authentification par clé API (``verifier_cle_api``) et
-l'alias ``CleApiValidee`` à utiliser dans les signatures des endpoints
-authentifiés.
-
-Les clés valides sont lues depuis la configuration
-(``Settings.api_cle_solar_bridge``, ``Settings.api_cle_admin``). Une
-migration ultérieure est prévue vers une table ``cles_api`` avec
-révocation et rotation.
+Deux familles de clés : celles de la configuration
+(``Settings.api_cle_solar_bridge``, ``Settings.api_cle_admin``) et les clés
+self-service, dont l'empreinte est cherchée dans ``cles_api`` quand une base
+de service est configurée (``Settings.meta_db``).
 """
 
 from __future__ import annotations
@@ -36,12 +32,7 @@ def _cles_egales(fournie: str, attendue: str) -> bool:
 
 
 def _cles_valides() -> set[str]:
-    """Retourne l'ensemble des clés API valides depuis la configuration.
-
-    Appelée à chaque requête authentifiée. Avec 1-2 clés en mémoire,
-    le coût est négligeable. À optimiser via cache TTL le jour où la
-    lecture se fera depuis une table.
-    """
+    """Clés d'environnement non vides (Bridge, administration)."""
     settings = get_settings()
     cles: set[str] = set()
     # Une clé vide (variable d'environnement présente mais vide) n'est
@@ -57,7 +48,7 @@ def adresse_ip_cliente(request: Request) -> str:
     """Adresse du client, fiable derrière un proxy de confiance déclaré.
 
     Derrière le reverse proxy, ``request.client.host`` est l'adresse du
-    proxy ; la vraie vit dans ``X-Forwarded-For``. On lit la **dernière**
+    proxy ; la vraie vit dans ``X-Forwarded-For``. On lit la dernière
     entrée, celle ajoutée par notre proxy : un client peut préfixer des
     adresses fictives, jamais en ajouter après. Sans proxy de confiance
     déclaré, l'en-tête est ignoré (un client le forgerait).
@@ -120,16 +111,12 @@ def limiter_debit_par_ip(request: Request) -> None:
 def verifier_cle_api(
     authorization: Annotated[str | None, Header()] = None,
 ) -> str:
-    """Valide la clé API présente dans le header ``Authorization``.
+    """Valide le Bearer de l'en-tête ``Authorization`` et rend la clé.
 
-    Retourne la clé brute si valide. Lève une ``ExceptionKuma`` sinon,
-    avec un code parmi ``AUTH_HEADER_MANQUANT``, ``AUTH_FORMAT_INVALIDE``
-    ou ``AUTH_CLE_INVALIDE`` (toujours statut HTTP 401).
-
-    La comparaison utilise ``secrets.compare_digest`` (constant-time) sur
-    chaque clé valide, pour ne pas exposer de canal temporel même si les
-    clés (256 bits d'entropie via ``secrets.token_urlsafe(32)``) rendent
-    le risque théorique.
+    Lève une ``ExceptionKuma`` 401 (``AUTH_HEADER_MANQUANT``,
+    ``AUTH_FORMAT_INVALIDE`` ou ``AUTH_CLE_INVALIDE``), ou 429
+    (``CLES_QUOTA_JOURNALIER_DEPASSE``) pour une clé self-service qui a épuisé
+    son quota. Les clés d'environnement sont comparées en temps constant.
     """
     if authorization is None:
         raise ExceptionKuma(
@@ -159,17 +146,15 @@ def verifier_cle_api(
     if any(_cles_egales(cle_fournie, cle) for cle in _cles_valides()):
         return cle_fournie
 
-    # Clés self-service (WP6) : sur un déploiement avec base de service,
-    # l'empreinte de la clé est cherchée dans ``cles_api``. La comparaison
-    # se fait sur le hash SHA-256 (index unique) : pas de canal temporel
-    # exploitable, la valeur comparée n'est pas le secret.
+    # Clés self-service : l'empreinte SHA-256 est cherchée dans ``cles_api``
+    # (index unique). Pas de canal temporel exploitable : la valeur comparée
+    # n'est pas le secret.
     settings = get_settings()
     if settings.meta_db is not None:
         quota = _quota_cle_self_service(cle_fournie)
         if quota is not None:
-            # Quota journalier (WP7) : appliqué aux seules clés
-            # self-service, en fenêtre fixe UTC, fail-open si Redis
-            # est injoignable (cf. services/quotas.py).
+            # Quota journalier des seules clés self-service ; la requête
+            # passe si Redis est injoignable (services/quotas.py).
             if settings.rate_limiting_actif:
                 from kuma_data_core.services.cles import hacher_cle
                 from kuma_data_core.services.quotas import consommer_quota
@@ -191,13 +176,10 @@ def verifier_cle_api(
 
 
 def _quota_cle_self_service(cle: str) -> int | None:
-    """Quota de la clé self-service active, ``None`` si inconnue/révoquée.
+    """Quota de la clé self-service active, ``None`` si inconnue ou révoquée.
 
-    Ouverture paresseuse d'une session sur la base de service : ce
-    chemin n'est atteint que si les clés d'environnement n'ont pas
-    reconnu le Bearer, et seulement quand ``META_DB`` est configurée.
-    Toute erreur d'infrastructure vaut refus (401), pas 500 : une base
-    de service injoignable ne doit pas transformer l'auth en oracle.
+    Toute erreur d'infrastructure vaut refus (401), pas 500 : une base de
+    service injoignable ne doit pas transformer l'authentification en oracle.
     """
     from sqlalchemy.orm import Session
 
@@ -215,12 +197,11 @@ def _quota_cle_self_service(cle: str) -> int | None:
 def verifier_cle_admin(
     authorization: Annotated[str | None, Header()] = None,
 ) -> str:
-    """Valide que le Bearer est **la clé administrateur** (et elle seule).
+    """Valide que le Bearer est la clé d'administration, et elle seule.
 
-    Réservé aux opérations d'administration (révocation de clés, WP6).
-    Une clé valide mais non-admin reçoit le même 401
-    ``AUTH_CLE_INVALIDE`` qu'une clé inconnue : pas d'oracle sur le
-    statut d'une clé.
+    Une clé valide mais non administratrice reçoit le même 401
+    ``AUTH_CLE_INVALIDE`` qu'une clé inconnue : pas d'oracle sur le statut
+    d'une clé.
     """
     cle = verifier_cle_api(authorization)
     settings = get_settings()
@@ -236,19 +217,10 @@ def verifier_cle_admin(
 
 
 CleApiValidee = Annotated[str, Depends(verifier_cle_api)]
-"""Type-alias à utiliser dans les signatures des endpoints authentifiés.
-
-Exemple :
-
-.. code-block:: python
-
-    @routeur.get("/secret")
-    def endpoint_protege(_cle: CleApiValidee) -> dict[str, str]:
-        return {"ok": "ok"}
-"""
+"""Paramètre d'un endpoint authentifié : ``_cle: CleApiValidee``."""
 
 CleAdminValidee = Annotated[str, Depends(verifier_cle_admin)]
-"""Type-alias pour les endpoints réservés à la clé administrateur."""
+"""Paramètre d'un endpoint réservé à la clé d'administration."""
 
 
 def parametres_requete[M: BaseModel](modele: type[M]) -> Callable[..., M]:

@@ -1,28 +1,22 @@
-"""Données de seed pour la table ``sources`` (migration 012).
+"""Données de seed de la table ``sources``.
 
-9 sources éditoriales compilées par Siba Kalivogui en mai 2026
-(livrable v4.2 figé).
+9 sources compilées par Siba Kalivogui en mai 2026 :
 
-Composition :
-- 3 bases de données opérationnelles (nasa_power, ecmwf_era5,
-  anm_guinee_stations)
-- 2 normes techniques opérationnelles (iec_61724_1_2021,
-  wmo_8_2024)
-- 4 sources hydro structurelles (wmo_grdc, wwf_hydrosheds,
-  iec_60041_1991, wmo_168_2008)
+- 3 bases de données (``nasa_power``, ``ecmwf_era5``, ``anm_guinee_stations``) ;
+- 2 normes techniques (``iec_61724_1_2021``, ``wmo_8_2024``) ;
+- 4 sources hydrologiques (``wmo_grdc``, ``wwf_hydrosheds``, ``iec_60041_1991``,
+  ``wmo_168_2008``).
 
-Conventions appliquées :
-- Mention structurelle normée octet-à-octet identique sur les 4 sources
-  hydro structurelles (constante ``_MENTION_BETA2_NORMEE`` factorisée).
-- ISBN natifs IEC inscrits pour ``iec_60041_1991`` (283182222X,
-  format ISBN-10 pré-2007) et ``iec_61724_1_2021`` (9782832210025,
-  vérifié sur le webstore IEC le 2026-05-10).
-- Acknowledgement formalisé dans notes pour les 9 sources
-  (citation canonique / officielle / suggérée selon publication).
-- Année dans le code pour les 4 normes éditées, sans année pour
-  les 5 bases continues / référentiels évolutifs.
-- Scope Volume I retenu pour ``wmo_8_2024`` (DOI suffixe ``/1``)
-  et ``wmo_168_2008`` (ISBN Vol I distinct).
+Conventions :
+
+- les 4 sources hydrologiques portent la même mention, factorisée dans
+  ``_MENTION_BETA2_NORMEE`` ;
+- ISBN de l'IEC : 283182222X (ISBN-10) pour ``iec_60041_1991``, 9782832210025
+  pour ``iec_61724_1_2021`` (vérifié sur le webstore IEC le 2026-05-10) ;
+- le code porte l'année pour les 4 normes éditées, pas pour les 5 bases et
+  référentiels mis à jour en continu ;
+- ``wmo_8_2024`` et ``wmo_168_2008`` désignent le volume I (DOI en ``/1``, ISBN
+  du volume I).
 """
 
 from __future__ import annotations
@@ -30,10 +24,8 @@ from __future__ import annotations
 from datetime import date
 from typing import Any
 
-# Mention structurelle normée : paragraphe canonique à propager
-# octet-à-octet identique sur les 4 sources hydro structurelles
-# (wmo_grdc, wwf_hydrosheds, iec_60041_1991, wmo_168_2008). Toute
-# modification ici doit être propagée en simultané sur les 4 sources.
+# Paragraphe identique, au caractère près, pour les 4 sources hydrologiques :
+# toute modification s'applique aux quatre.
 _MENTION_BETA2_NORMEE: str = (
     "Source de référence structurelle (hydrologie) : schéma de validation "
     "conçu, population effective différée. Le pipeline hydro (ingestion des "
@@ -44,7 +36,7 @@ _DATE_CONSULTATION_1_1E: date = date(2026, 5, 10)
 
 
 SOURCES_SEED: list[dict[str, Any]] = [
-    # ===== Bases de données opérationnelles (3) =====
+    # Bases de données opérationnelles (3)
     {
         "code": "nasa_power",
         "titre": (
@@ -311,7 +303,7 @@ SOURCES_SEED: list[dict[str, Any]] = [
             "Consulté le 2026-05-10."
         ),
     },
-    # ===== Normes techniques opérationnelles (2) =====
+    # Normes techniques opérationnelles (2)
     {
         "code": "iec_61724_1_2021",
         "titre": (
@@ -497,7 +489,7 @@ SOURCES_SEED: list[dict[str, Any]] = [
             "Consulté le 2026-05-10."
         ),
     },
-    # ===== Sources hydro structurelles (4) =====
+    # Sources hydro structurelles (4)
     {
         "code": "wmo_grdc",
         "titre": "WMO/GRDC - Global Runoff Data Centre (Global Runoff Database)",

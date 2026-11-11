@@ -1,17 +1,14 @@
-"""Modèle SQLAlchemy de la table ``series_metadonnees``.
+"""Modèle SQLAlchemy de la table ``series_metadonnees`` : métadonnées des séries de mesures.
 
-Référentiel éditorial des séries de mesures Kuma : pour un triplet
-(localité, grandeur, source), stocke les métadonnées éditoriales
-communes à toutes les mesures de cette série. Citée en aval par
-``mesures_ressource`` via une FK ``serie_id``.
+Une série est identifiée par sa localité, sa grandeur, sa source, sa période et
+sa granularité ; les tables de mesures la citent par ``serie_id``.
+``granularite`` indique dans quelle table vivent ses mesures (journalière,
+mensuelle ou horaire).
 
-Pas de versioning temporel (cas d'usage vérifié), pas de statut
-éditorial workflow (soft delete via ``actif``/``desactive_le``
-suffit), pas de ``niveau_confiance`` à l'échelle série (la dérivation
-R1-R4 vit à l'échelle mesure).
-
-FK ``grandeur_code`` cite ``grandeurs_referentiel.code`` (colonne
-UNIQUE non-PK). Premier usage du pattern dans le projet.
+Pas de versionnement ni de statut éditorial à ce niveau : une série se désactive
+par ``actif`` / ``desactive_le``, et le niveau de confiance est porté par chaque
+mesure. ``grandeur_code`` référence ``grandeurs_referentiel.code``, colonne
+unique qui n'est pas la clé primaire.
 """
 
 from __future__ import annotations
@@ -43,7 +40,6 @@ class SerieMetadonnees(Base):
 
     __tablename__ = "series_metadonnees"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     code: Mapped[str] = mapped_column(
         String(80),
@@ -57,7 +53,6 @@ class SerieMetadonnees(Base):
     )
     libelle: Mapped[str] = mapped_column(Text, nullable=False)
 
-    # === Identité métier (triplet localité x grandeur x source) ===
     localite_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey(
@@ -90,7 +85,6 @@ class SerieMetadonnees(Base):
         nullable=False,
     )
 
-    # === Période ===
     periode_debut: Mapped[date] = mapped_column(Date, nullable=False)
     periode_fin: Mapped[date | None] = mapped_column(
         Date,
@@ -101,7 +95,6 @@ class SerieMetadonnees(Base):
         ),
     )
 
-    # === Granularité (discriminant de routage table-cible) ===
     granularite: Mapped[str | None] = mapped_column(
         String(16),
         nullable=True,
@@ -114,7 +107,6 @@ class SerieMetadonnees(Base):
         ),
     )
 
-    # === Métadonnées éditoriales ===
     methode_collecte: Mapped[str | None] = mapped_column(
         String(40),
         nullable=True,
@@ -139,11 +131,9 @@ class SerieMetadonnees(Base):
     )
     url_documentation: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # === Soft delete ===
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     desactive_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Audit applicatif ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -169,7 +159,6 @@ class SerieMetadonnees(Base):
         nullable=True,
     )
 
-    # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
             "periode_fin IS NULL OR periode_fin >= periode_debut",
@@ -184,8 +173,6 @@ class SerieMetadonnees(Base):
             "OR (actif = FALSE AND desactive_le IS NOT NULL)",
             name="ck_series_metadonnees_actif_desactive_coherent",
         ),
-        # CHECK methode_collecte (migration 016) :
-        # 6 valeurs anticipees par les mecaniques transverses.
         CheckConstraint(
             "methode_collecte IS NULL OR methode_collecte IN ("
             "'mesure_directe', 'modele_satellitaire', 'interpolation_geographique', "
@@ -196,9 +183,8 @@ class SerieMetadonnees(Base):
         Index("idx_series_metadonnees_localite_id", "localite_id"),
         Index("idx_series_metadonnees_grandeur_code", "grandeur_code"),
         Index("idx_series_metadonnees_source_id", "source_id"),
-        # Nommé explicitement : la naming_convention Kuma (cf. db/base.py)
-        # utilise column_0_name, donc sans `name=` ne reprend que la
-        # première colonne - ne reflèterait pas l'identité métier complète.
+        # Nom explicite : la convention de nommage (``db/base.py``) ne
+        # reprendrait que la première colonne.
         UniqueConstraint(
             "localite_id",
             "grandeur_code",
@@ -208,9 +194,8 @@ class SerieMetadonnees(Base):
             "granularite",
             name="uq_series_metadonnees_identite_metier_plage_granularite",
         ),
-        # Commentaire de table porté sur l'ORM pour cohérence avec la
-        # migration 008 (alembic check). Le dict doit être le dernier
-        # élément du tuple __table_args__ selon la convention SQLAlchemy.
+        # ``alembic check`` compare ce commentaire de table à la base. Le dict
+        # doit rester le dernier élément de ``__table_args__``.
         {
             "comment": (
                 "Referentiel editorial des series de mesures Kuma. "

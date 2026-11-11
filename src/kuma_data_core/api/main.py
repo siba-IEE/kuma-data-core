@@ -1,17 +1,11 @@
-"""Point d'entrée de l'API Kuma Data Core.
-
-Construit l'application FastAPI via ``creer_application()`` et expose
-l'instance ``app`` consommée par ``uvicorn`` :
+"""Point d'entrée de l'API : ``creer_application()`` et l'instance ``app`` pour ``uvicorn``.
 
 .. code-block:: bash
 
     uv run uvicorn kuma_data_core.api.main:app --reload --host 127.0.0.1 --port 8000
 
-Le ``lifespan`` configure le logging structuré au démarrage et trace
-``api_demarrage`` / ``api_arret``. Le middleware HTTP journalise chaque
-requête traitée (``methode``, ``chemin``, ``statut``, ``duree_ms``). Les
-exceptions non gérées sont loggées par ``handler_exception_generique``
-(voir ``api/erreurs.py``).
+Chaque requête est journalisée (``methode``, ``chemin``, ``statut``,
+``duree_ms``).
 """
 
 from __future__ import annotations
@@ -37,7 +31,7 @@ from kuma_data_core.core.logging import configurer_logging, obtenir_logger
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Cycle de vie de l'application : init logging, log start/stop."""
+    """Configure la journalisation au démarrage et trace ``api_demarrage`` / ``api_arret``."""
     configurer_logging()
     settings = get_settings()
     log = obtenir_logger("kuma.api.lifespan")
@@ -53,11 +47,8 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 def creer_application() -> FastAPI:
     """Construit l'application FastAPI selon la configuration courante.
 
-    Documentation OpenAPI conditionnée par ``Settings.api_docs_actives``
-    (le validateur de configuration impose ``False`` en prod). Les
-    handlers d'erreur sont enregistrés avant l'inclusion des routeurs
-    pour s'appliquer à toutes les routes, y compris celles ajoutées
-    dynamiquement.
+    La documentation OpenAPI n'est servie que si ``Settings.api_docs_actives``
+    (interdit en production par le validateur de configuration).
     """
     settings = get_settings()
 
@@ -78,16 +69,12 @@ def creer_application() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origines,
-        # Auth par jeton Bearer, aucun cookie de session : les credentials
-        # cross-origin sont inutiles. On retire l'en-tete Allow-Credentials
-        # orphelin (finding F-06 pentest).
+        # Authentification par jeton Bearer, sans cookie de session : rien à
+        # transmettre entre origines, donc pas d'en-tête Allow-Credentials.
         allow_credentials=False,
         allow_methods=["GET", "POST"],
         allow_headers=["Authorization", "Content-Type"],
     )
-    # Handlers d'erreur - enregistrement avant les routeurs.
-    # Le typage strict de FastAPI 0.115 impose un cast côté add_exception_handler
-    # quand on passe un handler typé sur ``Exception`` ; nos handlers le sont déjà.
     app.add_exception_handler(ExceptionKuma, handler_exception_kuma)
     app.add_exception_handler(RequestValidationError, handler_validation_requete)
     app.add_exception_handler(Exception, handler_exception_generique)
@@ -110,7 +97,6 @@ def creer_application() -> FastAPI:
         )
         return response
 
-    # Routeurs versionnés.
     app.include_router(routeur_v1)
 
     return app

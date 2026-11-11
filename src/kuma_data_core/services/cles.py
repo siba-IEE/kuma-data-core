@@ -1,15 +1,12 @@
-"""Cycle de vie des clés API self-service (ADR-0003, D3 / WP6).
-
-Toute la logique vit ici, le routeur (``api/v1/cles.py``) ne fait que
-l'orchestration HTTP. Principes :
+"""Cycle de vie des clés API self-service (ADR-0003).
 
 - La clé complète (``kuma_`` + 43 caractères URL-safe, 256 bits
   d'entropie) n'existe qu'au moment de l'émission : elle est renvoyée
   une seule fois au demandeur, seule son empreinte SHA-256 est stockée.
 - Le préfixe (``kuma_`` + 8 premiers caractères) est l'identifiant
-  public : affichable, loggable, suffisant pour révoquer.
-- L'émission est la seule surface d'écriture publique du serveur (D2) :
-  elle est bornée par IP (``LIMITE_EMISSIONS_PAR_IP_24H``).
+  public : affichable, journalisable, suffisant pour révoquer.
+- L'émission est la seule écriture ouverte au public sur le serveur :
+  elle est bornée par adresse (``LIMITE_EMISSIONS_PAR_IP_24H``).
 """
 
 from __future__ import annotations
@@ -91,8 +88,7 @@ def creer_cle(
 def quota_si_active(session: Session, cle: str) -> int | None:
     """Quota journalier si l'empreinte de ``cle`` est une clé active.
 
-    ``None`` = clé inconnue ou révoquée (l'appelant refuse). Le quota
-    retourné alimente le rate limiting (WP7).
+    ``None`` = clé inconnue ou révoquée (l'appelant refuse).
     """
     resultat = session.execute(
         select(CleApi.quota_journalier).where(

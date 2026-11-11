@@ -1,12 +1,7 @@
-"""Emetteur de capsule (fichier Kuma), la ressource complete du moteur.
+"""Émetteur de capsule (fichier Kuma) : la ressource que consomme le moteur mini-réseau.
 
-Assemble la ressource que le moteur mini-reseau consomme, a partir de la donnee
-brute du Core et, en ligne seulement, des facteurs de calage. Deux
-fonctionnements, un seul assembleur : la capsule hors-ligne est brute (calage
-absent), le mode en ligne est calibre (calage present). Cf. le cadrage
-``recherche/assembleur-ressource-capsule.md``.
-
-Ce paquet ne fait que l'assemblage PUR (arithmetique + format). L'acces aux
-donnees (resolution, horaire, climatologie, appel kuma-calage) est une couche a
-part, branchee au-dessus.
+Un seul assembleur pour deux fonctionnements : la capsule hors-ligne est
+brute (sans calage), la ressource en ligne embarque les facteurs de calage.
+L'assemblage (``arithmetique``, ``assembleur``, ``fichier_kuma``) est séparé
+de l'accès aux données (``acquisition``, ``client_calage``).
 """

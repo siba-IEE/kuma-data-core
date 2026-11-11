@@ -1,35 +1,18 @@
-"""Calcul HEP (Heures équivalentes pleines) - couche service.
+"""Grandeur F1 stockée ``hep`` (heures équivalentes pleines).
 
-Module orchestrant le calcul de la grandeur Kuma F1 stockée ``hep`` à partir
-d'une série GHI amont (typiquement NASA POWER) et l'insertion dans
-``grandeurs_metier``.
+Calculée à partir d'une série GHI journalière amont et insérée dans
+``grandeurs_metier`` :
 
-Définition opérationnelle :
+- HEP_jour(t) = GHI_jour(t) (1 kWh/m²/j équivaut à 1 h/j à 1 kW/m² STC) ;
+- HEP_mensuel(année, mois) = somme des HEP_jour du mois ;
+- HEP_annuel(année) = somme des HEP_jour de l'année.
 
-- HEP_jour(t) := GHI_jour(t)   # convention 1 kWh/m²/j ↔ 1 h_eq/j à 1 kW/m² STC
-- HEP_mensuel(annee, mois) := somme des HEP_jour sur tous les jours du mois
-- HEP_annuel(annee) := somme des HEP_jour sur tous les jours de l'année
+Complétude stricte : aucune ligne n'est créée pour une année ou un mois qui
+n'a pas exactement son nombre de jours civils (365/366, ou
+``calendar.monthrange``). Ni imputation, ni niveau dégradé.
 
-Politique de complétude stricte 100% jours civils v1 : aucune ligne
-``grandeurs_metier`` créée pour une (annee) ou (annee, mois) qui ne
-dispose pas exactement du nombre de jours civils attendus (365/366
-pour une année, ``calendar.monthrange`` pour un mois). Pas d'imputation,
-pas de niveau dégradé.
-
-Architecture :
-
-- ``_agreger_hep_journaliers`` (fonction privée pure) : agrège une séquence
-  de mesures journalières en HEP annuel + mensuel selon la politique de
-  complétude. Testable unitairement.
-- ``calculer_et_inserer_hep`` (fonction publique) : orchestre la lecture
-  SQL des mesures GHI amont, l'appel à l'agrégation pure, et l'INSERT bulk
-  dans ``grandeurs_metier``. Pattern d'appel symétrique à
-  ``kuma_data_core.ingestion.nasa_power_daily.ingerer_serie_daily``.
-
-Le niveau de confiance dérivé des lignes HEP insérées est calculé via
-``kuma_data_core.editorial.niveaux_confiance.calculer_niveau_confiance_derive`` :
-règle de propagation P sur les niveaux des mesures GHI de la période de chaque
-ligne, jusqu'à A (somme exacte, ADR-0008).
+Niveau de confiance : le plus bas des mesures GHI de la période de chaque
+ligne, plafonné à A (somme exacte, ADR-0008).
 """
 
 from __future__ import annotations
@@ -53,11 +36,10 @@ PLAFOND_CONFIANCE: NiveauConfiance = "A"
 """Plafond de confiance : somme exacte des mesures GHI, sans modèle ni hypothèse."""
 
 GRANDEUR_CODE_HEP: str = "hep"
-"""Code naturel de la grandeur HEP dans ``grandeurs_referentiel`` (seed 010)."""
+"""Code de la grandeur dans ``grandeurs_referentiel``."""
 
 METHODE_COLLECTE_HEP: str = "calcul_derive"
-"""Methode_collecte attendue sur la série HEP cible (``calcul_derive`` →
-stockage dans ``grandeurs_metier``)."""
+"""``methode_collecte`` exigée de la série HEP cible."""
 
 
 class CalculHEPResultat(TypedDict):
@@ -72,7 +54,7 @@ class CalculHEPResultat(TypedDict):
 
 
 class _LigneAgregeeHEP(TypedDict):
-    """Ligne HEP agrégée (intermédiaire), avant matérialisation INSERT."""
+    """Ligne HEP agrégée, avant insertion."""
 
     periode_type: str
     annee_debut: int
@@ -94,19 +76,10 @@ class _AgregationResultat(TypedDict):
 def _agreger_hep_journaliers(
     mesures_journalieres: Sequence[tuple[date, float]],
 ) -> _AgregationResultat:
-    """Agrège des mesures GHI journalières en HEP annuel + mensuel.
+    """Agrège des mesures ``(date, GHI en kWh/m²/j)`` en HEP annuel et mensuel.
 
-    Fonction pure (aucune I/O). Applique la politique de complétude
-    stricte 100% jours civils v1.
-
-    Args:
-        mesures_journalieres : séquence de tuples ``(date, valeur GHI en
-            kWh/m²/j)``. L'ordre n'est pas significatif.
-
-    Returns:
-        :class:`_AgregationResultat` : lignes annuelles et mensuelles
-        satisfaisant la politique 100% jours civils, plus listing
-        exhaustif des (année, mois) skip pour traçabilité.
+    Seules les périodes complètes en jours civils produisent une ligne ; les
+    années et mois écartés sont listés dans le résultat.
     """
     valeurs_mensuelles: dict[tuple[int, int], list[float]] = defaultdict(list)
     valeurs_annuelles: dict[int, list[float]] = defaultdict(list)
@@ -120,7 +93,6 @@ def _agreger_hep_journaliers(
     annees_skip: list[int] = []
     mois_skip: list[tuple[int, int]] = []
 
-    # Agrégation mensuelle
     for (annee, mois), valeurs in sorted(valeurs_mensuelles.items()):
         n_jours_attendus = calendar.monthrange(annee, mois)[1]
         if len(valeurs) == n_jours_attendus:
@@ -136,7 +108,6 @@ def _agreger_hep_journaliers(
         else:
             mois_skip.append((annee, mois))
 
-    # Agrégation annuelle
     for annee, valeurs in sorted(valeurs_annuelles.items()):
         n_jours_attendus = 366 if calendar.isleap(annee) else 365
         if len(valeurs) == n_jours_attendus:
@@ -168,48 +139,17 @@ def calculer_et_inserer_hep(
     code_serie_ghi_amont: str,
     version_formule: int = 1,
 ) -> CalculHEPResultat:
-    """Calcule HEP annuel + mensuel et insère dans ``grandeurs_metier``.
+    """Calcule les HEP annuels et mensuels et les insère dans ``grandeurs_metier``.
 
-    Lit les mesures GHI courantes (``valide_au IS NULL``,
-    ``statut <> 'deprecie'``) de la série amont, agrège par année et par
-    mois selon politique de complétude 100% jours civils, et bulk-insère
-    dans ``grandeurs_metier`` via la série HEP cible.
+    Lit les mesures GHI courantes (``valide_au IS NULL``, non dépréciées) de la
+    série amont et n'insère que les périodes complètes en jours civils. Fait
+    un ``flush`` sans ``commit``.
 
-    Args:
-        session : session SQLAlchemy active. La fonction add+flush mais
-            ne commit pas (responsabilité du caller).
-        code_serie_hep : code naturel de la série HEP calculée dans
-            ``series_metadonnees`` (ex.
-            ``gin_conakry_hep_kuma_calculs_2021_2025``). Doit exister
-            avec ``methode_collecte='calcul_derive'`` et
-            ``grandeur_code='hep'``, sinon ``RuntimeError``.
-        code_serie_ghi_amont : code naturel de la série GHI amont
-            (ex. ``gin_conakry_ghi_nasa_power_2021_2025``). Doit exister
-            et partager la même ``localite_id`` que la série HEP cible.
-        version_formule : version de formule en cours d'application
-            (défaut 1). Doit matcher
-            ``grandeurs_referentiel.version_formule_actuelle`` pour
-            ``hep``, sinon ``RuntimeError`` (garde-fou).
-
-    Returns:
-        :class:`CalculHEPResultat` : décompte des insertions et listing
-        des (années, mois) skip par politique de complétude.
-
-    Raises:
-        RuntimeError : série amont/aval introuvable, grandeur_code ou
-            methode_collecte non conformes sur la série HEP cible,
-            incohérence de localité entre les deux séries, ou
-            désalignement de ``version_formule`` avec la version actuelle.
-
-    Notes:
-        Ne fait pas le commit. Le caller (migration ou test) doit
-        appeler ``session.commit()`` ou laisser la transaction Alembic
-        s'en charger.
-
-        Pattern d'appel et de bulk INSERT SQL brut symétrique à
-        :func:`kuma_data_core.ingestion.nasa_power_daily.ingerer_serie_daily`.
+    Lève ``RuntimeError`` si une série est introuvable, si la série cible n'a
+    pas ``grandeur_code='hep'`` et ``methode_collecte='calcul_derive'``, si les
+    deux séries n'ont pas la même localité, ou si ``version_formule`` diffère
+    de ``grandeurs_referentiel.version_formule_actuelle``.
     """
-    # 1. Vérifier l'alignement version_formule avec version_formule_actuelle
     version_actuelle = session.execute(
         text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
         {"code": GRANDEUR_CODE_HEP},
@@ -225,7 +165,6 @@ def calculer_et_inserer_hep(
             f"{int(version_actuelle)}."
         )
 
-    # 2. Récupérer le contexte de la série HEP cible (avec fiabilité de la source)
     serie_hep = session.execute(
         text(
             """
@@ -258,7 +197,6 @@ def calculer_et_inserer_hep(
             f"{METHODE_COLLECTE_HEP!r}."
         )
 
-    # 3. Récupérer le contexte de la série GHI amont
     serie_ghi = session.execute(
         text(
             """
@@ -283,7 +221,6 @@ def calculer_et_inserer_hep(
             f"{code_serie_ghi_amont!r} (localite_id={int(serie_ghi.localite_id)})."
         )
 
-    # 4. Lire les mesures GHI courantes (valide_au IS NULL, non dépréciées)
     rows_ghi = session.execute(
         text(
             """
@@ -302,16 +239,15 @@ def calculer_et_inserer_hep(
         (row.instant_mesure, float(row.valeur)) for row in rows_ghi
     ]
 
-    # Niveaux effectifs des entrées, pour la règle de propagation P
+    # Niveaux effectifs des entrées, pour la propagation du niveau de confiance.
     niveaux = NiveauxEntrees()
     for r in rows_ghi:
         niveaux.ajouter(r.instant_mesure, r.niveau)
 
-    # 5. Agrégation pure (politique de complétude)
     agregation = _agreger_hep_journaliers(mesures_journalieres)
 
-    # 6. Bulk INSERT (annuelles + mensuelles, server_defaults sur statut,
-    #    valide_du, niveau_confiance_override, commentaire_editorial, audit)
+    # Les autres colonnes (statut, valide_du, audit) prennent leur valeur par
+    # défaut côté serveur.
     toutes_lignes: list[_LigneAgregeeHEP] = list(agregation["lignes_annuelles"]) + list(
         agregation["lignes_mensuelles"]
     )

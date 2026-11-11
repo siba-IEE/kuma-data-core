@@ -1,10 +1,7 @@
-"""Moteur et fabrique de sessions SQLAlchemy pour Kuma Data Core.
+"""Moteur et fabrique de sessions SQLAlchemy.
 
-Le moteur est créé paresseusement (``lru_cache``) afin qu'une simple
-importation du module n'ouvre pas de connexion réseau. La fabrique de
-sessions est elle aussi memoizée, et reste utilisable comme point
-d'entrée unique tant que la couche FastAPI n'introduit pas son propre
-gestionnaire de contexte.
+Le moteur et la fabrique sont créés à la première demande (``lru_cache``) :
+importer ce module n'ouvre aucune connexion.
 """
 
 from __future__ import annotations
@@ -24,11 +21,10 @@ _ARGUMENTS_CONNEXION = {"options": "-c timezone=UTC"}
 
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
-    """Retourne le moteur SQLAlchemy unique du processus.
+    """Moteur SQLAlchemy unique du processus.
 
-    ``pool_pre_ping=True`` valide chaque connexion avant usage : utile
-    en développement où PostgreSQL peut redémarrer indépendamment de
-    l'application.
+    ``pool_pre_ping=True`` valide chaque connexion avant usage : PostgreSQL
+    peut redémarrer indépendamment de l'application.
     """
     settings = get_settings()
     return create_engine(
@@ -49,12 +45,9 @@ def _engine_pour_url(url: str) -> Engine:
 
 
 def get_engine_meta() -> Engine:
-    """Moteur de la base de service ``kuma_api_meta`` (ADR-0003, D3).
+    """Moteur de la base de service ``kuma_api_meta`` (ADR-0003).
 
-    Distinct du moteur principal : la base de service persiste à
-    travers les bascules d'édition et porte ``cles_api``. Lève si la
-    configuration ne désigne pas de base de service (``META_DB``
-    absente = régime local, self-service désactivé).
+    Lève ``RuntimeError`` si ``META_DB`` n'est pas configurée.
     """
     url = get_settings().database_url_meta
     if url is None:
@@ -64,7 +57,7 @@ def get_engine_meta() -> Engine:
 
 @lru_cache(maxsize=1)
 def get_session_factory() -> sessionmaker[Session]:
-    """Retourne la fabrique de sessions associée au moteur unique."""
+    """Fabrique de sessions liée au moteur unique."""
     return sessionmaker(
         bind=get_engine(),
         autoflush=False,
@@ -75,17 +68,11 @@ def get_session_factory() -> sessionmaker[Session]:
 
 
 def obtenir_session() -> Iterator[Session]:
-    """Dépendance FastAPI : ouvre une session, la cède, la ferme.
+    """Dépendance FastAPI : ouvre une session, la cède, puis la ferme.
 
-    Utilisée via ``Depends(obtenir_session)`` dans les routeurs. Le
-    contextmanager garantit la fermeture (rollback implicite si
-    l'endpoint a levé une exception, commit explicite à la charge du
-    code applicatif).
-
-    Implémentation **synchrone** alignée sur l'engine sync du projet.
-    FastAPI exécute les handlers ``def`` (non ``async def``) dans un
-    threadpool, ce qui rend l'usage de psycopg3 sync sans risque pour
-    la boucle d'événements en phase 0.
+    Aucun commit n'est fait ici : il reste à la charge du code appelant.
+    Synchrone, comme le moteur : FastAPI exécute les handlers ``def`` dans un
+    pool de threads, hors de la boucle d'événements.
     """
     factory = get_session_factory()
     with factory() as session:

@@ -1,40 +1,28 @@
-"""Grandeur F2 dérivée : productible spécifique climatologique mensuel avec
-PR standard hors thermique et correction thermique linéaire jour par jour.
+"""Grandeur F2 dérivée : productible spécifique climatologique mensuel
+(kWh/kWc), PR standard hors thermique et correction thermique journalière.
 
-Vocation
---------
-Produire, pour une unité géographique, **12 valeurs mensuelles en kWh/kWc**
-représentant la production PV-out attendue sur un mois moyen 1991-2020, en
-appliquant :
+Pour une unité géographique, 12 valeurs représentant la production attendue
+d'un mois moyen de la période fournie, avec :
 
-- le **PR_STD scellé dans la méthode v1.1** (0.78975, formule
-  ``rend_onduleur × rend_mppt × (1 − pertes_diverses_pct / 100)``),
-- une **correction thermique Dierauf 2013** appliquée jour par jour (où
-  elle est linéairement valide), puis agrégation mensuelle sur 30 ans.
+- le PR standard hors thermique de la méthode v1.1 (0,78975 =
+  ``rend_onduleur × rend_mppt × (1 − pertes_diverses_pct / 100)``) ;
+- la correction thermique de Dierauf 2013, appliquée jour par jour puis
+  agrégée par mois.
 
-Alimente la clé ``pspNormalesKwhParKwc[12]`` du pack v1.1 (WP8 lecture
-climatique). Ne s'applique **pas** au dimensionnement crête (méthode §6
-inchangée : la règle bancable reste calée sur le mois défavorable via
-``ghiNormales``).
+Alimente la clé ``pspNormalesKwhParKwc[12]`` du pack v1.1. Ne sert pas au
+dimensionnement crête, qui reste calé sur le mois défavorable via
+``ghiNormales``.
 
-Pourquoi pas ``productible_pr_fourni_mensuel`` directement
----------------------------------------------------------
-Le service mensuel de ``productible_pr_fourni`` interdit la correction
-thermique par assertion, parce que le facteur NOCT dépend non-linéairement
-de l'irradiance : appliquer la thermique à une moyenne mensuelle biaise
-silencieusement. Cette grandeur contourne la restriction en faisant le
-calcul thermique **jour par jour** (linéarité respectée à la journée), puis
-en n'agrégeant qu'après.
+Le calcul est journalier parce que le facteur NOCT dépend non linéairement de
+l'irradiance : appliquer la correction à une moyenne mensuelle biaiserait le
+résultat (c'est pourquoi le service mensuel de ``productible_pr_fourni``
+l'interdit).
 
-Réutilise ``_temperature_cellule_noct`` (Ross 1980) : source canonique du
-modèle thermique dans le KDC.
-
-Références
-----------
+Références :
 [1] Marion et al. 2005, NREL/CP-520-37358 (PR brut).
-[2] Dierauf et al. 2013, NREL/TP-5200-57991 (PR_T temperature-corrected).
-[3] Ross R.G. Jr. 1980. Flat-plate PV array design optimization
-    (modèle NOCT, réutilisé depuis ``productible_correction_thermique``).
+[2] Dierauf et al. 2013, NREL/TP-5200-57991 (PR corrigé en température).
+[3] Ross R.G. Jr. 1980, Flat-plate PV array design optimization (modèle NOCT,
+    repris de ``productible_correction_thermique``).
 """
 
 from __future__ import annotations
@@ -46,8 +34,6 @@ from kuma_data_core.services.grandeurs.productible_correction_thermique import (
     _temperature_cellule_noct,
 )
 
-# === Constantes module ====================================================
-
 UNITE_SORTIE: Final[str] = "kWh/kWc"
 """Unité de sortie : énergie mensuelle par kWc de crête installée."""
 
@@ -55,9 +41,6 @@ TEMPERATURE_STC_DEGC: Final[float] = 25.0
 """Température STC de référence (°C), identique à ``productible_pr_fourni``."""
 
 NB_MOIS: Final[int] = 12
-
-
-# === TypedDict d'entrée ===================================================
 
 
 class MesureJourGhiTamb(TypedDict):
@@ -73,35 +56,21 @@ class MesureJourGhiTamb(TypedDict):
     t_amb_degc: float
 
 
-# === Fonction publique pure ==============================================
-
-
 def calculer_productible_specifique_pr_std_thermique_mensuel(
     mesures: Sequence[MesureJourGhiTamb],
     pr_std: float,
     noct_degc: float,
     coeff_temp_pct_par_degc: float,
 ) -> list[float]:
-    """Retourne 12 valeurs mensuelles en kWh/kWc (janvier=index 0).
+    """Retourne 12 valeurs mensuelles en kWh/kWc (janvier à l'index 0).
 
-    Chaque valeur est la moyenne des sommes journalières du mois calendaire
-    correspondant sur toutes les années présentes dans ``mesures``. Le PR_STD
-    scellé et la correction thermique NOCT (Dierauf 2013) sont appliqués jour
-    par jour avant agrégation.
-
-    - ``pr_std`` : PR standard hors thermique (méthode v1.1, valeur scellée
-      0.78975).
-    - ``noct_degc`` : NOCT du module (méthode : 45.0).
-    - ``coeff_temp_pct_par_degc`` : coefficient de température P_max
-      (méthode : −0.4 % / °C).
-
-    Retourne une liste de 12 float. Un mois sans mesure donne 0.0
-    (l'appelant doit garantir la couverture complète 1991-2020 pour une
-    grandeur climatologique digne de ce nom).
-
-    Pure, aucune I/O.
+    Chaque valeur est la moyenne, sur les années présentes dans ``mesures``,
+    des sommes journalières du mois. ``pr_std`` est le PR standard hors
+    thermique (méthode v1.1 : 0,78975), ``noct_degc`` le NOCT du module
+    (méthode : 45,0) et ``coeff_temp_pct_par_degc`` le coefficient de
+    température de P_max (méthode : −0,4 %/°C). Un mois sans mesure donne 0,0 :
+    l'appelant garantit la couverture de la période climatologique.
     """
-    # Somme journalière par (année, mois)
     sommes: dict[tuple[int, int], float] = {}
     compteurs: dict[int, set[int]] = {m: set() for m in range(1, NB_MOIS + 1)}
 
@@ -111,8 +80,7 @@ def calculer_productible_specifique_pr_std_thermique_mensuel(
         ghi = m["ghi_kwh_par_m2_jour"]
         t_amb = m["t_amb_degc"]
 
-        # Correction thermique linéaire jour par jour (Dierauf 2013).
-        # Conversion kWh/m²/jour -> W/m² moyen 24 h, cohérent avec
+        # Irradiance moyenne sur 24 h (W/m²), comme dans
         # productible_pr_fourni._productible_pr_t_jour.
         irradiance_w_par_m2 = ghi * 1000.0 / 24.0
         t_cell = _temperature_cellule_noct(
@@ -130,7 +98,6 @@ def calculer_productible_specifique_pr_std_thermique_mensuel(
         sommes[cle] = sommes.get(cle, 0.0) + productible_jour
         compteurs[mois].add(annee)
 
-    # Moyenne par mois calendaire sur les années couvertes.
     resultats: list[float] = [0.0] * NB_MOIS
     for mois in range(1, NB_MOIS + 1):
         annees = compteurs[mois]

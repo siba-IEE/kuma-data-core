@@ -1,22 +1,10 @@
-"""Schémas Pydantic des endpoints `/api/v1/series`.
+"""Schémas Pydantic des routes ``/v1/series``.
 
-5 schémas + 1 union discriminée :
-
-- :class:`SerieListee` : ligne du listing (`GET /api/v1/series`).
-- :class:`SerieDetail` : détail d'une série (`GET /api/v1/series/{code}`)
-  contenant un sous-objet ``mesures: list[MesureLue]``.
-- :class:`MesureJournaliere` : mesure journalière (table
-  ``mesures_ressource``), discriminée par ``type = 'journalier'``.
-- :class:`MesureMensuelle` : mesure mensuelle (table
-  ``mesures_ressource_mensuelles``), discriminée par ``type = 'mensuel'``.
-- :class:`GrandeurMetierValeur` : valeur de grandeur calculée Kuma
-  (table ``grandeurs_metier``), discriminée par ``type = 'grandeur_metier'``.
-- :data:`MesureLue` : union discriminée `MesureJournaliere |
-  MesureMensuelle | GrandeurMetierValeur`.
-
-Pattern générique paramétré (1 schéma par catégorie, pas 1 schéma par
-grandeur) - évite un schéma spécifique par série exposée.
-Discrimination via champ littéral `type` (Pydantic discriminated union).
+Une série listée (``SerieListee``), son détail avec mesures (``SerieDetail``)
+et trois formes de mesure, une par table d'origine, distinguées par le champ
+``type`` : ``MesureJournaliere`` (``mesures_ressource``), ``MesureMensuelle``
+(``mesures_ressource_mensuelles``) et ``GrandeurMetierValeur``
+(``grandeurs_metier``).
 """
 
 from __future__ import annotations
@@ -26,11 +14,9 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-# === Schémas mesures (union discriminée MesureLue) ========================
-
 
 class MesureJournaliere(BaseModel):
-    """Mesure journalière d'une série brute (table ``mesures_ressource``)."""
+    """Mesure journalière d'une série."""
 
     type: Literal["journalier"] = "journalier"
     instant_mesure: date
@@ -42,7 +28,7 @@ class MesureJournaliere(BaseModel):
 
 
 class MesureMensuelle(BaseModel):
-    """Mesure mensuelle d'une série brute (table ``mesures_ressource_mensuelles``)."""
+    """Mesure mensuelle d'une série."""
 
     type: Literal["mensuel"] = "mensuel"
     annee: int = Field(ge=1991, le=2099)
@@ -55,7 +41,7 @@ class MesureMensuelle(BaseModel):
 
 
 class GrandeurMetierValeur(BaseModel):
-    """Valeur d'une grandeur calculée Kuma (table ``grandeurs_metier``)."""
+    """Valeur d'une grandeur calculée par Kuma."""
 
     type: Literal["grandeur_metier"] = "grandeur_metier"
     periode_type: Literal["annuel", "mensuel", "statique"]
@@ -74,90 +60,58 @@ MesureLue = Annotated[
     MesureJournaliere | MesureMensuelle | GrandeurMetierValeur,
     Field(discriminator="type"),
 ]
-"""Union discriminée des 3 catégories de mesures lues par les endpoints.
-
-Le champ discriminant ``type`` (Literal) permet la désérialisation
-type-safe côté client : la catégorie est inscrite explicitement dans
-chaque mesure retournée.
-"""
-
-
-# === Schémas séries (listing + détail) ====================================
+"""Mesure d'une série, sous l'une de ses trois formes, distinguée par le champ ``type``."""
 
 
 class SerieListee(BaseModel):
-    """Ligne du listing `GET /api/v1/series` (contrat enrichi, ADR-0001).
+    """Série du catalogue, telle que rendue par la liste ``GET /v1/series``.
 
-    Vue catalogue dénormalisée couvrant identifiants, localité (code +
-    nom + iso3), grandeur (code + label + unit), source (id + code +
-    label + url), période, méthode, notes éditoriales, audit.
+    Identifiants, localité (code, nom, pays), grandeur (code, libellé, unité),
+    source (identifiant, code, libellé, URL), période, méthode de collecte,
+    note publique (``notes_fr``) et dates de création et de modification.
 
-    Conventions de nommage (cf. ADR-0001 Data Core §nommage public) :
-
-    - Les noms exposés côté API publique alignent avec le contrat
-      attendu côté consommateur Kuma Science. Ils
-      diffèrent volontairement des noms de colonnes DB internes :
-
-      - ``source_label`` ← ``sources.titre``
-      - ``grandeur_label`` ← ``grandeurs_referentiel.libelle``
-      - ``grandeur_unit`` ← ``unites.symbole``
-      - ``notes_fr`` ← ``series_metadonnees.note_publique`` (passeport public)
-      - ``created_at`` ← ``series_metadonnees.cree_le``
-      - ``updated_at`` ← ``series_metadonnees.modifie_le``
-
-    - Les IDs (``id``, ``localite_id``, ``source_id``) sont exposés en
-      ``int`` natif (BigInteger DB), pas en UUID. Côté consommateur
-      Kuma Science : adapter le schéma Zod ``z.number().int().positive()``
-      au lieu de ``z.uuid()``.
+    Les identifiants (``id``, ``localite_id``, ``source_id``) sont des
+    entiers, pas des UUID.
     """
 
-    # === Identifiants ====================================================
+    # Noms publics et colonnes d'origine (ADR-0001) : source_label <- sources.titre,
+    # grandeur_label <- grandeurs_referentiel.libelle, grandeur_unit <- unites.symbole,
+    # notes_fr <- series_metadonnees.note_publique, created_at <- cree_le,
+    # updated_at <- modifie_le.
     id: int
     code: str = Field(min_length=1, max_length=80)
     libelle: str
 
-    # === Localité (dénormalisée) =========================================
     localite_id: int
     localite_code: str
     localite_nom: str
     localite_iso3: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
 
-    # === Grandeur (dénormalisée) =========================================
     grandeur_code: str
     grandeur_label: str
     grandeur_unit: str
 
-    # === Source (dénormalisée) ===========================================
     source_id: int
     source_code: str
     source_label: str
     source_url: str | None
 
-    # === Période et méta éditoriales =====================================
     periode_debut: date
     periode_fin: date | None
     methode_collecte: str | None
     notes_fr: str | None
 
-    # === Audit ===========================================================
     created_at: datetime
     updated_at: datetime
 
-    # === Flag actif ======================================================
     actif: bool
 
 
 class SerieListeePaginee(BaseModel):
-    """Envelope paginée du listing `GET /api/v1/series` (ADR-0001).
+    """Enveloppe paginée de la liste ``GET /v1/series``.
 
-    Structure standard de pagination offset-based (et non un tableau
-    JSON nu). Le champ ``total`` permet aux consommateurs de connaître
-    le nombre total de séries matchant les filtres sans avoir à boucler
-    jusqu'à une page vide.
-
-    Note : le seul consommateur connu (Kuma Science) adapte son schéma
-    Zod ``dataCorePaginatedResponseSchema`` dans le cycle de
-    synchronisation parallèle (cf. ADR-0012 Kuma Science).
+    ``total`` est le nombre de séries correspondant aux filtres, toutes pages
+    confondues.
     """
 
     items: list[SerieListee]
@@ -167,20 +121,12 @@ class SerieListeePaginee(BaseModel):
 
 
 class SerieDetail(SerieListee):
-    """Détail d'une série `GET /api/v1/series/{code}` avec mesures (ADR-0001).
+    """Détail d'une série, ``GET /v1/series/{code_serie}``, avec ses mesures.
 
-    Étend :class:`SerieListee` (champs catalogue) avec :
-
-    - ``unite_code`` : unité héritée via FK
-      ``series_metadonnees.grandeur_code`` ->
-      ``grandeurs_referentiel.unite_id`` -> ``unites.code``.
-      Volontairement conservée en plus de ``grandeur_unit`` (le code
-      symbolique stable est utile pour les consommateurs qui veulent
-      faire un lookup sur la table ``unites``).
-    - ``mesures`` : liste de mesures discriminées par catégorie. Le
-      type concret dépend de la table-cible résolue par
-      ``resolve_table_from_series_metadata`` (cf.
-      ``api/services/serie_lecture.py``).
+    Aux champs du catalogue s'ajoutent ``unite_code``, code stable de l'unité
+    de la grandeur (en plus du symbole ``grandeur_unit``), et ``mesures``,
+    dont la forme (journalière, mensuelle ou valeur de grandeur calculée)
+    dépend de la série et se lit dans le champ ``type`` de chaque mesure.
     """
 
     unite_code: str

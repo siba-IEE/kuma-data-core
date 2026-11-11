@@ -1,7 +1,6 @@
-"""Données de seed pour la table ``localites`` (migration 011).
+"""Données de seed de la table ``localites``.
 
-20 entités hiérarchiques compilées par Siba Kalivogui en mai 2026
-(passe 2 de compilation, livrable v2 validé post-audit).
+20 entités hiérarchiques compilées par Siba Kalivogui en mai 2026.
 """
 
 from __future__ import annotations
@@ -9,7 +8,7 @@ from __future__ import annotations
 from typing import Any
 
 LOCALITES_SEED: list[dict[str, Any]] = [
-    # ===== Continent (1) =====
+    # Continent (1)
     {
         "code": "afrique",
         "nom": "Afrique",
@@ -30,7 +29,7 @@ LOCALITES_SEED: list[dict[str, Any]] = [
             "StatisticsTimes.com. UN WPP consulté le 2026-05-09."
         ),
     },
-    # ===== Pays (1) =====
+    # Pays (1)
     {
         "code": "gin",
         "nom": "Guinée",
@@ -54,7 +53,7 @@ LOCALITES_SEED: list[dict[str, Any]] = [
             "Latitude.to et INS-Guinée consultés le 2026-05-09."
         ),
     },
-    # ===== Régions administratives (8) =====
+    # Régions administratives (8)
     {
         "code": "gin_boke",
         "nom": "Région de Boké",
@@ -217,7 +216,7 @@ LOCALITES_SEED: list[dict[str, Any]] = [
             "https://fr.wikipedia.org/wiki/Région_de_Nzérékoré. Consulté le 2026-05-09."
         ),
     },
-    # ===== Communes pilotes - villes chef-lieu (5) =====
+    # Communes pilotes - villes chef-lieu (5)
     {
         "code": "gin_kankan",
         "nom": "Kankan",
@@ -349,7 +348,7 @@ LOCALITES_SEED: list[dict[str, Any]] = [
             "2025. Source : https://en.wikipedia.org/wiki/Nzérékoré. Consulté le 2026-05-09."
         ),
     },
-    # ===== Communes pilotes - Conakry historiques pré-réforme 2024 (5) =====
+    # Communes pilotes - Conakry historiques pré-réforme 2024 (5)
     {
         "code": "gin_conakry_kaloum",
         "nom": "Kaloum",

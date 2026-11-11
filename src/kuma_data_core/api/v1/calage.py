@@ -1,14 +1,13 @@
-"""Endpoint ``GET /api/v1/calage/{localite}/{grandeur}``.
+"""Routes ``/v1/calage``.
 
-Sert le référentiel de calage satellite/sol d'une station de
-référence (ADR-0004) : biais saisonniers mesurés, facteur dérivé
-k = 1/(1+biais), provenance et portée de transport. Donnée
-éditoriale de l'édition, lue telle quelle - aucun calcul amont,
-conforme au profil édition figée (D6).
+Servent le référentiel de calage satellite/sol d'une station de référence
+(ADR-0004) : biais saisonniers mesurés, facteur dérivé k = 1/(1+biais),
+provenance et portée de transport. Donnée éditoriale de l'édition, lue telle
+quelle, sans appel sortant.
 
-Codes localité complets (``gin_kankan``), alignés sur ``/v1/series``
-et ``/v1/localites``. 404 ``RESSOURCE_INTROUVABLE`` si aucun
-référentiel actif n'existe pour le couple.
+Codes de localité complets (``gin_kankan``), comme ``/v1/series`` et
+``/v1/localites``. 404 ``RESSOURCE_INTROUVABLE`` si aucun référentiel actif
+n'existe pour le couple.
 """
 
 from __future__ import annotations
@@ -43,13 +42,11 @@ def lister_referentiels_calage(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> ReponseCalageListe:
-    """Retourne les referentiels de calage publies, avec leur domaine.
+    """Référentiels de calage publiés, avec leur domaine de couverture.
 
-    Une entree par referentiel (code) : station, grandeur, version,
-    serie sol de fondation et localites couvertes. C'est l'endpoint de
-    DECOUVERTE des consommateurs d'etude (genericite pays, residu 3) :
-    ajouter une station = publier son referentiel, aucun changement
-    cote consommateurs.
+    Une entrée par référentiel : station, grandeur, version, série sol sur
+    laquelle il est fondé et localités couvertes. La liste permet de découvrir
+    les stations disponibles sans les connaître d'avance.
     """
     rows = session.execute(
         text(

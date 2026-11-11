@@ -1,36 +1,14 @@
-"""Modèle SQLAlchemy de la table ``unites``.
+"""Modèle SQLAlchemy de la table ``unites`` : référentiel des unités de mesure.
 
-Référentiel des unités de mesure utilisées dans Kuma Data Core. Couvre
-30 grandeurs physiques, économiques et environnementales, avec 153
-unités validées contre plus de 20 organismes normatifs internationaux
-(BIPM, AIE, ONU, NIST, IUPAC, IEC, DIN, ISO, IPCC, IRENA, UNECE, etc.).
+Les facteurs et décalages de conversion sont en ``Numeric(60, 30)`` :
+l'électronvolt (1,602176634e-19 J) serait tronqué à 0 avec 15 décimales, et le
+quad (1,05505585262e18 J) demande 19 chiffres avant la virgule. Un type décimal,
+plutôt que ``DOUBLE PRECISION``, conserve les définitions exactes (1 atm =
+101 325 Pa, 1 cal_IT = 4,1868 J, année grégorienne moyenne = 365,2425 j).
 
-Choix de précision (``Numeric(60, 30)`` pour les facteurs/décalages) :
------------------------------------------------------------------------
-La grandeur ``energie`` inclut les électronvolts dont les facteurs de
-conversion vers le joule sont extrêmement petits :
-``electronvolt = 1.602176634e-19``,
-``kilo_electronvolt = 1.602176634e-16``,
-``mega_electronvolt = 1.602176634e-13``.
-
-Avec ``Numeric(30, 15)`` (15 décimales), ces valeurs seraient tronquées
-à 0 (eV, keV) ou perdraient 10 chiffres significatifs (MeV). À l'autre
-extrême, ``quad = 1.05505585262e18`` exige au moins 19 chiffres avant
-la virgule.
-
-``Numeric(60, 30)`` (30 chiffres avant la virgule + 30 après) couvre
-sans perte les deux extrêmes, tout en préservant la précision décimale
-exacte (par opposition à ``DOUBLE PRECISION`` qui introduirait des
-erreurs binaires IEEE 754 incompatibles avec l'exigence métrologique
-de Kuma : 1 atm = 101 325 Pa exactement, 1 cal_IT = 4,1868 J
-exactement, année grégorienne moyenne = 365,2425 j exactement).
-
-Conventions pragmatiques adoptées (voir migration 002 pour détails) :
-- intensite_carbone : référence interne en gCO2/kWh (pas kg/J)
-- irradiation_solaire : référence interne en MJ/m²/jour
-- pouvoir_calorifique : convention PCI par défaut
-- devises économiques : Stratégie B (pas de conversion automatique)
-- GNF prioritaire dans l'ordre du seed (signal éditorial Kuma)
+L'unité de référence d'une grandeur n'est pas toujours l'unité SI : gCO2/kWh
+pour l'intensité carbone, MJ/m²/jour pour l'irradiation solaire. Le pouvoir
+calorifique est exprimé en PCI et les devises ne sont pas converties entre elles.
 """
 
 from __future__ import annotations
@@ -63,11 +41,9 @@ class Unite(Base):
 
     __tablename__ = "unites"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     code: Mapped[str] = mapped_column(String(80), nullable=False, unique=True)
 
-    # === Métier ===
     libelle: Mapped[str] = mapped_column(Text, nullable=False)
     symbole: Mapped[str] = mapped_column(String(50), nullable=False)
     grandeur: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -76,9 +52,7 @@ class Unite(Base):
         Boolean, nullable=False, server_default=text("FALSE")
     )
 
-    # === Conversion vers l'unité de référence interne (souvent SI) ===
-    # Formule : valeur_ref = valeur × facteur + decalage
-    # Numeric(60, 30) - voir docstring du module pour la justification.
+    # valeur_ref = valeur × facteur + decalage
     facteur_conversion_si: Mapped[Decimal] = mapped_column(
         Numeric(60, 30), nullable=False, server_default=text("1")
     )
@@ -87,16 +61,13 @@ class Unite(Base):
     )
     code_unite_si: Mapped[str] = mapped_column(String(80), nullable=False)
 
-    # === Notes éditoriales ===
     note_methodologique: Mapped[str | None] = mapped_column(Text, nullable=True)
     contexte_usage: Mapped[str | None] = mapped_column(Text, nullable=True)
     references_normatives: Mapped[list[str] | None] = mapped_column(ARRAY(Text()), nullable=True)
 
-    # === Soft delete ===
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     desactive_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Audit applicatif ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -114,7 +85,6 @@ class Unite(Base):
         nullable=True,
     )
 
-    # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
             "systeme IN ('SI', 'non_SI_acceptee', 'composee_mixte', 'imperial', 'autre')",
@@ -138,9 +108,8 @@ class Unite(Base):
             postgresql_where=text("est_unite_de_base = TRUE"),
         ),
         Index("idx_unites_code_unite_si", "code_unite_si"),
-        # Commentaire de table porté sur l'ORM pour cohérence avec la
-        # migration 002 (alembic check). Le dict doit être le dernier
-        # élément du tuple __table_args__ selon la convention SQLAlchemy.
+        # ``alembic check`` compare ce commentaire de table à la base. Le dict
+        # doit rester le dernier élément de ``__table_args__``.
         {
             "comment": (
                 "Référentiel des unités de mesure de Kuma Data Core. "

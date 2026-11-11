@@ -3,11 +3,11 @@
 Implémentation concrète de ``SourceCapsule`` (le protocole de ``construire``).
 Lit trois choses au point :
 
-- la **résolution** (lat, lon) → la localité dont la cellule échantillonne le
+- la résolution (lat, lon) → la localité dont la cellule échantillonne le
   point, et son code de climatologie (même logique que ``/v1/localites/resolution``) ;
-- la **climatologie mensuelle** : moyenne par mois calendaire sur 1991-2020 des
+- la climatologie mensuelle : moyenne par mois calendaire sur 1991-2020 des
   mesures mensuelles de cette série (12 valeurs, kWh/m²/j = HEP) ;
-- la **séquence horaire satellite** : la série GHI horaire NASA de la localité,
+- la séquence horaire satellite : la série GHI horaire NASA de la localité,
   le brut au point (heure UTC = heure locale en Guinée).
 
 Rien de calé ici : la séquence et la climatologie sortent brutes, le moteur cale
@@ -73,11 +73,11 @@ class SourceCore:
                 "id": f"capsule-{localite['localite_code']}",
                 "revisionSource": provenance_seq["code"],
             },
-            # Les quatre series que le moteur exige a l'en-tete (audit E-7, hors
-            # calcul) : la climatologie AU POINT vient du mensuel de la cellule,
-            # la climatologie SOURCE et les deux sequences viennent de l'horaire
-            # (la source est derivee de la sequence ; en v1 le contraignant EST
-            # le type). La resolution reste en extra d'audit.
+            # Les quatre séries que le moteur exige à l'en-tête : la climatologie
+            # au point vient du mensuel de la cellule, la climatologie source et
+            # les deux séquences viennent de l'horaire (la source est dérivée de
+            # la séquence ; le contraignant est ici le type). La résolution est
+            # ajoutée pour l'audit.
             "provenance": {
                 "climatologieAuPoint": provenance_clim,
                 "climatologieSource": provenance_seq,
@@ -89,8 +89,8 @@ class SourceCore:
                     "distanceKm": localite["distance_km"],
                     "memeCellule": localite["meme_cellule"],
                 },
-                # Present seulement quand les extremes sont servis (E-7 : une
-                # serie embarquee cite sa provenance ; absente, pas de cle morte).
+                # Présent seulement quand les extrêmes sont servis : une série
+                # embarquée cite sa provenance ; absente, pas de clé vide.
                 **(
                     {"temperaturesConception": provenance_temp}
                     if provenance_temp is not None
@@ -156,10 +156,9 @@ class SourceCore:
     def _climatologie_hep(self, localite_id: int) -> tuple[list[float], dict[str, Any]]:
         """Les 12 HEP mensuelles, moyenne par mois sur la mensuelle la plus profonde.
 
-        La forme horaire est plafonnée à 25 ans (l'horaire NASA démarre en 2001),
-        mais l'énergie mensuelle remonte à 1984 : on prend la série mensuelle NASA
-        de plus grande profondeur de la localité (décision Siba 2026-08-17, pleine
-        profondeur). La résolution reste, elle, sur la climatologie de référence
+        L'horaire NASA ne démarre qu'en 2001, mais l'énergie mensuelle remonte à
+        1984 : on prend la série mensuelle NASA de plus grande profondeur de la
+        localité. La résolution reste, elle, sur la climatologie de référence
         1991-2020 (identification de la cellule).
         """
         meta = self.session.execute(
@@ -213,15 +212,12 @@ class SourceCore:
     def _extremes_temperature(
         self, localite_id: int
     ) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
-        """Records de température au point : le plus froid des minima journaliers et
-        le plus chaud des maxima journaliers, sur les séries ``t2m_min``/``t2m_max``.
+        """Records de température au point, sur les séries ``t2m_min`` / ``t2m_max``.
 
-        Bruts NASA, HORS calage : le calage corrige l'irradiance, pas la
-        température. Rendus ``(None, None)`` tant que les séries ne sont pas
-        seedées : la capsule omet alors le bloc et le dimensionnement des strings
-        retombe sur une saisie manuelle côté application. Le record absolu est le
-        cas ``percentile = 0`` (décision Siba 2026-08-18) ; un futur passage en
-        P1/P99 ne changerait que l'agrégat, sans re-fetch.
+        Le plus froid des minima journaliers et le plus chaud des maxima, bruts
+        NASA et hors calage : le calage corrige l'irradiance, pas la température.
+        Rend ``(None, None)`` si les séries sont absentes : la capsule omet alors
+        le bloc et le dimensionnement des strings retombe sur une saisie manuelle.
         """
         row = self.session.execute(
             text(

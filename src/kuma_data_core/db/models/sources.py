@@ -1,71 +1,20 @@
-"""Modèle SQLAlchemy de la table ``sources``.
+"""Modèle SQLAlchemy de la table ``sources`` : références bibliographiques des données.
 
-Référentiel des références bibliographiques utilisées dans Kuma Data
-Core. Pilier de la traçabilité éditoriale : chaque mesure publiée doit
-pouvoir être tracée jusqu'à sa source originale.
+Une seule table pour tous les types de source : colonnes communes optionnelles,
+plus ``metadonnees`` (objet JSON) pour ce qui est propre à un type. La cohérence
+entre ``type_source`` et le contenu de ``metadonnees`` n'est pas contrôlée en base.
 
-10 types de sources supportés :
-- ``rapport`` (IRENA, IEA, IPCC, BCRG, ONEE, MASEN, BCEAO, BEAC, BAD…)
-- ``article_scientifique`` (IEEE, Energy Policy, Renewable Energy,
-  Nature, Joule…)
-- ``texte_legal`` (lois, codes, directives UEMOA…)
-- ``communique`` (annonces officielles)
-- ``page_web`` (à utiliser avec parcimonie)
-- ``base_donnees`` (NASA POWER, OpenStreetMap, World Bank Open Data…)
-- ``livre``, ``chapitre_livre``, ``these``
-- ``norme_technique`` (ISO, IEC, IEEE)
+Le DOI est stocké sans préfixe URL et l'ISBN sans tirets. Une publication
+récurrente a une ligne par édition, avec des codes distincts
+(``irena_lcoe_2024``, ``irena_lcoe_2025``).
 
-Polymorphisme via JSONB
------------------------
-La table est unique avec colonnes communes optionnelles + champ
-``metadonnees JSONB`` pour spécificités par type. Le CHECK
-``jsonb_typeof = 'object'`` garantit que ``metadonnees`` est un
-objet JSON et non un scalaire ou un tableau. La validation par
-``type_source`` (par exemple un article doit avoir ``journal``) est
-déléguée à l'applicatif (FastAPI/Pydantic).
+Niveaux de ``fiabilite`` :
 
-Validation des identifiants externes
-------------------------------------
-- ``url``  : ``^https?://[^\\s]+$``
-- ``doi``  : ``^10\\.[0-9]{4,}(\\.[0-9]+)*/[^\\s]+$`` - stocké SANS
-  préfixe URL.
-- ``isbn`` : ``^(97[89][0-9]{10}|[0-9]{9}[0-9X])$`` - stocké SANS
-  tirets.
-
-Lien sources <-> localites différé
------------------------------------
-Aucun lien direct dans cette migration. Le lien transitif passera par
-la future table ``mesures`` qui aura à la fois ``source_id`` et
-``localite_id``.
-
-Qualification éditoriale ``fiabilite`` à 3 niveaux
---------------------------------------------------
-- ``haute``   : organismes officiels (IRENA, IEA, IPCC, BIPM, ISO,
-  BCRG, ONEE, MASEN, BCEAO, BEAC, BAD, Africa Energy Portal), normes
-  techniques, peer-reviewed.
-- ``moyenne`` : ONG sérieuses, presse spécialisée, organisations
-  professionnelles, thèses.
-- ``faible``  : presse généraliste, blogs, communiqués entreprises.
-
-Africa Energy Portal classé en ``haute`` (porté par la Banque Africaine
-de Développement, pas presse spécialisée). Signal éditorial Kuma :
-reconnaissance de la rigueur des institutions africaines.
-
-Champ ``langue`` au format ISO 639-1 strict : 2 lettres
-minuscules. Permet le filtrage multilingue (ratios franco/anglo/arabo
-du corpus).
-
-Validation ``annee_publication`` bornée 1900-2100, cohérent avec
-la 003 (``annee_population``).
-
-Versioning des publications récurrentes : une ligne par édition,
-codes distincts (``irena_lcoe_2024``, ``irena_lcoe_2025``). Convention
-``<organisme>_<theme>[_<annee>]`` documentée via ``COMMENT ON COLUMN``
-sur ``sources.code``.
-
-Pas de champ ISSN : peut transiter par ``metadonnees->>'issn'`` pour
-les articles scientifiques (YAGNI, mini-migration possible plus
-tard si l'usage massif se confirme).
+- ``haute`` : organismes officiels, normes techniques, publications à comité de
+  lecture ;
+- ``moyenne`` : ONG reconnues, presse spécialisée, organisations
+  professionnelles, thèses ;
+- ``faible`` : presse généraliste, blogs, communiqués d'entreprise.
 """
 
 from __future__ import annotations
@@ -100,7 +49,6 @@ class Source(Base):
 
     __tablename__ = "sources"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     code: Mapped[str] = mapped_column(
         String(100),
@@ -113,7 +61,6 @@ class Source(Base):
         ),
     )
 
-    # === Métier ===
     titre: Mapped[str] = mapped_column(Text, nullable=False)
     auteurs: Mapped[Sequence[str] | None] = mapped_column(ARRAY(Text()), nullable=True)
     organisation: Mapped[str | None] = mapped_column(String(255), nullable=True)
@@ -129,11 +76,9 @@ class Source(Base):
         ),
     )
 
-    # === Temporalité ===
     annee_publication: Mapped[int | None] = mapped_column(Integer, nullable=True)
     date_consultation: Mapped[date | None] = mapped_column(Date, nullable=True)
 
-    # === Identifiants externes ===
     url: Mapped[str | None] = mapped_column(Text, nullable=True)
     doi: Mapped[str | None] = mapped_column(
         String(255),
@@ -154,10 +99,8 @@ class Source(Base):
         ),
     )
 
-    # === Métadonnées polymorphes ===
     metadonnees: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
 
-    # === Qualification éditoriale ===
     fiabilite: Mapped[str | None] = mapped_column(
         String(20),
         nullable=True,
@@ -173,11 +116,9 @@ class Source(Base):
     )
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # === Soft delete ===
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     desactive_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Audit applicatif ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -195,7 +136,6 @@ class Source(Base):
         nullable=True,
     )
 
-    # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
             "type_source IN ("

@@ -1,36 +1,18 @@
-"""Calcul `indicateur_qualite_donnees` (score qualité 1-5) - couche service.
+"""Grandeur ``indicateur_qualite_donnees`` : score de qualité (1 à 5) d'une série.
 
-Module orchestrant le calcul du score qualité (1 à 5) sur une série
-brute ingérée et l'insertion d'1 ligne dans `grandeurs_metier`.
+    score_continu = 0.5 * C1 + 0.3 * C2 + 0.2 * C3
 
-Formule v1 :
+- C1, complétude : min(nb_mesures_courantes / nb_jours_attendus, 1) ;
+- C2 : moyenne des ``niveau_confiance_derive`` (A = 1, B = 0,7, C = 0,4) ;
+- C3 : ``sources.fiabilite`` (haute = 1, moyenne = 0,7, faible = 0,4).
 
-```
-score_continu = 0.5 * C1 + 0.3 * C2 + 0.2 * C3
+Le score continu est ramené à un entier : [0, 0,2) → 1, [0,2, 0,4) → 2,
+[0,4, 0,6) → 3, [0,6, 0,8) → 4, [0,8, 1] → 5. Pour une série de niveau B et de
+source de fiabilité haute, le score vaut 0,5·C1 + 0,41, soit 3, 4 ou 5.
 
-C1 = min(nb_mesures_courantes / nb_jours_attendus, 1.0)        # complétude
-C2 = moyenne pondérée des niveau_confiance_derive (A=1, B=0.7, C=0.4)
-C3 = mapping sources.fiabilite (haute=1, moyenne=0.7, faible=0.4)
-```
-
-Binning vers échelle 1-5 entier (intervalles fermé-ouvert sauf le
-dernier) : `[0, 0.2) → 1`, `[0.2, 0.4) → 2`, `[0.4, 0.6) → 3`,
-`[0.6, 0.8) → 4`, `[0.8, 1.0] → 5`.
-
-Cas des séries brutes NASA POWER :
-- `methode_collecte='modele_satellitaire'` → niveau dérivé R4 = B → C2 = 0.7.
-- `sources.nasa_power.fiabilite='haute'` → C3 = 1.0.
-- Score = 0.5·C1 + 0.41, plage discrétisée {3, 4, 5}.
-
-Exception méthodologique : la ligne `grandeurs_metier` produite pointe
-vers la **série évaluée** (`series_metadonnees_id = ID de la série
-brute`), pas vers une série calculée propre à l'indicateur.
-Conséquence : `gm.grandeur_code = 'indicateur_qualite_donnees'` ne
-correspond pas à `sm.grandeur_code` de la série pointée.
-
-Pattern fonctions pures + orchestrateur I/O : `_calculer_score`
-fonction pure, `calculer_et_inserer_indicateur_qualite_donnees`
-orchestrateur I/O.
+La ligne ``grandeurs_metier`` produite pointe vers la série évaluée
+(``series_metadonnees_id``), pas vers une série propre à l'indicateur : son
+``grandeur_code`` diffère donc de celui de la série pointée.
 """
 
 from __future__ import annotations
@@ -47,7 +29,7 @@ from kuma_data_core.editorial.niveaux_confiance import (
 )
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
-"""Plafond de confiance : méta-indicateur sur une série, au plus B (comme degenerescence_pixel)."""
+"""Plafond de confiance : méta-indicateur sur une série, au plus B."""
 
 GRANDEUR_CODE_INDICATEUR: str = "indicateur_qualite_donnees"
 METHODE_COLLECTE_INDICATEUR: str = "calcul_derive"
@@ -58,16 +40,13 @@ POIDS_CONFIANCE_MOYENNE: float = 0.3
 POIDS_FIABILITE_SOURCE: float = 0.2
 
 NIVEAU_VALEUR: dict[str, float] = {"A": 1.0, "B": 0.7, "C": 0.4}
-"""Mapping niveau_confiance_derive -> valeur numerique pour la composante C2."""
+"""Valeur numérique de chaque ``niveau_confiance_derive`` (composante C2)."""
 
 FIABILITE_VALEUR: dict[str, float] = {"haute": 1.0, "moyenne": 0.7, "faible": 0.4}
-"""Mapping sources.fiabilite -> valeur numerique pour la composante C3."""
+"""Valeur numérique de chaque ``sources.fiabilite`` (composante C3)."""
 
 BORNES_BINNING: tuple[float, ...] = (0.2, 0.4, 0.6, 0.8)
-"""Bornes superieures (exclusives) des bins 1, 2, 3, 4.
-
-Bin 5 = [0.8, 1.0] (intervalle ferme a droite, cas par defaut).
-"""
+"""Bornes supérieures exclusives des classes 1 à 4 ; au-delà, classe 5."""
 
 
 class _CalculScoreResultat(TypedDict):
@@ -79,10 +58,10 @@ class _CalculScoreResultat(TypedDict):
 
 
 class CalculIndicateurResultat(TypedDict):
-    """Resultat d'un appel a :func:`calculer_et_inserer_indicateur_qualite_donnees`."""
+    """Résultat d'un appel à :func:`calculer_et_inserer_indicateur_qualite_donnees`."""
 
     code_serie_evaluee: str
-    nb_lignes_inseres: int  # toujours 0 ou 1
+    nb_lignes_inseres: int  # toujours 1
     score_continu: float
     score_discret: int
     c1_completude: float
@@ -93,17 +72,7 @@ class CalculIndicateurResultat(TypedDict):
 
 
 def _binning_score(score_continu: float) -> int:
-    """Projette le score continu [0, 1] vers l'echelle discrete {1..5}.
-
-    Intervalles ferme-ouvert pour les bins 1-4, ferme pour le bin 5
-    (couvre exactement la valeur 1.0).
-
-    Args:
-        score_continu : valeur dans [0, 1].
-
-    Returns:
-        Bin entier dans {1, 2, 3, 4, 5}.
-    """
+    """Ramène le score continu [0, 1] à un entier de 1 à 5 (voir ``BORNES_BINNING``)."""
     for bin_idx, borne_sup in enumerate(BORNES_BINNING, start=1):
         if score_continu < borne_sup:
             return bin_idx
@@ -117,24 +86,11 @@ def _calculer_score(
     niveaux_confiance: Sequence[str],
     fiabilite_source: str,
 ) -> _CalculScoreResultat:
-    """Calcule le score qualite selon formule v1.
+    """Calcule les trois composantes, le score continu et le score entier.
 
-    Fonction pure (aucune I/O). Retourne les 3 composantes, le score
-    continu et le score discret.
-
-    Args:
-        nb_mesures_courantes : nombre de mesures non depreciees
-            courantes (`valide_au IS NULL AND statut <> 'deprecie'`)
-            de la serie evaluee.
-        nb_jours_attendus : nombre de jours civils attendus sur la
-            plage (1826 sur 2021-2025).
-        niveaux_confiance : sequence des `niveau_confiance_derive`
-            des mesures courantes. Longueur attendue = nb_mesures_courantes.
-        fiabilite_source : valeur de `sources.fiabilite` de la source
-            de la serie evaluee (typiquement 'haute').
-
-    Returns:
-        :class:`_CalculScoreResultat`.
+    ``niveaux_confiance`` : niveaux dérivés des mesures courantes de la série ;
+    un niveau ou une fiabilité inconnus comptent pour 0. C1 vaut 0 si
+    ``nb_jours_attendus`` est nul, C2 vaut 0 sans mesure.
     """
     c1 = min(nb_mesures_courantes / nb_jours_attendus, 1.0) if nb_jours_attendus > 0 else 0.0
 
@@ -161,7 +117,7 @@ def _calculer_score(
 
 
 def _nb_jours_civils_plage(annee_debut: int, annee_fin: int) -> int:
-    """Compte le nombre de jours civils sur [annee_debut, annee_fin] inclusifs."""
+    """Nombre de jours civils du 1er janvier ``annee_debut`` au 31 décembre ``annee_fin``."""
     from datetime import date
 
     debut = date(annee_debut, 1, 1)
@@ -177,27 +133,14 @@ def calculer_et_inserer_indicateur_qualite_donnees(
     annee_fin: int = 2025,
     version_formule: int = 1,
 ) -> CalculIndicateurResultat:
-    """Evalue la serie designee et insere 1 ligne grandeurs_metier.
+    """Évalue la série désignée et insère une ligne dans ``grandeurs_metier``.
 
-    La ligne inseree porte `grandeur_code='indicateur_qualite_donnees'`,
-    `periode_type='statique'`, `series_metadonnees_id` pointant vers
-    la serie evaluee (exception methodologique).
+    La ligne porte ``periode_type='statique'`` et pointe vers la série évaluée.
+    Son niveau de confiance est le plus bas des mesures courantes, plafonné à
+    B. Fait un ``flush`` sans ``commit``.
 
-    Args:
-        session : session SQLAlchemy active.
-        code_serie_evaluee : code naturel de la serie a evaluer
-            (typiquement une serie brute NASA POWER).
-        annee_debut : annee debut de la plage (defaut 2021).
-        annee_fin : annee fin de la plage (defaut 2025).
-        version_formule : version de formule en cours (defaut 1).
-
-    Returns:
-        :class:`CalculIndicateurResultat` avec score et composantes.
-
-    Raises:
-        RuntimeError : version_formule desalignee avec
-            grandeurs_referentiel.version_formule_actuelle, serie
-            evaluee introuvable ou source introuvable.
+    Lève ``RuntimeError`` si la série est introuvable ou si ``version_formule``
+    diffère de ``grandeurs_referentiel.version_formule_actuelle``.
     """
     version_actuelle = session.execute(
         text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
@@ -248,7 +191,7 @@ def calculer_et_inserer_indicateur_qualite_donnees(
         {"serie_id": int(serie.serie_id)},
     ).all()
     niveaux_confiance: list[str] = [r.niveau_confiance_derive for r in rows]
-    # Règle P : l'indicateur ne peut pas être plus sûr que les mesures qu'il évalue
+    # L'indicateur ne peut pas être plus sûr que les mesures qu'il évalue.
     niveau_indicateur = (
         propager_niveau_confiance((r.niveau for r in rows), plafond=PLAFOND_CONFIANCE)
         if rows

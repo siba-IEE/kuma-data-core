@@ -1,6 +1,6 @@
-"""Format d'erreur standardisé Kuma et handlers associés.
+"""Format d'erreur de l'API et handlers associés.
 
-Toute erreur retournée par l'API suit la structure ``ErreurKuma`` :
+Toute erreur suit la structure ``ErreurKuma`` :
 
 .. code-block:: json
 
@@ -12,18 +12,9 @@ Toute erreur retournée par l'API suit la structure ``ErreurKuma`` :
      }
    }
 
-Le champ ``code`` est un identifiant technique stable (voir
-``codes_erreur.CodeErreur``). Le champ ``message`` est en français,
-destiné à être affiché à un humain. Le champ ``details`` est optionnel
-et contient des informations structurées exploitables par les outils
-consommateurs.
-
-L'``ExceptionKuma`` est l'exception interne portant le triplet
-``(code, message, statut HTTP)``. Elle est capturée par
-``handler_exception_kuma`` et convertie en ``JSONResponse`` normalisée.
-``handler_exception_generique`` sert de filet de sécurité : toute
-exception non interceptée se transforme en 500 normalisé, sans fuite
-de stack trace côté client.
+``code`` est un identifiant stable (``codes_erreur.CodeErreur``), ``message``
+un texte français pour un humain, ``details`` des informations structurées
+facultatives.
 """
 
 from __future__ import annotations
@@ -58,12 +49,7 @@ class ErreurKuma(BaseModel):
 
 
 class ExceptionKuma(Exception):
-    """Exception interne portant un code d'erreur Kuma.
-
-    Levée par les couches applicatives (dépendances FastAPI, services,
-    routeurs) puis convertie en ``JSONResponse`` par
-    ``handler_exception_kuma``.
-    """
+    """Erreur applicative (code, message, statut HTTP) rendue par ``handler_exception_kuma``."""
 
     def __init__(
         self,
@@ -80,12 +66,10 @@ class ExceptionKuma(Exception):
 
 
 async def handler_exception_kuma(request: Request, exc: Exception) -> JSONResponse:
-    """Convertit une ``ExceptionKuma`` en réponse JSON normalisée.
+    """Convertit une ``ExceptionKuma`` en réponse JSON.
 
-    Le typage de ``exc`` est ``Exception`` (et non ``ExceptionKuma``)
-    pour respecter la signature attendue par
-    ``FastAPI.add_exception_handler`` ; un ``isinstance`` interne
-    rétablit la précision.
+    ``exc`` est typé ``Exception`` parce que
+    ``FastAPI.add_exception_handler`` l'exige.
     """
     assert isinstance(exc, ExceptionKuma)
     erreur = ErreurKuma(
@@ -135,15 +119,10 @@ async def handler_validation_requete(request: Request, exc: Exception) -> JSONRe
 
 
 async def handler_exception_generique(request: Request, exc: Exception) -> JSONResponse:
-    """Filet de sécurité : toute exception non gérée → 500 normalisé.
+    """Toute exception non gérée devient un 500 au format ``ErreurKuma``.
 
-    Le détail technique de ``exc`` n'est PAS exposé au client (pas de
-    fuite de stack trace, de chemin interne, de version de dépendance).
-    Le diagnostic se fait via les logs structlog côté serveur :
-    ``exc_info=exc`` sérialise la stack trace complète dans l'entrée
-    de log (rendue lisible en dev par ``ConsoleRenderer``, JSON-isée
-    en prod par ``JSONRenderer`` via le processeur ``format_exc_info``
-    configuré dans ``core.logging``).
+    Rien du détail technique ne part au client (trace, chemin interne,
+    version de dépendance) : la trace complète va dans le journal serveur.
     """
     log = obtenir_logger("kuma.api.erreur_non_geree")
     log.error(

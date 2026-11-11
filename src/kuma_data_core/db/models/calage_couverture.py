@@ -1,21 +1,12 @@
-"""Modèle SQLAlchemy de la table ``calage_couverture``.
+"""Modèle SQLAlchemy de la table ``calage_couverture`` : localités couvertes par un calage.
 
-Domaine de couverture d'un référentiel de calage (ADR-0004,
-complément couverture progressive) : la liste des localités du
-référentiel qualifiées pour le transport du calage, une ligne par
-localité couverte.
+Une ligne par localité qualifiée pour le transport d'un référentiel de calage
+(ADR-0004). Cette liste détermine où une étude calée est permise : étendre la
+couverture revient à ajouter des lignes et à publier une édition.
 
-C'est la donnée qui pilote la couverture géographique des logiciels
-consommateurs (Solar Bridge en tête) : une étude calée n'est permise
-que si la localité résolue pour le site appartient au domaine.
-Étendre la couverture = ajouter des lignes (qualification par la
-recherche : cohérence inter-source, campagnes de mesure,
-leave-one-out quand une deuxième station sol existera) et publier
-une édition - zéro code côté consommateurs.
-
-Le lien vers ``referentiels_calage`` est logique, par ``referentiel_code``
-(le code y est partagé par les lignes de saisons, il n'est pas une
-clé unique) ; l'intégrité est tenue par les seeds de migration.
+Le lien vers ``referentiels_calage`` passe par ``referentiel_code``, sans clé
+étrangère : ce code y est partagé par les lignes de saisons et n'y est donc pas
+unique.
 """
 
 from __future__ import annotations
@@ -45,7 +36,6 @@ class CalageCouverture(Base):
 
     __tablename__ = "calage_couverture"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     referentiel_code: Mapped[str] = mapped_column(String(120), nullable=False)
     localite_id: Mapped[int] = mapped_column(
@@ -54,14 +44,11 @@ class CalageCouverture(Base):
         nullable=False,
     )
 
-    # === Provenance de la qualification (jamais un perimetre nu) ===
     justification: Mapped[str] = mapped_column(Text, nullable=False)
     version: Mapped[str] = mapped_column(String(20), nullable=False, server_default=text("'v1'"))
 
-    # === Soft delete ===
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
 
-    # === Audit applicatif ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

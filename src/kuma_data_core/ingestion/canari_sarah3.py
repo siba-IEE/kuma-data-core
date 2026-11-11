@@ -1,20 +1,14 @@
 """Canari de dérive PVGIS-SARAH3.
 
-Compare la donnée PVGIS **live** au seed committé. **Logique d'exit
-différenciée** :
+Compare la réponse actuelle de PVGIS au seed versionné. SARAH-3 est un jeu
+historique figé : un écart relatif supérieur à ``SEUIL_DERIVE`` (1e-3, au-dessus
+du bruit d'arrondi flottant et bien en dessous de l'écart d'un retraitement,
+typiquement > 1 %) signale un retraitement par le JRC.
 
-- **fetch live indisponible** (blip réseau JRC) → **exit 0** (warning, nightly
-  verte) : un aléa réseau ne doit pas rougir la nightly (on fuit la flakiness) ;
-- **fetch réussi + écart > ``SEUIL_DERIVE``** (reprocessing JRC réel) → **exit 1**
-  (la nightly rougit, ce qui force le **re-seed humain** via
-  ``scripts/preparer_seed_sarah3.py``).
-
-SARAH-3 ICDR est un jeu historique figé : un écart non nul sur un fetch réussi
-signale un reprocessing amont. Seuil ``1e-3`` (0,1 % relatif) : absorbe le bruit
-de représentation flottante, capte un reprocessing (décalage typiquement > 1 %).
-
-Requiert le mode ``live`` (le caller / step CI pose ``KUMA_INGESTION_MODE=live``) :
-en offline, ``_fetch`` renverrait le seed et le canari serait aveugle → garde.
+Code de sortie : 1 en cas de dérive (seed à régénérer par
+``scripts/preparer_seed_sarah3.py``) ; 0 sinon, y compris quand PVGIS est
+injoignable (simple avertissement : un aléa réseau ne doit pas faire échouer le
+contrôle nocturne). Exige ``KUMA_INGESTION_MODE=live``.
 """
 
 from __future__ import annotations
@@ -44,14 +38,14 @@ LOCALITES_1_7A: tuple[str, ...] = (
     "gin_mamou",
     "gin_nzerekore",
 )
-# Densification : 28 nouvelles communes (seedees offline en plus des pilotes).
+# Communes chefs-lieux de préfecture qui ne figurent pas dans ``LOCALITES_SEED``.
 LOCALITES_DENSIFICATION: tuple[str, ...] = tuple(
     p["commune_code"] for p in PREFECTURES_GUINEE if p["existante"] is None
 )
 ANNEE_DEBUT, ANNEE_FIN = 2021, 2023
 SEUIL_DERIVE: float = 1e-3
 
-# Échecs de fetch traités comme blips réseau (-> exit 0, warning).
+# Échecs de requête traités comme des aléas réseau (avertissement, code de sortie 0).
 _ERREURS_FETCH: tuple[type[Exception], ...] = (
     PvgisTimeoutError,
     PvgisHttpError,
@@ -62,7 +56,7 @@ _ERREURS_FETCH: tuple[type[Exception], ...] = (
 
 
 def _coordonnees_tous_points() -> dict[str, tuple[float, float]]:
-    """34 points : 6 pilotes (``LOCALITES_SEED``) + 28 communes (densification)."""
+    """Coordonnées (lat, lon) des points surveillés."""
     index = {e["code"]: e for e in LOCALITES_SEED}
     coords: dict[str, tuple[float, float]] = {
         c: (float(index[c]["latitude"]), float(index[c]["longitude"])) for c in LOCALITES_1_7A
@@ -74,7 +68,7 @@ def _coordonnees_tous_points() -> dict[str, tuple[float, float]]:
 
 
 def executer_canari(*, httpx_client: httpx.Client | None = None) -> int:
-    """Exécute le canari. Retourne le code de sortie (0 OK/blip, 1 dérive réelle)."""
+    """Exécute le canari ; rend le code de sortie (0 : pas de dérive, 1 : dérive)."""
     if mode_ingestion() == MODE_OFFLINE:
         raise RuntimeError(
             "Le canari requiert KUMA_INGESTION_MODE=live (compare le fetch reel au seed)."

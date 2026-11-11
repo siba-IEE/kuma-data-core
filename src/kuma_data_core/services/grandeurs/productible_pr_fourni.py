@@ -1,23 +1,15 @@
-"""Calcul à la volée du productible avec PR fourni (grandeur F2).
+"""Calcul à la volée du productible avec PR fourni.
 
-Productible PV calculé en appliquant un Performance Ratio (PR) fourni
-par l'appelant à la production théorique "plaque" du système. Le PR
+Productible PV obtenu en appliquant un Performance Ratio (PR) fourni par
+l'appelant à la production théorique « plaque » du système. Le PR
 quantifie l'ensemble des pertes par rapport au cas idéal STC.
 
-Modèles retenus v1 :
+- PR brut [1] : ratio E_AC / (P_STC * H_POA / 1000), sans correction.
+- PR_T corrigé de la température [2] : ajoute un facteur thermique (modèle
+  NOCT de Ross 1980 [3]).
 
-- **PR brut** [1] (Marion et al. 2005, NREL/CP-520-37358) : ratio
-  E_AC / (P_STC * H_POA / 1000). Aucune correction.
-- **PR_T temperature-corrected** [2] (Dierauf et al. 2013,
-  NREL/TP-5200-57991) : intercale un facteur de correction thermique
-  (modèle NOCT simple Ross 1980, cf. ``productible_correction_thermique``)
-  entre le PR fourni et la production calculée.
-
-Les variantes **PR_W (weather-corrected)** et **PR_C
-(climate-corrected)** documentées par Dierauf et al. 2013 ne sont pas
-exposées en v1 (différées, TMY Guinée non disponible publiquement).
-
-Endpoint paramétré par ``correction = 'aucune' | 'temperature'`` :
+Les variantes PR_W (corrigé de la météo) et PR_C (corrigé du climat) de [2]
+ne sont pas calculées.
 
 - ``correction='aucune'`` :
     E_AC = P_STC * G / G_STC * PR_fourni
@@ -28,9 +20,6 @@ Endpoint paramétré par ``correction = 'aucune' | 'temperature'`` :
 
 Niveau de confiance : le plus bas des entrées, au plus ``PLAFOND_CONFIANCE``
 (B), par la règle de propagation P que la route applique (ADR-0008).
-
-Pattern fonction publique pure ``calculer_productible_pr_fourni`` +
-fonctions privées. Aucune dépendance SQL, testable unitairement.
 
 Références bibliographiques :
 
@@ -63,21 +52,16 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
 )
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
 
-# Import délibéré d'une fonction privée cross-module : la logique NOCT
-# (``_temperature_cellule_noct``) est conceptuellement liée au modèle
-# thermique Ross 1980, dont ``productible_correction_thermique`` est la
-# source canonique. Le PR_T (Dierauf 2013) en dérive directement. Aucune
-# duplication de formule. À reconsidérer si un 3e consommateur apparaît
-# - candidat naturel : une implémentation Faiman ultérieure (modèle
-# thermique alternatif partageant ``t_amb``).
+# Import d'une fonction privée d'un autre module : le PR_T (Dierauf 2013)
+# reprend le modèle NOCT de Ross 1980, dont ``productible_correction_thermique``
+# porte la formule. L'importer évite de la dupliquer.
 from kuma_data_core.services.grandeurs.productible_correction_thermique import (
     _temperature_cellule_noct,
 )
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
-"""Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables (L-TR-2)."""
-
-# === Constantes module ====================================================
+"""Plafond de confiance : modèle de calcul et paramètres déclarés par l'appelant,
+invérifiables."""
 
 UNITE_PRODUCTIBLE: str = "kWh"
 """Unité de sortie : énergie cumulée journalière en kWh."""
@@ -89,16 +73,11 @@ TEMPERATURE_STC_DEGC: float = 25.0
 """Température STC de référence (°C)."""
 
 
-# === TypedDict d'entree ===================================================
-
-
 class MesureJourPRFourni(TypedDict):
-    """Mesure journalière consommée par le calcul productible PR fourni.
+    """Mesure journalière, entrée du productible avec PR fourni.
 
-    ``t_amb_degc`` est obligatoire uniquement si ``correction='temperature'``.
-    Sinon, il est ignoré par le calcul. Pour simplifier l'orchestration en
-    amont (couche routeur), il est conservé dans le TypedDict comme
-    ``float | None``.
+    ``t_amb_degc`` n'est requis que si ``correction='temperature'`` ; il est
+    ignoré sinon.
     """
 
     instant_mesure: date
@@ -107,15 +86,12 @@ class MesureJourPRFourni(TypedDict):
 
 
 class MesureMoisPRFourni(TypedDict):
-    """Mesure mensuelle consommée par le calcul productible PR fourni
-    sur série climato.
+    """Mesure mensuelle d'une série climatologique, entrée du productible avec PR fourni.
 
-    ``irradiance_kwh_par_m2_jour`` est ici une **moyenne quotidienne**
-    sur le mois (sémantique NASA POWER monthly + SARAH-3 ICDR + climato
-    OMM). Aucun champ ``t_amb_degc`` : la branche mensuelle est limitée
-    au mode ``correction='aucune'`` (le mode ``'temperature'`` est exclu,
-    non-linéarité cubique du facteur thermique NOCT en G incompatible
-    avec la moyenne climato).
+    ``irradiance_kwh_par_m2_jour`` est ici une moyenne quotidienne sur le mois.
+    Pas de champ ``t_amb_degc`` : le calcul mensuel n'admet que
+    ``correction='aucune'``, la correction thermique étant non linéaire en G et
+    donc incompatible avec une moyenne.
     """
 
     annee: int
@@ -124,11 +100,10 @@ class MesureMoisPRFourni(TypedDict):
 
 
 class MesureHeurePRFourni(TypedDict):
-    """Mesure horaire consommée par le productible PR fourni en intégration horaire.
+    """Mesure horaire, entrée du productible avec PR fourni en intégration horaire.
 
-    ``irradiance_w_par_m2`` est l'irradiance horaire (GHI, W/m² ≈ Wh/m² par
-    heure) ; ``t_amb_degc`` la température ambiante horaire, obligatoire
-    uniquement si ``correction='temperature'`` (sinon ``None``, ignoré).
+    ``irradiance_w_par_m2`` est le GHI horaire (W/m², soit Wh/m² sur l'heure) ;
+    ``t_amb_degc`` n'est requis que si ``correction='temperature'``.
     """
 
     instant_mesure: datetime
@@ -136,15 +111,12 @@ class MesureHeurePRFourni(TypedDict):
     t_amb_degc: float | None
 
 
-# === Fonctions privees pures ==============================================
-
-
 def _productible_brut_jour(
     irradiance_kwh_par_m2_jour: float,
     puissance_stc_wc: float,
     pr_fourni: float,
 ) -> float:
-    """Productible journalier PR brut Marion 2005 (formule en tête de module)."""
+    """Productible journalier (kWh) avec PR brut (Marion 2005)."""
     return puissance_stc_wc / 1000.0 * irradiance_kwh_par_m2_jour * pr_fourni
 
 
@@ -152,19 +124,16 @@ def _productible_pr_t_jour(
     mesure: MesureJourPRFourni,
     parametres: ParametresProductiblePRFourni,
 ) -> float:
-    """Calcule le productible journalier PR_T temperature-corrected (Dierauf 2013).
+    """Productible journalier (kWh) avec PR_T corrigé de la température (Dierauf 2013).
 
-    Combine le PR brut avec un facteur de correction thermique NOCT
-    (Ross 1980). Nécessite ``noct_degc``, ``coeff_temp_pourcent_par_degc``
-    et ``mesure['t_amb_degc']`` non-None (validation effectuée en amont
-    par le schéma Pydantic ``model_validator``).
+    ``noct_degc``, ``coeff_temp_pourcent_par_degc`` et ``mesure['t_amb_degc']``
+    doivent être renseignés : le schéma des paramètres le garantit en amont.
     """
     assert parametres.noct_degc is not None
     assert parametres.coeff_temp_pourcent_par_degc is not None
     assert mesure["t_amb_degc"] is not None
 
-    # Conversion kWh/m²/jour -> W/m² moyen 24h (cohérent avec
-    # productible_correction_thermique pour reproductibilité).
+    # Irradiance moyenne sur 24 h (W/m²), comme productible_correction_thermique.
     irradiance_w_par_m2 = mesure["irradiance_kwh_par_m2_jour"] * 1000.0 / 24.0
 
     t_cell = _temperature_cellule_noct(
@@ -186,26 +155,15 @@ def _productible_pr_t_jour(
     return productible_brut * ratio_temperature
 
 
-# === Fonction publique ====================================================
-
-
 def calculer_productible_pr_fourni(
     mesures: Sequence[MesureJourPRFourni],
     parametres: ParametresProductiblePRFourni,
 ) -> list[ResultatJournalier]:
-    """Calcule le productible PV avec PR fourni (brut ou temperature-corrected).
+    """Productible journalier (kWh) avec PR fourni, brut ou corrigé de la température.
 
-    Itère sur les mesures journalières et applique le calcul selon
-    ``parametres.correction`` :
-
-    - ``'aucune'`` : PR brut (Marion 2005).
-    - ``'temperature'`` : PR_T temperature-corrected (Dierauf 2013).
-
-    Renvoie une liste ordonnée de :class:`ResultatJournalier`. Liste vide
-    si ``mesures`` est vide. Niveau de confiance provisoire ``'B'``,
-    remplacé par la route (règle P).
-
-    Aucune dépendance SQL, idempotent, pur.
+    ``correction='aucune'`` applique le PR brut (Marion 2005), ``'temperature'``
+    le PR_T (Dierauf 2013). Un productible négatif est ramené à 0. Le niveau de
+    confiance ``'B'`` est provisoire : la route le remplace (règle P).
     """
     resultats: list[ResultatJournalier] = []
     for mesure in mesures:
@@ -233,32 +191,16 @@ def calculer_productible_pr_fourni_mensuel(
     mesures: Sequence[MesureMoisPRFourni],
     parametres: ParametresProductiblePRFourni,
 ) -> list[ResultatMensuel]:
-    """Calcule le productible PV avec PR fourni sur série mensuelle climato.
+    """Productible quotidien moyen du mois (kWh par jour) sur une série climatologique.
 
-    Branche unique mode ``correction='aucune'``. L'entrée
-    ``irradiance_kwh_par_m2_jour`` est une **moyenne quotidienne sur le
-    mois** (sémantique climato NASA POWER monthly / SARAH-3 ICDR) : la
-    sortie est donc un **productible quotidien moyen pour le mois**
-    (option A actée, pas de multiplication par nb_jours).
+    L'entrée est une moyenne quotidienne sur le mois : la sortie l'est aussi, elle
+    n'est pas multipliée par le nombre de jours. Résultats au format
+    ``instant='YYYY-MM'``, niveau de confiance ``'B'`` provisoire (la route le
+    remplace, règle P).
 
-    Unité runtime ``'kWh'`` identique à la branche journalière - même
-    sémantique « kWh par jour pour un système de puissance ``P_STC`` »
-    (la cohérence d'interface F2 est préservée entre journalier et
-    mensuel).
-
-    Renvoie une liste ordonnée de :class:`ResultatMensuel` au format
-    ``instant='YYYY-MM'``. Liste vide si ``mesures`` est vide. Niveau de
-    confiance provisoire ``'B'``, remplacé par la route (règle P).
-
-    Aucune dépendance SQL, idempotent, pur.
-
-    Raises:
-        AssertionError : si ``parametres.correction != 'aucune'``. Le
-            mode ``'temperature'`` est exclu de la branche mensuelle
-            (non-linéarité cubique du facteur thermique NOCT en G,
-            incompatible avec la moyenne climato). Le garde-fou côté
-            orchestrateur (HTTP 400) intercepte en amont ; cette
-            assertion est un garde-fou défensif de fonction pure.
+    Seul ``correction='aucune'`` est admis : la correction thermique est non
+    linéaire en G, donc incompatible avec une moyenne mensuelle. La route rejette
+    l'autre mode en 400 avant d'appeler ; l'assertion ne fait que le rappeler.
     """
     assert parametres.correction == "aucune", (
         "calculer_productible_pr_fourni_mensuel : seul le mode "
@@ -287,28 +229,20 @@ def calculer_productible_pr_fourni_horaire(
     mesures: Sequence[MesureHeurePRFourni],
     parametres: ParametresProductiblePRFourni,
 ) -> list[ResultatJournalier]:
-    """Calcule le productible PR fourni par **intégration horaire**.
+    """Productible journalier (kWh) avec PR fourni, par intégration horaire.
 
-    Applique le calcul **heure par heure** (PR brut ou PR_T avec ``T_cell``
-    calculé sur l'irradiance horaire réelle), puis somme l'énergie sur la
-    journée calendaire (UTC).
+    Le calcul est fait heure par heure (``T_cell`` sur l'irradiance horaire pour
+    le PR_T), puis l'énergie est sommée par jour calendaire UTC.
 
-    Honnêteté : pour ``correction='aucune'`` (PR brut), le calcul
-    est **linéaire** en G - la somme horaire égale exactement le journalier
-    (aucun biais de moyennage à lever ; mode exposé pour la seule cohérence
-    d'interface). Le gain réel ne porte que sur ``correction='temperature'``
-    (PR_T, ``T_cell`` non-linéaire, Dierauf 2013), où l'intégration horaire
-    lève le biais de Jensen.
-
-    Entrée : GHI horaire (+ T2M horaire si PR_T) alignés par l'appelant.
-    Sortie : un :class:`ResultatJournalier` par jour (unité ``kWh``). Pure
-    arithmétique (pas de géométrie solaire).
+    Avec ``correction='aucune'`` le calcul est linéaire en G : la somme horaire
+    égale le résultat journalier. L'intégration horaire ne change le résultat
+    qu'avec ``correction='temperature'``, où ``T_cell`` n'est pas linéaire en G
+    (biais de moyennage, inégalité de Jensen).
     """
     energie_par_jour: dict[date, float] = {}
     for mesure in mesures:
         irradiance_w = mesure["irradiance_w_par_m2"]
-        # Énergie horaire brute (kWh) = P_STC (kWc) x (irradiance W/m² x 1 h /1000
-        #                               -> kWh/m²) x PR.
+        # Énergie de l'heure (kWh) = P_STC (kWc) x irradiation de l'heure (kWh/m²) x PR.
         productible = (
             parametres.puissance_stc_wc / 1000.0 * (irradiance_w / 1000.0) * parametres.pr_fourni
         )

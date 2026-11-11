@@ -39,7 +39,7 @@ def test_vide() -> None:
     """Mesures vides -> resultat vide, caveat present."""
     r = calculer_taux_salissure_proxy([])
     assert r.mesures == []
-    assert "spin-up" in r.limite
+    assert "amorçage" in r.limite
 
 
 def test_pertes_bornees_et_coherentes() -> None:

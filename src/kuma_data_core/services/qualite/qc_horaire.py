@@ -1,30 +1,21 @@
 """Contrôle qualité algorithmique des séries horaires.
 
-Implémente le socle BSRN (§4.1-§4.3), seuils sourcés verbatim de
-*BSRN Global Network recommended QC tests V2.0* (Long & Dutton). Les
-tests d'aberration temporelle (§4.4, hors jeu BSRN canonique) sont
-différés.
+Seuils repris de Long C.N., Dutton E.G., *BSRN Global Network recommended
+QC tests V2.0*. Constante solaire S₀ = 1366,1 W/m² (défaut pvlib
+``get_extra_radiation``). Les tests d'aberration temporelle, hors du jeu
+BSRN, ne sont pas implémentés.
 
-Deux niveaux :
+Les tests prennent la géométrie solaire déjà calculée (μ₀, SZA, Sₐ) ;
+``executer_qc_horaire`` lit les lignes, calcule cette géométrie avec
+``pvlib`` (UTC) et rend un verdict par ligne.
 
-- **Fonctions pures** (sans I/O ni pvlib) : les tests BSRN, qui
-  prennent en entrée la géométrie solaire déjà calculée (μ₀, SZA, Sₐ).
-- **Runner** ``executer_qc_horaire`` : lit les lignes horaires d'un jeu
-  de séries, calcule la géométrie solaire via ``pvlib`` (UTC), applique
-  les tests et renvoie un verdict par ligne. Le commit est au caller.
+Attribution :
 
-Doctrine d'attribution (§5) :
-
-- Échec d'un seuil **« physiquement impossible »** (test dur) → ligne
-  **non validée** : statut conservé ``brut`` + trace en
-  ``commentaire_editorial``.
-- Sinon → ``valide_auto``, niveau ``B``. Les échecs **« souples »**
-  (seuil « extrêmement rare », fermeture, ratio diffus) sont **flaggés**
-  en commentaire sans déclasser (la valeur reste plausible-mais-suspecte).
-
-Référence : Long C.N., Dutton E.G., *BSRN Global Network recommended QC
-tests V2.0* ; constante solaire S₀ = 1366,1 W/m² (défaut pvlib
-``get_extra_radiation``).
+- Échec d'un seuil « physiquement impossible » : la ligne n'est pas
+  validée, elle reste ``brut`` avec une trace en ``commentaire_editorial``.
+- Sinon ``valide_auto``, niveau ``B``. Les échecs souples (seuil
+  « extrêmement rare », fermeture, ratio diffus) sont signalés en
+  commentaire sans déclasser : la valeur reste plausible mais suspecte.
 """
 
 from __future__ import annotations
@@ -46,17 +37,13 @@ VERSION_DOCTRINE_QC: str = "v1"
 S0_W_PAR_M2: float = 1366.1
 """Constante solaire à distance moyenne (W/m²), défaut pvlib.
 
-Sₐ = S₀ / AU² (ajustée distance Terre-Soleil) est calculée par le runner
-via ``pvlib.irradiance.get_extra_radiation`` ; cette constante documente
-la valeur de base S₀ retenue."""
+Sₐ = S₀ / AU² (ajustée de la distance Terre-Soleil) en est tirée par
+``pvlib.irradiance.get_extra_radiation``."""
 
-# Grandeurs radiatives shortwave soumises aux bornes BSRN + tests croisés.
+# Grandeurs radiatives soumises aux bornes BSRN et aux tests croisés.
 _GRANDEURS_RADIATIVES: frozenset[str] = frozenset({"ghi", "dhi", "dni"})
 
 VerdictPlausibilite = Literal["ok", "rare", "impossible"]
-
-
-# === Plausibilité physique par variable (BSRN §4.1) =======================
 
 
 def _borne_haute_ghi(sa: float, mu0: float, *, rare: bool) -> float:
@@ -125,9 +112,6 @@ def plausibilite_non_radiative(grandeur: str, valeur: float) -> VerdictPlausibil
     return "ok"
 
 
-# === Tests de cohérence croisée (BSRN §4.2-§4.3) ==========================
-
-
 def tolerance_fermeture(sza_deg: float) -> float | None:
     """Tolérance du test de fermeture par bande de zénith (BSRN).
 
@@ -170,9 +154,6 @@ def ratio_diffus_ok(dhi: float, ghi: float, sza_deg: float) -> bool | None:
     else:
         return None
     return (dhi / ghi) < seuil
-
-
-# === Verdict par ligne ====================================================
 
 
 @dataclass(frozen=True)
@@ -265,9 +246,6 @@ def evaluer_instant(
     return verdicts
 
 
-# === Runner (pvlib + SQL) =================================================
-
-
 def executer_qc_horaire(
     session: Session,
     serie_ids_par_grandeur: dict[str, int],
@@ -276,21 +254,10 @@ def executer_qc_horaire(
 ) -> list[VerdictLigne]:
     """Applique le QC BSRN aux lignes horaires courantes d'un jeu de séries.
 
-    Lit les lignes ``valide_au IS NULL`` des séries fournies, calcule la
-    géométrie solaire (``pvlib``, UTC) par instant, applique
-    :func:`evaluer_instant`, et renvoie un verdict par ligne. **Sans
-    effet de bord SQL** : le caller (migration) applique les verdicts.
-
-    Args:
-        session : session SQLAlchemy active.
-        serie_ids_par_grandeur : mapping ``{grandeur: serie_id}`` des
-            séries horaires à évaluer (ex. ``{"ghi": 421, ...}``).
-        latitude, longitude : coordonnées WGS84 de la localité (UTC pour
-            la position solaire).
-
-    Returns:
-        Liste de :class:`VerdictLigne`, un par ligne horaire courante.
-        Liste vide si aucune ligne.
+    ``serie_ids_par_grandeur`` associe chaque grandeur à sa série
+    (``{"ghi": 421, ...}``) ; latitude et longitude sont en WGS84. Rend un
+    verdict par ligne ``valide_au IS NULL``, liste vide s'il n'y en a pas.
+    N'écrit rien en base : l'appelant applique les verdicts.
     """
     grandeur_par_serie = {sid: g for g, sid in serie_ids_par_grandeur.items()}
     rows = session.execute(

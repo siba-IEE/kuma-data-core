@@ -1,19 +1,13 @@
-"""Quotas journaliers des clés self-service via Redis (ADR-0003, WP7).
+"""Quotas journaliers des clés self-service et plafond de débit, via Redis (ADR-0003).
 
 Compteur à fenêtre fixe : une clé Redis ``quota:<empreinte>:<AAAA-MM-JJ>``
-est incrémentée à chaque requête authentifiée par une clé self-service,
-avec une expiration de 48 h posée au premier incrément (large : la
-fenêtre réelle est le jour calendaire, l'expiration ne sert qu'au
-nettoyage). Le quota comparé est le ``quota_journalier`` porté par la
-ligne ``cles_api`` (WP6).
+est incrémentée à chaque requête authentifiée par une clé self-service et
+comparée au ``quota_journalier`` de sa ligne ``cles_api``. Le compteur est
+indexé sur l'empreinte de la clé, jamais la clé en clair : Redis ne détient
+aucun secret.
 
-Le compteur est indexé sur l'**empreinte** de la clé, jamais la clé en
-clair : Redis ne détient aucun secret.
-
-**Fail-open assumé** : si Redis est injoignable, la requête passe sans
-comptage. Une panne du cache ne doit pas rendre les données publiques
-indisponibles - la disponibilité prime sur la stricte comptabilité,
-et les clés d'environnement ne passent de toute façon jamais ici.
+Si Redis est injoignable, la requête passe sans comptage : une panne du
+cache ne doit pas rendre les données publiques indisponibles.
 """
 
 from __future__ import annotations

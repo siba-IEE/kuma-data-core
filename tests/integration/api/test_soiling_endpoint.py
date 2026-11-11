@@ -51,7 +51,7 @@ def test_soiling_succes(client: TestClient, headers_auth: dict[str, str]) -> Non
     for m in p["mesures"]:
         assert 0.0 <= m["perte_pct"] <= 100.0
         assert m["niveau_confiance"] == "B"
-    assert "spin-up" in p["limite"]
+    assert "amorçage" in p["limite"]
 
 
 def test_soiling_deverrouille_densification_boffa(

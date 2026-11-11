@@ -165,9 +165,6 @@ def noter_bail(session: Session, licence: LicenceSolclim, maintenant: datetime) 
     session.commit()
 
 
-# --------------------------------------------------------------------------- CLI
-
-
 def _fin_de_journee(jour: str) -> datetime:
     """``AAAA-MM-JJ`` → la fin de ce jour en UTC : une licence vaut tout son dernier jour."""
     return datetime.combine(date.fromisoformat(jour), time(23, 59, 59), tzinfo=UTC)

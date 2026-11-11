@@ -1,46 +1,22 @@
-"""Données de seed des grandeurs ``grandeurs_referentiel`` (migrations 010 et 015).
+"""Données de seed de la table ``grandeurs_referentiel``.
 
-Le fichier expose **deux variables séparées** par discipline d'immuabilité
-des migrations mergées (cf. ``docs/conventions/02-migrations.md``) :
+Deux listes distinctes, chacune consommée par sa propre migration (une
+migration déjà appliquée ne se modifie pas, voir
+``docs/conventions/02-migrations.md``) :
 
-- ``GRANDEURS_REFERENTIEL_SEED`` (15 entrées) : grandeurs traduites Kuma.
-  Seedées par la migration 010. Immutable post-merge.
+- ``GRANDEURS_REFERENTIEL_SEED`` : 15 grandeurs calculées (8 F1 stockées, 2 F1
+  et 5 F2 calculées à la volée) ;
+- ``GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B`` : 5 grandeurs brutes ingérées
+  (``ghi``, ``dni``, ``dhi``, ``t2m``, ``rh2m``), toutes F1 stockées.
 
-- ``GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B`` (5 entrées) : grandeurs
-  brutes ingérées (``ghi``, ``dni``, ``dhi``, ``t2m``, ``rh2m``)
-  ajoutées par la migration 015.
+Une F1 stockée vit dans les tables de mesures quand
+``series_metadonnees.methode_collecte`` de sa série vaut ``modele_satellitaire``
+ou ``mesure_directe``, dans ``grandeurs_metier`` quand elle vaut
+``calcul_derive`` ou ``expertise_humaine``.
 
-Le référentiel devient hétérogène : grandeurs traduites Kuma
-+ grandeurs brutes ingérées, distinguées par leur description. Le lieu
-de stockage physique d'une F1 stockée est déterminé par
-``series_metadonnees.methode_collecte`` de la série :
-
-- F1 stockée + ``methode_collecte ∈ {modele_satellitaire, mesure_directe}``
-  → physiquement dans ``mesures_ressource``
-- F1 stockée + ``methode_collecte ∈ {calcul_derive, expertise_humaine}``
-  → physiquement dans ``grandeurs_metier``
-
-Décomptes :
-
-- ``GRANDEURS_REFERENTIEL_SEED`` : 8 F1 stockee + 2 F1 calculee_volee
-  + 5 F2 calculee_volee = 15 grandeurs traduites.
-- ``GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B`` : 5 F1 stockee (brutes
-  ingestion satellitaire).
-- Total : 20 grandeurs.
-
-Pattern reproduit de ``unites_seed_data.py`` : dicts prêts
-pour ``op.bulk_insert``, ``cree_par`` et ``modifie_par`` laissés à
-NULL, ``actif``/``cree_le``/``modifie_le``/``version_formule_actuelle``
-laissés aux ``server_default``.
-
-Chaque entrée porte une clé ``unite_code`` (string) au lieu de
-``unite_id`` (int). La résolution ``unite_code -> unite_id`` est
-effectuée dynamiquement par les migrations (010 et 015) - les IDs
-``IDENTITY`` ne sont pas garantis stables entre environnements.
-
-``methode_calcul_doc`` reste NULL pour les 20 grandeurs - fiches
-méthodologiques détaillées différées à une étape éditoriale
-ultérieure.
+Chaque entrée porte ``unite_code`` et non ``unite_id`` : la migration résout
+l'identifiant, les ``IDENTITY`` n'étant pas stables d'un environnement à l'autre.
+``methode_calcul_doc`` est NULL pour les 20 grandeurs.
 """
 
 from __future__ import annotations
@@ -242,13 +218,7 @@ GRANDEURS_REFERENTIEL_SEED: list[dict[str, Any]] = [
     },
 ]
 
-# Variable séparée pour préserver l'immuabilité de la migration 010 (qui
-# consomme `GRANDEURS_REFERENTIEL_SEED` à 15 entrées). Les 5 grandeurs brutes
-# ingérées sont consommées par la migration 015 via
-# `GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B`.
-#
-# Lieu de stockage physique = mesures_ressource quand la
-# série a methode_collecte ∈ {modele_satellitaire, mesure_directe}.
+# Grandeurs brutes ingérées, dans une liste séparée (voir la docstring du module).
 GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B: list[dict[str, Any]] = [
     {
         "code": "ghi",
@@ -323,7 +293,7 @@ GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B: list[dict[str, Any]] = [
 ]
 
 
-# Vérifications de décompte sur GRANDEURS_REFERENTIEL_SEED (inchangé, 15 entrées).
+# Vérifications de décompte sur GRANDEURS_REFERENTIEL_SEED.
 assert len(GRANDEURS_REFERENTIEL_SEED) == 15, (
     f"Expected 15 grandeurs traduites, got {len(GRANDEURS_REFERENTIEL_SEED)}"
 )
@@ -345,8 +315,7 @@ assert _strategies.count("calculee_volee") == 7, (
 )
 del _familles, _strategies
 
-# Vérifications de décompte sur GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B
-# (5 entrées toutes F1 stockee, ingérées depuis sources externes).
+# Vérifications de décompte sur GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B.
 assert len(GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B) == 5, (
     f"Expected 5 brutes ingérées 1-2b, got {len(GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B)}"
 )
@@ -364,7 +333,7 @@ for _entry in GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B:
     )
 del _codes_brutes_seen, _codes_existants, _entry, _code
 
-# Tuple expose les 5 codes pour les tests d'intégration + assertions aval
+# Codes des 5 grandeurs brutes, pour les tests et les contrôles en aval.
 CODES_BRUTES_INGESTION_1_2B: tuple[str, ...] = tuple(
     e["code"] for e in GRANDEURS_REFERENTIEL_SEED_BRUTES_1_2B
 )

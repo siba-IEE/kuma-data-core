@@ -1,9 +1,8 @@
-"""Endpoints ``/v1/cles`` - émission self-service et révocation (WP6).
+"""Routes ``/v1/cles`` : émission en libre-service et révocation.
 
-L'émission est **non authentifiée** (c'est l'inscription) et constitue
-la seule surface d'écriture publique du serveur (ADR-0003, D2) : elle
-est bornée par adresse IP. La révocation est réservée à la clé
-administrateur.
+L'émission n'est pas authentifiée (c'est l'inscription) et constitue la
+seule surface d'écriture publique du serveur (ADR-0003) : elle est bornée
+par adresse IP. La révocation est réservée à la clé administrateur.
 
 Sur un déploiement sans base de service (``META_DB`` absente, régime
 local), l'émission renvoie 404 ``CLES_EMISSION_NON_ACTIVEE`` : le
@@ -70,7 +69,7 @@ def _adresse_ip(request: Request) -> str:
     ),
 )
 def emettre_cle(demande: DemandeCle, request: Request) -> ReponseCleCreee:
-    """Émet une clé self-service (ADR-0003, D3)."""
+    """Émet une clé en libre-service, dans la limite d'émissions par adresse IP."""
     adresse_ip = _adresse_ip(request)
     with _session_meta() as session:
         if nombre_emissions_recentes(session, adresse_ip) >= LIMITE_EMISSIONS_PAR_IP_24H:

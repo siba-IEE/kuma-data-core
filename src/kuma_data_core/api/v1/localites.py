@@ -1,27 +1,15 @@
-"""Endpoints `/api/v1/localites` - listing + detail.
+"""Routes ``/v1/localites`` : liste, résolution d'un point et détail.
 
-Deux endpoints :
+- ``GET /v1/localites`` : liste paginée des localités (filtres ``pays_iso3``,
+  ``type_localite``, ``parent_code``, ``actif`` ; 100 par page, 1000 au plus).
+- ``GET /v1/localites/resolution`` : localité qui représente la cellule de
+  grille d'un point (ADR-0004).
+- ``GET /v1/localites/{code}`` : détail d'une localité (code en slug ASCII, ou
+  ``<code_pays>_<slug>`` pour une entité administrative).
 
-- ``GET /v1/localites`` (authentifie) : listing paginee des localites
-  presentes dans la table ``localites`` (6 villes Guinee +
-  entrees hierarchie : Afrique, Guinee pays, regions administratives).
-  Filtrage optionnel par ``pays_iso3``, ``type_localite``,
-  ``parent_code``, ``actif``. Pagination offset-based
-  ``limit=100/max=1000``.
-- ``GET /v1/localites/{code}`` (authentifie) : detail individuel
-  identifie par le code naming (slug ASCII pour racines, ou
-  ``<code_pays>_<slug>`` pour entites administratives, cf.
-  ``db/models/localites.py``).
-
-Pattern miroir de :mod:`kuma_data_core.api.v1.series` (cf. ADR-0001
-Data Core). Envelope paginee identique, conventions de typage
-identiques, gestion d'erreurs via :class:`ExceptionKuma` +
-:class:`CodeErreur` identique.
-
-``parent_code`` denormalise via self-JOIN sur ``localites`` pour
-faciliter le routage cote front sans appel en cascade.
-
-Cf. ADR-0002 Data Core.
+Même enveloppe paginée et mêmes conventions que ``/v1/series`` (ADR-0001,
+ADR-0002). ``parent_code`` est obtenu par jointure de ``localites`` sur
+elle-même, ce qui évite un second appel pour connaître le parent.
 """
 
 from __future__ import annotations
@@ -50,24 +38,14 @@ from kuma_data_core.db.session import obtenir_session
 routeur = APIRouter(prefix="/localites", tags=["localites"])
 
 
-# === Constantes pagination ================================================
-
 _LIMIT_DEFAUT_LISTING: int = 100
 _LIMIT_MAX_LISTING: int = 1000
 
 
-# === Helpers ==============================================================
-
-
 def _to_float_optional(valeur: object) -> float | None:
-    """Convertit ``Decimal | None`` -> ``float | None`` pour serialisation JSON.
+    """``Decimal | None`` -> ``float | None``, JSON n'ayant pas de type décimal.
 
-    Les colonnes ``latitude`` (Numeric(11,8)) et ``longitude``
-    (Numeric(12,8)) sont retournees par SQLAlchemy comme
-    :class:`decimal.Decimal`. JSON n'a pas de type decimal natif et
-    les consommateurs Kuma (Zod, TypeScript) consomment des
-    ``number``. La precision pratique reste >= 1 cm (7-8 decimales sur
-    un float64), suffisante pour la cartographie editorial.
+    Un float64 garde les 8 décimales des colonnes ``latitude`` et ``longitude``.
     """
     if valeur is None:
         return None
@@ -78,11 +56,7 @@ _RAYON_TERRE_KM = 6371.0
 
 
 def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Distance grand cercle entre deux points WGS84 (formule haversine).
-
-    Precision suffisante pour l'affichage d'une distance de transport
-    de calage (dizaines de km, arrondie au dixieme dans la reponse).
-    """
+    """Distance du grand cercle entre deux points WGS84, en km (formule de haversine)."""
     phi1 = math.radians(lat1)
     phi2 = math.radians(lat2)
     dphi = math.radians(lat2 - lat1)
@@ -91,19 +65,16 @@ def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     return 2 * _RAYON_TERRE_KM * math.asin(math.sqrt(a))
 
 
-# === Endpoint listing =====================================================
-
-
 @routeur.get(
     "",
     response_model=LocaliteListeePaginee,
     status_code=status.HTTP_200_OK,
     summary="Listing des localites disponibles",
     description=(
-        "Retourne la liste paginee des localites de la table "
-        "`localites`, dans une envelope `{items, total, limit, offset}`. "
-        "Filtrage optionnel par pays_iso3, type_localite, parent_code "
-        "ou statut actif. Cf. ADR-0002 Data Core."
+        "Retourne la liste paginée des localités, triée par code, dans une "
+        "enveloppe `{items, total, limit, offset}`. Filtrage optionnel par "
+        "pays_iso3, type_localite, parent_code ou statut actif ; par défaut, "
+        "seules les localités actives sont listées."
     ),
 )
 def lister_localites(
@@ -132,17 +103,10 @@ def lister_localites(
     limit: Annotated[int, Query(ge=1, le=_LIMIT_MAX_LISTING)] = _LIMIT_DEFAUT_LISTING,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> LocaliteListeePaginee:
-    """Listing paginee des localites dans une envelope `{items, total, limit, offset}`.
+    """Liste paginée des localités, triée par code.
 
-    Conventions identiques au listing `/v1/series` (ADR-0001) :
-
-    - ``actif`` defaut TRUE (les entrees soft-deleted sont masquees
-      par defaut). Passer ``?actif=false`` pour inspecter les entrees
-      desactivees.
-    - ORDER BY ``code ASC`` (stable et previsible pour la pagination).
-    - ``COUNT(*)`` separe du SELECT items pour lisibilite ; le cout
-      additionnel est negligeable sur 10-20 localites et
-      reste acceptable jusqu'a plusieurs centaines.
+    ``actif`` vaut TRUE par défaut : passer ``actif=false`` pour voir les
+    localités désactivées.
     """
     clauses: list[str] = []
     params: dict[str, object] = {"limit": limit, "offset": offset}
@@ -230,9 +194,8 @@ def lister_localites(
     return LocaliteListeePaginee(items=items, total=int(total), limit=limit, offset=offset)
 
 
-# === Endpoint resolution au point (ADR-0004) ==============================
-# Declare AVANT ``/{code}`` : FastAPI matche les routes dans l'ordre de
-# declaration et ``resolution`` serait sinon capture comme un code.
+# Déclarée avant ``/{code}`` : FastAPI teste les routes dans l'ordre de
+# déclaration et ``resolution`` serait sinon pris pour un code.
 
 
 @routeur.get(
@@ -256,22 +219,14 @@ def resoudre_point(
     lon: Annotated[float, Query(ge=-180, le=180, description="Longitude WGS84 du point.")],
     grandeur: Annotated[str, Query(pattern="^ghi$")] = "ghi",
 ) -> ReponseResolution:
-    """Resout un point vers la localite echantillonnant sa cellule.
+    """Résout un point vers la localité qui représente sa cellule de grille.
 
-    Candidates : les localites actives portant une serie climatologie
-    mensuelle active de la grandeur demandee sur la periode de
-    reference 1991-2020 (les points d'ingestion du referentiel). La
-    cellule est celle de la grille de la source de climatologie
-    (1 degre x 1 degre, frontieres aux degres entiers - verification
-    empirique du 2026-07-20 : la moyenne 1991-2020 de la serie de
-    Kerouane reproduit le releve au point de Tokounou, meme cellule,
-    ecart nul sur les 12 mois).
-
-    Si aucune candidate ne partage la cellule du point,
-    ``meme_cellule`` vaut ``false`` et la candidate la plus proche est
-    renvoyee avec sa distance : au consommateur d'afficher l'hypothese
-    de transport. 404 ``RESSOURCE_INTROUVABLE`` si le referentiel ne
-    porte aucune candidate (catalogue vide pour la grandeur).
+    Candidates : les localités actives qui portent une série mensuelle active
+    de la grandeur sur 1991-2020. La cellule est celle de la grille de la
+    source de climatologie, 1° x 1°, frontières aux degrés entiers. Si aucune
+    candidate n'est dans la cellule du point, ``meme_cellule`` vaut ``false``
+    et la plus proche est renvoyée avec sa distance. Lève 404
+    ``RESSOURCE_INTROUVABLE`` si aucune localité ne porte de série de ce type.
     """
     rows = session.execute(
         text(
@@ -318,7 +273,7 @@ def resoudre_point(
         ):
             meilleure_meme_cellule = (distance, indice)
 
-    assert meilleure is not None  # rows non vide, verifie plus haut
+    assert meilleure is not None  # rows non vide, vérifié plus haut
     meme_cellule = meilleure_meme_cellule is not None
     distance_km, indice_retenu = (
         meilleure_meme_cellule if meilleure_meme_cellule is not None else meilleure
@@ -346,9 +301,6 @@ def resoudre_point(
     )
 
 
-# === Endpoint detail ======================================================
-
-
 @routeur.get(
     "/{code}",
     response_model=LocaliteDetail,
@@ -365,13 +317,9 @@ def detailler_localite(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> LocaliteDetail:
-    """Detail d'une localite (16 champs catalogue).
+    """Détail d'une localité, active ou non.
 
-    Leve ``ExceptionKuma`` ``RESSOURCE_LOCALITE_INCONNUE`` (HTTP 404)
-    si le code ne match aucune entree (y compris les entrees
-    desactivees : pas de filtre ``actif`` au detail, le consommateur
-    qui appelle un code precis a deja conscience de la ressource
-    ciblee).
+    Lève 404 ``RESSOURCE_LOCALITE_INCONNUE`` si le code est inconnu.
     """
     row = session.execute(
         text(

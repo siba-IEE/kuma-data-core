@@ -1,20 +1,14 @@
-"""Données de seed des 4 unités complémentaires de la migration 009.
+"""Les 4 unités qui complètent ``unites_seed_data.py`` pour le référentiel des grandeurs.
 
-Complète les 153 unités (migration 002, ``unites_seed_data.py``)
-par les 4 unités strictement nécessaires au seed des 15 grandeurs
-(migration 010, ``grandeurs_referentiel_seed_data.py``) :
+- ``kwh_par_kwc_jour`` : productible spécifique journalier (PV) ;
+- ``kwh_par_kwc_mois`` : productible spécifique mensuel (PV) ;
+- ``heure_equivalente_pleine`` : convention internationale EFLH ;
+- ``degre_jour`` : base des calculs thermiques (ISO 15927-6).
 
-- ``kwh_par_kwc_jour`` - productible spécifique journalier (PV).
-- ``kwh_par_kwc_mois`` - productible spécifique mensuel (PV).
-- ``heure_equivalente_pleine`` - convention internationale EFLH.
-- ``degre_jour`` - base pour les calculs thermiques (ISO 15927-6).
-
-Pattern reproduit de ``unites_seed_data.py`` : dicts prêts pour
-``op.bulk_insert``, ``cree_par`` et ``modifie_par`` laissés à NULL,
-``actif``/``cree_le``/``modifie_le`` laissés aux ``server_default``.
-
-Facteurs de conversion SI calculés en ``Decimal`` quantisés à 30
-décimales pour aligner sur ``Numeric(60, 30)`` du modèle ``Unite``.
+Dicts prêts pour ``op.bulk_insert`` : ``cree_par`` et ``modifie_par`` restent à
+NULL, ``actif``, ``cree_le`` et ``modifie_le`` prennent leur valeur par défaut
+côté serveur. Les facteurs de conversion sont des ``Decimal`` quantifiés à
+30 décimales, comme le ``Numeric(60, 30)`` du modèle ``Unite``.
 """
 
 from __future__ import annotations

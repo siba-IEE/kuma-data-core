@@ -1,29 +1,12 @@
-"""Modèle SQLAlchemy de la table ``mesures_ressource``.
+"""Modèle SQLAlchemy de la table ``mesures_ressource`` : mesures journalières ingérées.
 
-Table métier opérationnelle. Stocke les mesures journalières des
-données brutes ingérées depuis sources externes (NASA POWER ; ECMWF
-ERA5, ANM Guinée, etc. en phases ultérieures).
+Identité métier : ``(serie_id, instant_mesure)``, ``instant_mesure`` étant une
+date ; la localité, la grandeur et la source sont portées par
+``series_metadonnees``.
 
-Identité métier (Option D) : 2-uplet ``(serie_id, instant_mesure)`` via
-FK vers ``series_metadonnees`` qui porte le triplet
-``(localite_id, grandeur_code, source_id)``. ``instant_mesure DATE``
-cohérent avec « journalier comme produit éditorial fini ».
-
-Superpose 4 mécaniques structurantes :
-
-- Statut éditorial 5 valeurs : ``brut``, ``valide_auto``,
-  ``valide_humain``, ``publie``, ``deprecie``.
-- Versioning temporel ``valide_du``/``valide_au`` TIMESTAMPTZ +
-  EXCLUDE BTree-GiST.
-- Niveau de confiance A/B/C dérivé par règles R1-R4 + override éditorial
-  avec justification obligatoire.
-- Identité métier 2-uplet via ``serie_id``.
-
-Helper SQLAlchemy :
-
-- ``@hybrid_property niveau_effectif`` : renvoie l'override si non NULL,
-  sinon le dérive. Équivalent Python de la vue SQL
-  ``v_mesures_avec_niveau_effectif`` créée en migration 018.
+Les versions successives d'une mesure sont bornées par ``valide_du`` /
+``valide_au``. La contrainte EXCLUDE qui interdit leur chevauchement est posée
+en migration et n'apparaît pas dans ce modèle.
 """
 
 from __future__ import annotations
@@ -56,10 +39,8 @@ class MesureRessource(Base):
 
     __tablename__ = "mesures_ressource"
 
-    # === Identifiant ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
 
-    # === Identité métier (Option D : 2-uplet serie_id + instant_mesure) ===
     serie_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey(
@@ -71,16 +52,13 @@ class MesureRessource(Base):
     )
     instant_mesure: Mapped[date] = mapped_column(Date, nullable=False)
 
-    # === Valeur ===
     valeur: Mapped[float] = mapped_column(Float(precision=53), nullable=False)
 
-    # === Versioning temporel ===
     valide_du: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     valide_au: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Statut éditorial ===
     statut: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
@@ -94,7 +72,6 @@ class MesureRessource(Base):
         ),
     )
 
-    # === Niveau de confiance ===
     niveau_confiance_derive: Mapped[str] = mapped_column(
         String(1),
         nullable=False,
@@ -116,10 +93,8 @@ class MesureRessource(Base):
         ),
     )
 
-    # === Commentaire éditorial ===
     commentaire_editorial: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # === Audit applicatif ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -145,21 +120,17 @@ class MesureRessource(Base):
         nullable=True,
     )
 
-    # === Relations ===
     serie: Mapped[SerieMetadonnees] = relationship(
         SerieMetadonnees,
         lazy="select",
         foreign_keys=[serie_id],
     )
 
-    # === Hybrid properties (helpers Python) ===
     @hybrid_property
     def niveau_effectif(self) -> str:
-        """Renvoie ``niveau_confiance_override`` si non NULL, sinon ``niveau_confiance_derive``.
+        """Niveau de confiance à utiliser : l'override s'il existe, sinon le niveau dérivé.
 
-        Équivalent Python de la vue SQL ``v_mesures_avec_niveau_effectif``
-        (à créer en migration 018). Permet aux callers d'obtenir le niveau
-        consommable sans logique conditionnelle dispersée.
+        Même règle que la vue SQL ``v_mesures_avec_niveau_effectif``.
         """
         return (
             self.niveau_confiance_override
@@ -167,7 +138,6 @@ class MesureRessource(Base):
             else self.niveau_confiance_derive
         )
 
-    # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
             "statut IN ('brut', 'valide_auto', 'valide_humain', 'publie', 'deprecie')",
@@ -185,15 +155,14 @@ class MesureRessource(Base):
             "valide_au IS NULL OR valide_au > valide_du",
             name="ck_mesures_ressource_periode_coherente",
         ),
-        # Index partiel sur lignes courantes (usage dominant en lecture)
+        # Index partiel sur les lignes courantes, les plus lues.
         Index(
             "idx_mesures_ressource_courantes",
             "serie_id",
             "instant_mesure",
             postgresql_where=text("valide_au IS NULL"),
         ),
-        # Commentaire de table porté sur l'ORM pour cohérence avec la
-        # migration 014 (alembic check).
+        # ``alembic check`` compare ce commentaire de table à la base.
         {
             "comment": (
                 "Mesures journalieres ingerees depuis sources externes. Premiere "

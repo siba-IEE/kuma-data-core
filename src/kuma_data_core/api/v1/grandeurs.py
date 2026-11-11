@@ -1,32 +1,17 @@
-"""Endpoints `/api/v1/grandeurs/<code>` - 5 grandeurs F2 paramétrables.
+"""Routes ``/v1/grandeurs/<code>``.
 
-Cinq endpoints distincts :
+Six grandeurs paramétrables (POA mono-plan et bifacial, productible avec
+correction thermique ou avec PR fourni, énergie utile ECS, degrés-jours de
+climatisation) et cinq routes calculées ou assemblées à la volée (P50/P90 du
+GHI, proxy de salissure, PR réaliste, fiche d'incertitude inter-source par
+localité et en collection).
 
-- ``GET /v1/grandeurs/poa_parametrable``
-- ``GET /v1/grandeurs/productible_correction_thermique``
-- ``GET /v1/grandeurs/productible_pr_fourni``
-- ``GET /v1/grandeurs/energie_utile_ecs``
-- ``GET /v1/grandeurs/degre_jour_climatisation``
-
-Architecture commune :
-
-1. Validation Pydantic des paramètres utilisateur (schémas
-   ``api.v1.schemas.grandeurs``).
-2. Résolution ``code_serie_source`` -> série + localité (lat/lon).
-3. Lecture des mesures journalières depuis ``mesures_ressource`` ; pour
-   les grandeurs nécessitant 2+ séries (POA = GHI+DNI+DHI, thermique/
-   PR_T/ECS = GHI+T2M), lecture complémentaire automatique en recherchant
-   les séries compagnes (même ``localite_id``, ``source_id``, plage
-   temporelle).
-4. Appel de la fonction publique pure du module
-   ``services.grandeurs.<code>``.
-5. Sérialisation JSON (défaut) ou CSV via paramètre ``format_sortie``
-   avec alias URL ``format`` (shadow built-in).
-
-Authentification : Bearer existante (``CleApiValidee``).
-
-Format de réponse erreur : enveloppe ``{"erreur": {"code": ...,
-"message": ..., "details": ...}}`` (cohérence API publique).
+Une route paramétrable résout la série source et sa localité, lit ses mesures
+et celles des séries compagnes nécessaires (même localité, même source, même
+début de période et même granularité), appelle la fonction de calcul de
+``services.grandeurs`` puis rend du JSON ou du CSV (paramètre ``format``). Le
+niveau de confiance de chaque résultat suit la règle de propagation P
+(ADR-0008).
 """
 
 from __future__ import annotations
@@ -166,18 +151,12 @@ from kuma_data_core.services.grandeurs.soiling_hsu import (
 routeur = APIRouter(prefix="/grandeurs", tags=["grandeurs-F2"])
 
 
-# === Helpers de résolution série + localité ================================
-
-
 class SerieSourceResolue(NamedTuple):
-    """Résultat de ``_resoudre_serie_source`` (accès par attribut).
+    """Métadonnées de la série source.
 
-    Champ ``source_code`` alimente le dispatch table-cible
-    (JOURNALIER / MENSUEL_RESSOURCE / GRANDEURS_METIER).
-    Champ ``granularite`` : filtre des séries compagnes par granularité
-    ET dispatch table-cible par granularité (la table horaire partage
-    ``periode_debut = 2021-01-01`` avec la journalière ; seule la
-    granularité les distingue).
+    ``source_code`` et ``granularite`` déterminent la table de mesures à lire.
+    ``granularite`` sert aussi à choisir les séries compagnes : séries horaires
+    et journalières peuvent partager le même ``periode_debut``.
     """
 
     serie_id: int
@@ -192,22 +171,9 @@ class SerieSourceResolue(NamedTuple):
 
 
 def _resoudre_serie_source(session: Session, code_serie: str) -> SerieSourceResolue:
-    """Résout ``code_serie_source`` vers les métadonnées de la série.
+    """Métadonnées de la série active ``code_serie``.
 
-    Le champ ``periode_debut`` est utilisé par les endpoints F2 pour
-    matcher la fenêtre temporelle des séries compagnes (cf.
-    ``_chercher_serie_compagne``) - nécessaire depuis l'ajout de séries
-    climato mensuelle 1991-2020 / 2001-2020 qui coexistent avec les
-    séries journalières 2021-2025 pour les mêmes couples (localité,
-    grandeur, source).
-
-    Le champ ``source_code`` alimente le dispatch table-cible via
-    ``resolve_table_from_series_metadata`` pour les endpoints F2 à
-    entrée polymorphe journalier/mensuel.
-
-    Raises:
-        ExceptionKuma : HTTP 404 ``RESSOURCE_SERIE_INCONNUE`` si série
-            absente.
+    Lève 404 ``RESSOURCE_SERIE_INCONNUE`` si elle n'existe pas.
     """
     row = session.execute(
         text(
@@ -244,11 +210,9 @@ def _resoudre_serie_source(session: Session, code_serie: str) -> SerieSourceReso
 
 
 def _resoudre_coordonnees(session: Session, localite_id: int) -> tuple[float, float]:
-    """Résout ``localite_id`` vers ``(latitude_deg, longitude_deg)``.
+    """``(latitude, longitude)`` de la localité, en degrés.
 
-    Raises:
-        ExceptionKuma : HTTP 500 ``SERVEUR_ERREUR_INTERNE`` si localité
-            absente (incohérence FK théoriquement impossible).
+    Lève 500 ``SERVEUR_ERREUR_INTERNE`` si elle n'a pas de coordonnées.
     """
     row = session.execute(
         text("SELECT latitude, longitude FROM localites WHERE id = :id"),
@@ -257,10 +221,7 @@ def _resoudre_coordonnees(session: Session, localite_id: int) -> tuple[float, fl
     if row is None or row.latitude is None or row.longitude is None:
         raise ExceptionKuma(
             code=CodeErreur.SERVEUR_ERREUR_INTERNE,
-            message=(
-                f"Localite id={localite_id} sans coordonnees latitude/longitude "
-                "(incoherence FK ou seed incomplet)."
-            ),
+            message=f"La localité id={localite_id} n'a pas de coordonnées enregistrées.",
             statut_http=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
     return float(row.latitude), float(row.longitude)
@@ -274,21 +235,12 @@ def _chercher_serie_compagne(
     periode_debut_source: date,
     granularite_source: str | None,
 ) -> int | None:
-    """Cherche une série compagne (même localité + source, grandeur différente).
+    """Identifiant de la série d'une autre grandeur, même localité et même source, ou ``None``.
 
-    Deux filtres garantissent que la compagne appartient à la même
-    "famille temporelle" que la source :
-
-    - ``periode_debut = :periode_debut_source`` distingue les fenêtres
-      climato (1991/2001) de la journalière (2021).
-    - ``granularite IS NOT DISTINCT FROM :granularite_source`` distingue
-      journalier / mensuel / horaire pour un même ``periode_debut``
-      (séries horaires, periode_debut=2021-01-01 partagé
-      avec les journalières : sans ce filtre une compagne horaire serait
-      sélectionnée pour un calcul journalier et lue dans la mauvaise
-      table).
-
-    Renvoie ``serie_id`` ou ``None`` si aucune trouvée.
+    La compagne doit avoir le même ``periode_debut`` que la source (ce qui sépare
+    les séries climatologiques des séries récentes) et la même granularité :
+    séries horaires et journalières partagent leur ``periode_debut``, et sans ce
+    second filtre une compagne horaire serait lue dans la table journalière.
     """
     row = session.execute(
         text(
@@ -321,12 +273,7 @@ def _exiger_grandeur(
     code_serie: str,
     endpoint: str,
 ) -> None:
-    """Vérifie que la série source correspond à la grandeur attendue.
-
-    Raises:
-        ExceptionKuma : HTTP 400 ``INCOMPATIBILITE_SOURCE_GRANDEUR`` si
-            ``grandeur_code != code_attendu``.
-    """
+    """Lève 400 ``INCOMPATIBILITE_SOURCE_GRANDEUR`` si la série ne porte pas ``code_attendu``."""
     if grandeur_code != code_attendu:
         raise ExceptionKuma(
             code=CodeErreur.INCOMPATIBILITE_SOURCE_GRANDEUR,
@@ -338,9 +285,6 @@ def _exiger_grandeur(
         )
 
 
-# === Helpers de lecture des mesures ========================================
-
-
 def _lire_mesures_par_serie_id(
     session: Session,
     serie_id: int,
@@ -349,12 +293,9 @@ def _lire_mesures_par_serie_id(
     *,
     niveaux: NiveauxEntrees,
 ) -> dict[date, float]:
-    """Lit les valeurs journalières d'une série sur la fenêtre.
+    """Valeurs journalières courantes d'une série sur la fenêtre, indexées par date.
 
-    Renvoie un dict ``{instant_mesure: valeur}`` pour indexation rapide
-    par date (utilisé pour aligner GHI/DNI/DHI/T2M lors des calculs
-    multi-séries). Range le niveau effectif de chaque valeur lue dans
-    ``niveaux`` (règle de propagation P).
+    Range le niveau de confiance effectif de chaque valeur lue dans ``niveaux``.
     """
     rows = session.execute(
         text(
@@ -384,15 +325,11 @@ def _lire_mesures_horaires_par_serie_id(
     *,
     niveaux: NiveauxEntrees,
 ) -> dict[datetime, float]:
-    """Lit les valeurs horaires **validées** d'une série sur la fenêtre.
+    """Valeurs horaires validées et courantes d'une série, indexées par instant.
 
-    Lit ``mesures_ressource_horaires`` (statut ``valide_auto``, lignes
-    courantes), renvoie ``{instant_mesure: valeur}`` indexé par datetime
-    UTC. Utilisé par l'intégration horaire DJC
-    (``methode='integration_horaire'``). Les lignes rejetées par le QC
-    (statut ``brut``) sont exclues. Borne de fenêtre sur la date UTC,
-    cohérente avec la lecture journalière. Range le niveau effectif de
-    chaque valeur lue sous son jour UTC dans ``niveaux``.
+    Les lignes rejetées par le contrôle qualité (statut ``brut``) sont exclues.
+    La fenêtre porte sur la date UTC. Range le niveau effectif de chaque valeur
+    lue sous son jour UTC dans ``niveaux``.
     """
     rows = session.execute(
         text(
@@ -423,17 +360,9 @@ def _lire_mesures_mensuel_par_serie_id(
     *,
     niveaux: NiveauxEntrees,
 ) -> dict[tuple[int, int], float]:
-    """Lit les valeurs mensuelles d'une série sur la fenêtre.
+    """Valeurs mensuelles courantes d'une série, indexées par ``(annee, mois)``, bornes incluses.
 
-    Renvoie un dict ``{(annee, mois): valeur}`` indexé par couple
-    année/mois (pattern aligné sur ``mesures_ressource_mensuelles.annee``
-    + ``mois`` SMALLINT séparés). Bornes inclusives traduites en
-    comparaisons lexicographiques ``(annee, mois) >= (from_y, from_m)``
-    et ``<=`` (cf. ``api/v1/series.py:_lire_mesures_mensuel``).
-
-    Réutilisé par les endpoints F2 à entrée polymorphe journalier /
-    mensuel (dispatch via ``resolve_table_from_series_metadata``). Range le
-    niveau effectif de chaque valeur lue sous son mois dans ``niveaux``.
+    Range le niveau effectif de chaque valeur lue sous son mois dans ``niveaux``.
     """
     rows = session.execute(
         text(
@@ -461,11 +390,8 @@ def _lire_mesures_mensuel_par_serie_id(
     return {(int(r.annee), int(r.mois)): float(r.valeur) for r in rows}
 
 
-# === Helpers de sérialisation ==============================================
-
-
 def _serialiser_csv_journalier(reponse: ReponseGrandeurF2) -> str:
-    """Sérialise une réponse à résultats journaliers en CSV."""
+    """Sérialise en CSV les résultats, journaliers ou mensuels, d'une réponse."""
     buffer = io.StringIO()
     w = csv.writer(buffer)
     w.writerow(["granularite", "instant", "valeur", "unite", "niveau_confiance"])
@@ -530,9 +456,6 @@ def _construire_reponse(
     return JSONResponse(content=reponse.model_dump(mode="json"))
 
 
-# === Endpoint POA paramétrable ============================================
-
-
 @routeur.get(
     "/poa_parametrable",
     response_model=None,
@@ -544,24 +467,20 @@ def grandeur_poa_parametrable(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
-    """Calcule la POA journalière à partir d'une série GHI (+ DNI/DHI compagnes).
+    """Irradiation journalière dans le plan des modules (POA), à partir d'une série GHI.
 
-    Pattern multi-séries automatique :
+    La série source doit être une série GHI, sinon la route répond 400
+    ``INCOMPATIBILITE_SOURCE_GRANDEUR``. Les séries DNI et DHI de la même
+    localité et de la même source sont utilisées quand elles existent : le
+    calcul suit alors le modèle de Perez (1990). Sinon, en méthode journalière,
+    le DNI et le DHI sont estimés à partir du GHI (corrélation d'Erbs 1982) et
+    la transposition est isotrope (Liu-Jordan 1963), ce qui est moins précis
+    sous ciel partiellement couvert. La réponse n'indique pas lequel des deux
+    modèles a été appliqué.
 
-    - **Série principale attendue** : ``grandeur_code = 'ghi'``. Une série
-      pointant une autre grandeur lève une 400
-      ``INCOMPATIBILITE_SOURCE_GRANDEUR``.
-    - **Séries compagnes cherchées automatiquement** : DNI et DHI sur la
-      même ``localite_id`` + ``source_id`` (recherche par
-      ``_chercher_serie_compagne``).
-    - **Comportement si compagnes présentes** : modèle Perez 1990
-      (décomposition diffus en 3 zones, calcul anisotropique).
-    - **Comportement si DNI / DHI absentes** : fallback Liu-Jordan
-      isotrope automatique (décomposition Erbs 1982 GHI -> DNI estimé +
-      DHI estimé, puis transposition isotrope) : précision dégradée
-      10-15% sous ciel partiellement couvert.
-    - **Traçabilité limitée v1** : la réponse JSON n'indique pas
-      explicitement quel modèle a été appliqué.
+    Avec ``methode=integration_horaire``, la série source doit être horaire et
+    les séries DNI et DHI horaires sont obligatoires (400
+    ``VALIDATION_VALEUR_INVALIDE`` sinon).
     """
     niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
@@ -569,9 +488,6 @@ def grandeur_poa_parametrable(
 
     latitude, longitude = _resoudre_coordonnees(session, serie.localite_id)
 
-    # Compagnes DNI / DHI : mêmes localité + source + periode_debut +
-    # granularité (la recherche est granularité-aware ; en horaire elle
-    # trouve les séries DNI/DHI horaires).
     dni_serie_id = _chercher_serie_compagne(
         session, serie.localite_id, serie.source_id, "dni", serie.periode_debut, serie.granularite
     )
@@ -580,9 +496,7 @@ def grandeur_poa_parametrable(
     )
 
     if params.methode == "integration_horaire":
-        # Perez intégré par heure : lève le biais de moyennage
-        # (+16 % sur plan incliné). Exige une série source horaire ET les
-        # compagnes DNI/DHI horaires (pas de fallback Liu-Jordan en horaire).
+        # Pas de repli Liu-Jordan en horaire : les séries DNI et DHI sont exigées.
         if serie.granularite != "horaire":
             raise ExceptionKuma(
                 code=CodeErreur.VALIDATION_VALEUR_INVALIDE,
@@ -626,7 +540,7 @@ def grandeur_poa_parametrable(
         ghi_par_jour = _lire_mesures_par_serie_id(
             session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
         )
-        # Fallback Liu-Jordan automatique dans la fonction pure si DNI/DHI absentes.
+        # Sans DNI ou DHI, la fonction de calcul applique le repli Liu-Jordan.
         dni_par_jour: dict[date, float] = (
             _lire_mesures_par_serie_id(
                 session, dni_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
@@ -673,19 +587,14 @@ def grandeur_poa_parametrable(
     )
 
 
-# === Endpoint POA bifacial (modèle infinite-sheds) ===============
-
-
 def _resoudre_serie_albedo_journalier(
     session: Session, localite_id: int, source_id: int
 ) -> int | None:
-    """Résout la série ``albedo_surface`` journalière de la localité + source.
+    """Série ``albedo_surface`` journalière de la localité et de la source, ou ``None``.
 
-    Indépendant de la période de la série GHI source : l'albédo n'existe qu'en
-    **journalier** (et sert même en mode horaire, broadcast intra-jour),
-    donc son ``periode_debut`` diffère de celui du GHI horaire - la recherche par
-    compagne stricte ne convient pas. Renvoie ``None`` si absente (→ repli sur
-    ``params.albedo_sol``).
+    L'albédo n'existe qu'en journalier, y compris pour un calcul horaire : son
+    ``periode_debut`` diffère de celui d'un GHI horaire et
+    ``_chercher_serie_compagne`` ne le trouverait pas.
     """
     row = session.execute(
         text(
@@ -714,14 +623,19 @@ def grandeur_poa_bifacial(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
-    """Calcule le POA global bifacial (modèle infinite-sheds row-aware).
+    """Irradiation journalière dans le plan des modules d'un champ de rangées bifacial.
 
-    **Distinct du `poa_parametrable` mono-plan** : modèle de champ de rangées
-    avec face arrière (gcr, hauteur, pitch, bifacialité). Série principale
-    attendue : `grandeur_code='ghi'`. Compagnes **DNI + DHI obligatoires**
-    (granularité-aware ; pas de fallback Liu-Jordan) → 400 si absentes. Albédo :
-    série `albedo_surface` journalière (réel par localité ; repli `albedo_sol` si
-    absente ; broadcast aux heures en mode horaire).
+    Modèle infinite-sheds : à la différence de ``poa_parametrable`` (plan seul),
+    il tient compte des rangées (gcr, hauteur, pas entre rangées) et de la face
+    arrière. La série source doit être une série GHI ; les séries DNI et DHI de
+    la même localité et de la même source sont obligatoires (400
+    ``INCOMPATIBILITE_SOURCE_GRANDEUR`` si l'une manque). L'albédo vient de la
+    série journalière ``albedo_surface`` de la même localité et de la même
+    source ; les jours où elle n'a pas de valeur, ``albedo_sol`` est utilisé.
+
+    Avec ``methode=integration_horaire``, la série source doit être horaire (400
+    ``VALIDATION_VALEUR_INVALIDE`` sinon) et l'albédo du jour vaut pour chacune
+    de ses heures.
     """
     niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
@@ -838,9 +752,6 @@ def grandeur_poa_bifacial(
     )
 
 
-# === Endpoint productible correction thermique ============================
-
-
 def _lire_t2m_compagne(
     session: Session,
     localite_id: int,
@@ -854,15 +765,9 @@ def _lire_t2m_compagne(
     *,
     niveaux: NiveauxEntrees,
 ) -> dict[date, float]:
-    """Cherche et lit la série T2M compagne d'une série source (même loc/source).
+    """Valeurs journalières de la série T2M compagne (même localité, même source).
 
-    Les paramètres ``periode_debut_source`` et ``granularite_source``
-    filtrent la compagne par fenêtre temporelle ET granularité stricte
-    (cf. ``_chercher_serie_compagne``).
-
-    Raises:
-        ExceptionKuma : HTTP 400 ``INCOMPATIBILITE_SOURCE_GRANDEUR`` si
-            aucune série T2M compagne trouvée.
+    Lève 400 ``INCOMPATIBILITE_SOURCE_GRANDEUR`` si elle n'existe pas.
     """
     t2m_serie_id = _chercher_serie_compagne(
         session, localite_id, source_id, "t2m", periode_debut_source, granularite_source
@@ -895,23 +800,15 @@ def grandeur_productible_correction_thermique(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
-    """Calcule le productible thermique-corrigé (NOCT simple Ross 1980).
+    """Productible journalier avec correction thermique (modèle NOCT simple, Ross 1980).
 
-    Pattern multi-séries automatique :
+    La série source doit être une série GHI. La série T2M de la même localité
+    et de la même source est obligatoire, la correction dépendant de la
+    température ambiante (400 ``INCOMPATIBILITE_SOURCE_GRANDEUR`` si elle
+    manque). Température de cellule : ``T_cell = T_amb + (NOCT - 20) x G / 800``.
 
-    - **Série principale attendue** : ``grandeur_code = 'ghi'``.
-    - **Série compagne cherchée** : T2M (même localité + même source).
-    - **Comportement si T2M présente** : modèle NOCT simple appliqué
-      ligne par ligne (T_cell = T_amb + (NOCT - 20) * G / 800, puis
-      P_AC corrigée).
-    - **Comportement si T2M absente** : 400
-      ``INCOMPATIBILITE_SOURCE_GRANDEUR`` (la correction thermique ne
-      peut être calculée sans température ambiante).
-
-    Note : un mode ``faiman`` (Faiman 2008, dépendant du vent) a été
-    codé et testé puis retiré de l'API : Faiman relève du régime
-    terrain, calibration locale u0/u1 requise pour éviter une fausse
-    confiance B.
+    Avec ``methode=integration_horaire``, la série source et la série T2M
+    doivent être horaires.
     """
     niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
@@ -920,8 +817,6 @@ def grandeur_productible_correction_thermique(
     )
 
     if params.methode == "integration_horaire":
-        # NOCT appliqué par heure (T_cell sur le GHI horaire réel) : lève le
-        # biais de moyennage. Exige GHI horaire + T2M horaire compagne.
         if serie.granularite != "horaire":
             raise ExceptionKuma(
                 code=CodeErreur.VALIDATION_VALEUR_INVALIDE,
@@ -1008,9 +903,6 @@ def grandeur_productible_correction_thermique(
     )
 
 
-# === Endpoint productible PR fourni =======================================
-
-
 @routeur.get(
     "/productible_pr_fourni",
     response_model=None,
@@ -1024,44 +916,32 @@ def grandeur_productible_pr_fourni(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
-    """Calcule le productible avec PR fourni (brut Marion 2005 / PR_T Dierauf 2013).
+    """Productible avec un PR fourni par l'appelant, brut ou corrigé de la température.
 
-    Pattern multi-séries automatique selon ``correction`` :
+    La série source doit être une série GHI.
 
-    - **Série principale attendue** : ``grandeur_code = 'ghi'``.
-    - **Si ``correction = 'aucune'``** : aucune compagne cherchée. PR brut
-      appliqué directement (E_AC = P_STC * G * PR).
-    - **Si ``correction = 'temperature'``** :
-      - Série T2M cherchée (même localité + même source).
-      - Si T2M présente : PR_T appliqué (correction NOCT + facteur
-        thermique).
-      - Si T2M absente : 400 ``INCOMPATIBILITE_SOURCE_GRANDEUR``.
+    - ``correction=aucune`` : PR brut (Marion 2005),
+      ``E_AC = P_STC x G / G_STC x PR``, sans autre série.
+    - ``correction=temperature`` : PR_T (Dierauf 2013). La série T2M de la même
+      localité et de la même source est obligatoire (400
+      ``INCOMPATIBILITE_SOURCE_GRANDEUR`` si elle manque).
 
-    Dispatch table-cible via ``resolve_table_from_series_metadata`` :
+    Une série source mensuelle (climatologie) n'est acceptée qu'avec
+    ``correction=aucune`` : le résultat est alors un productible quotidien moyen
+    par mois (``instant`` au format ``YYYY-MM``). La correction thermique, non
+    linéaire, ne s'applique pas à une moyenne mensuelle (400). Une série
+    calculée par Kuma (source ``kuma_calculs``) n'est pas acceptée comme source
+    (400). Avec ``methode=integration_horaire``, la série source doit être
+    horaire.
 
-    - ``JOURNALIER`` (``mesures_ressource``) : flow journalier ci-dessus.
-    - ``MENSUEL_RESSOURCE`` (``mesures_ressource_mensuelles``) : branche
-      mensuelle climato, mode ``correction='aucune'`` uniquement. Sortie
-      :class:`ResultatMensuel` au format ``instant='YYYY-MM'``, sémantique
-      « productible quotidien moyen pour le mois ». Mode ``'temperature'``
-      sur mensuel rejeté 400 ``INCOMPATIBILITE_SOURCE_GRANDEUR``
-      (non-linéarité cubique NOCT incompatible avec moyenne climato).
-    - ``GRANDEURS_METIER`` (série calculée Kuma) : rejeté 400
-      ``INCOMPATIBILITE_SOURCE_GRANDEUR`` (une série F1 calculée Kuma
-      n'est pas admissible comme source brute d'un calcul F2).
-
-    Variantes PR_W et PR_C non exposées v1 (TMY Guinée non disponible).
+    Les variantes PR_W et PR_C de Dierauf 2013 ne sont pas proposées.
     """
     niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
 
-    # Dispatch table-cible avant vérification grandeur_code : la nature
-    # de la source (brute vs calculée Kuma) doit être vérifiée
-    # indépendamment de la grandeur portée, pour permettre un message
-    # d'erreur explicite « source kuma_calculs non admissible » même
-    # quand la série n'est pas un GHI (cas concret : toute série
-    # kuma_calculs porte par construction une grandeur_code != 'ghi',
-    # donc l'ordre inverse court-circuiterait toujours le dispatch).
+    # La nature de la source est vérifiée avant sa grandeur : une série
+    # kuma_calculs ne porte jamais 'ghi', et l'ordre inverse masquerait le
+    # message « série calculée non admise ».
     table_cible = resolve_table_from_series_metadata(
         source_code=serie.source_code,
         granularite=serie.granularite,
@@ -1081,10 +961,6 @@ def grandeur_productible_pr_fourni(
     _exiger_grandeur(serie.grandeur_code, "ghi", params.code_serie_source, "productible_pr_fourni")
 
     if params.methode == "integration_horaire":
-        # PR appliqué par heure : pour PR_T (Dierauf) lève le biais de Jensen
-        # (T_cell non-linéaire) ; pour PR brut (linéaire) identique au journalier
-        # (exposé pour cohérence d'interface). Exige une série source horaire
-        # (+ T2M horaire si correction='temperature').
         if serie.granularite != "horaire":
             raise ExceptionKuma(
                 code=CodeErreur.VALIDATION_VALEUR_INVALIDE,
@@ -1254,9 +1130,6 @@ def grandeur_productible_pr_fourni(
     )
 
 
-# === Endpoint énergie utile ECS ===========================================
-
-
 @routeur.get(
     "/energie_utile_ecs",
     response_model=None,
@@ -1270,25 +1143,23 @@ def grandeur_energie_utile_ecs(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
-    """Calcule l'énergie utile ECS bord-capteur (Hottel-Whillier-Bliss).
+    """Énergie utile d'un capteur solaire thermique pour l'eau chaude sanitaire.
 
-    Pattern multi-séries automatique :
+    Énergie en sortie de capteur, par l'équation de Hottel-Whillier-Bliss :
+    ``eta = eta0 - a1 x dT / G - a2 x dT² / G``, puis ``Q_utile = eta x G``. La
+    série source doit être une série GHI. La série T2M de la même localité et de
+    la même source est obligatoire, le rendement dépendant de l'écart entre la
+    température du fluide et la température ambiante (400
+    ``INCOMPATIBILITE_SOURCE_GRANDEUR`` si elle manque).
 
-    - **Série principale attendue** : ``grandeur_code = 'ghi'``.
-    - **Série compagne cherchée** : T2M (même localité + même source).
-    - **Comportement si T2M présente** : équation HWB appliquée
-      (eta = eta0 - a1 * dT/G - a2 * dT²/G, puis Q_utile = eta * G).
-    - **Comportement si T2M absente** : 400
-      ``INCOMPATIBILITE_SOURCE_GRANDEUR`` (le rendement HWB dépend de
-      la différence T_fluide - T_amb).
+    Avec ``methode=integration_horaire``, la série source et la série T2M
+    doivent être horaires.
     """
     niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
     _exiger_grandeur(serie.grandeur_code, "ghi", params.code_serie_source, "energie_utile_ecs")
 
     if params.methode == "integration_horaire":
-        # Rendement HWB appliqué par heure (G horaire réel) : lève le biais de
-        # Jensen (rendement non-linéaire en G). Exige GHI horaire + T2M horaire.
         if serie.granularite != "horaire":
             raise ExceptionKuma(
                 code=CodeErreur.VALIDATION_VALEUR_INVALIDE,
@@ -1387,9 +1258,6 @@ def grandeur_energie_utile_ecs(
     )
 
 
-# === Endpoint degré-jour climatisation ====================================
-
-
 @routeur.get(
     "/degre_jour_climatisation",
     response_model=None,
@@ -1404,18 +1272,14 @@ def grandeur_degre_jour_climatisation(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
-    """Calcule les degrés-jours de climatisation mensuels (Erbs 1983).
+    """Degrés-jours de climatisation par mois, pour une température de base ``T_b``.
 
-    Pattern série unique (pas de multi-séries) :
-
-    - **Série principale attendue** : ``grandeur_code = 't2m'``. Une série
-      pointant une autre grandeur lève une 400
-      ``INCOMPATIBILITE_SOURCE_GRANDEUR``.
-    - **Aucune série compagne cherchée** : DJC dépend uniquement de la
-      température ambiante journalière et de la base T_b utilisateur.
-    - **Sortie agrégée mensuel** : la grandeur produit des
-      :class:`ResultatMensuel` au format ``instant="YYYY-MM"`` par
-      sommation des écarts journaliers positifs sur le mois.
+    La série source doit être une série T2M, sinon la route répond 400
+    ``INCOMPATIBILITE_SOURCE_GRANDEUR`` ; aucune autre série n'est lue. Les
+    résultats sont mensuels (``instant`` au format ``YYYY-MM``) : somme sur le
+    mois des écarts positifs à ``T_b``, calculés sur la température moyenne du
+    jour (``methode=moyenne_journaliere``) ou heure par heure
+    (``methode=integration_horaire``, Erbs 1983, série source horaire exigée).
     """
     niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, params.code_serie_source)
@@ -1424,8 +1288,6 @@ def grandeur_degre_jour_climatisation(
     )
 
     if params.methode == "integration_horaire":
-        # Lève le biais de moyennage journalier (-5 à -15 % tropical).
-        # Exige une série source horaire (T2M stocké et validé).
         if serie.granularite != "horaire":
             raise ExceptionKuma(
                 code=CodeErreur.VALIDATION_VALEUR_INVALIDE,
@@ -1470,24 +1332,13 @@ def grandeur_degre_jour_climatisation(
     )
 
 
-# === Endpoint ghi_exceedance (F1 calculee_volee) =======
-
-
 def _resoudre_serie_ghi_mensuelle_1991_2020(
     session: Session, code_localite: str
 ) -> tuple[int, str]:
-    """Résout (serie_id, code_serie) de la série GHI mensuelle 1991-2020 d'une ville.
+    """``(serie_id, code_serie)`` de la série GHI NASA POWER de la localité débutant en 1991.
 
-    Cherche dans ``series_metadonnees`` la série active de la localité
-    ciblée avec ``grandeur_code = 'ghi'``, ``source.code = 'nasa_power'``
-    et ``periode_debut`` dans la fenêtre climatologique. Cette série est
-    seedée en migration 041 (NASA POWER 1991-2020).
-
-    Raises:
-        ExceptionKuma : HTTP 404 ``RESSOURCE_INCONNUE`` si la localité
-            n'est pas trouvée ou si aucune série GHI mensuelle 1991-2020
-            n'est rattachée. Cas typique : localité hors des 6 villes
-            pilotes.
+    Lève 404 ``RESSOURCE_LOCALITE_INCONNUE`` si aucune n'est rattachée à la
+    localité (ou si la localité n'existe pas).
     """
     row = session.execute(
         text(
@@ -1511,10 +1362,9 @@ def _resoudre_serie_ghi_mensuelle_1991_2020(
         raise ExceptionKuma(
             code=CodeErreur.RESSOURCE_LOCALITE_INCONNUE,
             message=(
-                f"Aucune serie GHI mensuelle {ANNEE_DEBUT_CLIMATOLOGIE}-"
-                f"{ANNEE_FIN_CLIMATOLOGIE} trouvee pour la localite "
-                f"{code_localite!r}. La grandeur ghi_exceedance n'est "
-                f"disponible que pour les 6 villes pilotes phase 1."
+                f"Aucune série GHI mensuelle {ANNEE_DEBUT_CLIMATOLOGIE}-"
+                f"{ANNEE_FIN_CLIMATOLOGIE} n'est rattachée à la localité "
+                f"{code_localite!r}."
             ),
             statut_http=status.HTTP_404_NOT_FOUND,
         )
@@ -1524,13 +1374,10 @@ def _resoudre_serie_ghi_mensuelle_1991_2020(
 def _lire_mensuelles_brutes(
     session: Session, serie_id: int, *, niveaux: NiveauxEntrees
 ) -> list[tuple[int, int, float]]:
-    """Lit les 360 mesures mensuelles courantes d'une série sous forme de tuples.
+    """Mesures mensuelles courantes d'une série, en tuples ``(annee, mois, valeur)`` triés.
 
-    Renvoie une liste de tuples ``(annee, mois, valeur)`` ordonnés
-    chronologiquement. Filtre standard ``valide_au IS NULL`` (version
-    courante). Pas de pagination : on charge tout (360 lignes attendues
-    pour une série 1991-2020 complète). Range le niveau effectif de chaque
-    valeur lue dans ``niveaux``.
+    Tout est chargé d'un coup (360 lignes pour une série 1991-2020 complète).
+    Range le niveau effectif de chaque valeur lue dans ``niveaux``.
     """
     rows = session.execute(
         text(
@@ -1550,27 +1397,25 @@ def _lire_mensuelles_brutes(
 
 
 def _construire_limite_ghi_exceedance(code_localite: str) -> str:
-    """Compose le champ ``limite`` de la réponse, enrichi le cas échéant.
+    """Champ ``limite`` de la réponse.
 
-    Le texte de base avertit que la valeur est inter-annuelle uniquement
-    (et non un P90 bancable complet). Pour les villes co-localisées dans
-    le même pixel CERES SYN1deg (Kindia / Mamou), une mention
-    explicite de l'identité avec la ville jumelle est ajoutée.
+    Nomme la localité jumelle quand deux localités tombent dans la même cellule
+    CERES SYN1deg et ont donc les mêmes P50 et P90.
     """
     base = (
-        "Exceedance inter-annuelle uniquement (variabilite annee a annee sur "
-        f"{NOMBRE_ANNEES_BASE} ans). Ne propage pas l'incertitude de modele "
+        "Exceedance inter-annuelle uniquement (variabilité d'une année à l'autre sur "
+        f"{NOMBRE_ANNEES_BASE} ans). Ne propage pas l'incertitude du modèle "
         "satellitaire NASA POWER : ce n'est pas un P90 bancable complet "
-        "(qui necessiterait un modele d'erreur explicite, type PRUVE, et "
-        "idealement une calibration sol)."
+        "(qui nécessiterait un modèle d'erreur explicite, de type PRUVE, et "
+        "idéalement un calage sur des mesures au sol)."
     )
     jumelle = PAIRES_COLOCALISEES_D29.get(code_localite)
     if jumelle is not None:
         base += (
-            f" Dette D-29 : cette localite et {jumelle!r} tombent dans le meme "
-            f"pixel CERES SYN1deg NASA POWER (110 km a 10 deg N) ; leurs "
-            f"series GHI mensuelles 1991-2020 sont strictement identiques "
-            f"et leurs P50 / P90 le sont donc aussi."
+            f" Cette localité et {jumelle!r} tombent dans la même cellule de la "
+            f"grille CERES SYN1deg de NASA POWER (environ 110 km de côté) : leurs "
+            f"séries GHI mensuelles 1991-2020 sont strictement identiques, "
+            f"et leurs P50 et P90 aussi."
         )
     return base
 
@@ -1587,19 +1432,18 @@ def grandeur_ghi_exceedance(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> ReponseGhiExceedance:
-    """Calcule à la volée P50 et P90 de l'irradiation annuelle d'une ville.
+    """P50 et P90 de l'irradiation annuelle (GHI) d'une localité, calculés à chaque appel.
 
-    Pipeline :
+    La route lit la série GHI mensuelle 1991-2020 NASA POWER de la localité, en
+    tire les totaux annuels (kWh/m²/an, années bissextiles comprises), puis
+    leurs percentiles : P50 est la médiane, P90 la valeur dépassée neuf années
+    sur dix (10e percentile), donc inférieure à P50. 404
+    ``RESSOURCE_LOCALITE_INCONNUE`` si aucune série de ce type n'est rattachée à
+    la localité.
 
-    1. Résolution de la série GHI mensuelle 1991-2020 de la localité
-       (404 ``RESSOURCE_INCONNUE`` si la ville n'est pas couverte).
-    2. Lecture des 360 mesures mensuelles courantes (kWh/m²/jour).
-    3. Calcul des totaux annuels (kWh/m²/an) par pondération
-       journalière ``calendar.monthrange`` (années bissextiles incluses).
-    4. Percentiles P50 (médiane) et P90 (= percentile 10, scénario
-       conservateur). P90 < P50 par construction.
-    5. Construction de la réponse avec champ ``limite`` enrichi pour
-       les villes co-localisées Kindia / Mamou.
+    Le champ ``limite`` rappelle que seule la variabilité d'une année à l'autre
+    est prise en compte ; il signale aussi le cas de deux localités situées dans
+    la même cellule de la source, dont les valeurs sont identiques.
     """
     niveaux = NiveauxEntrees()
     serie_id, code_serie = _resoudre_serie_ghi_mensuelle_1991_2020(session, code_localite)
@@ -1620,8 +1464,7 @@ def grandeur_ghi_exceedance(
     )
 
 
-# === Endpoint taux_salissure_proxy (F1 calculee_volee, soiling) =======
-
+# Bornes larges : ces routes lisent toute la série, sans fenêtre demandée.
 _FENETRE_LARGE_DEBUT: date = date(2000, 1, 1)
 _FENETRE_LARGE_FIN: date = date(2100, 1, 1)
 
@@ -1632,16 +1475,13 @@ def _chercher_serie_pluie_nasa(
     periode_debut: date,
     periode_fin: date | None,
 ) -> int | None:
-    """Résout la série de précipitation journalière NASA POWER d'une localité.
+    """Série de précipitation journalière NASA POWER de la localité, ou ``None``.
 
-    Résolveur **dédié** (la pluie est ``nasa_power``, source différente des PM
-    ``cams_eac4`` ; ``_chercher_serie_compagne`` filtre sur ``source_id`` et la
-    raterait). La source est **épinglée explicitement** : même si une autre source de
-    pluie arrive un jour, elle ne sera pas sélectionnée. Depuis le backfill
-    journalier profondeur (migration 107), une localité porte **deux** séries de
-    pluie NASA (1981-2020 et 2021-2025) : la série retenue est celle dont la plage
-    **recouvre la fenêtre de la série PM appelante** (le modèle HSU intègre la
-    pluie sur les dates des PM) ; ordre stable sur ``periode_debut, id``.
+    La pluie vient de ``nasa_power`` et les PM de ``cams_eac4`` :
+    ``_chercher_serie_compagne``, qui filtre sur la source, ne la trouverait
+    pas. Une localité peut porter plusieurs séries de pluie NASA sur des
+    périodes successives : est retenue la première, par ``periode_debut`` puis
+    ``id``, dont la plage recouvre celle de la série PM appelante.
     """
     row = session.execute(
         text(
@@ -1669,18 +1509,20 @@ def _chercher_serie_pluie_nasa(
 
 
 def _verifier_contiguite_journaliere(dates: list[date], code_serie_source: str) -> None:
-    """Garde-fou : le modèle HSU est path-dependant (il intègre la salissure depuis
-    le début), l'index journalier doit être **trié croissant et sans trou** ; sinon
-    l'accumulation est faussée. ``dates`` est supposé déjà trié."""
+    """Lève 422 ``PLAGE_TEMPORELLE_NON_DISPONIBLE`` si ``dates`` (triées) comporte un trou.
+
+    Le modèle HSU cumule la salissure jour après jour : un trou fausserait
+    l'accumulation.
+    """
     for i in range(1, len(dates)):
         if dates[i] != dates[i - 1] + timedelta(days=1):
             raise ExceptionKuma(
                 code=CodeErreur.PLAGE_TEMPORELLE_NON_DISPONIBLE,
                 message=(
-                    f"Serie source {code_serie_source!r} : trou dans l'index "
-                    f"journalier (entre {dates[i - 1]} et {dates[i]}). Le modele "
-                    "HSU est path-dependant et exige une serie sans trou ; le "
-                    "calcul de salissure ne peut aboutir sur cette fenetre."
+                    f"Série source {code_serie_source!r} : il manque des jours "
+                    f"entre {dates[i - 1]} et {dates[i]}. Le modèle HSU cumule la "
+                    "salissure jour après jour et exige une série sans trou ; le "
+                    "calcul de salissure ne peut pas aboutir sur cette fenêtre."
                 ),
                 statut_http=status.HTTP_422_UNPROCESSABLE_ENTITY,
             )
@@ -1698,21 +1540,20 @@ def grandeur_taux_salissure_proxy(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> ReponseTauxSalissureProxy:
-    """Perte de transmission par salissure (% = (1 - ratio HSU) x 100), à la volée.
+    """Perte de transmission par salissure des modules (% = (1 - ratio HSU) x 100).
 
-    Pipeline :
+    Calculée à chaque appel. ``code_serie_source`` désigne la série PM2.5 (EAC4)
+    de la localité ; une série d'une autre grandeur donne 400
+    ``INCOMPATIBILITE_SOURCE_GRANDEUR``. La route lit aussi la série PM10 de la
+    même source et la série de précipitation journalière NASA POWER de la
+    localité (400 si l'une manque). Le calcul porte sur les jours où les trois
+    séries ont une valeur ; ces jours doivent se suivre sans trou (422
+    ``PLAGE_TEMPORELLE_NON_DISPONIBLE`` sinon), le modèle HSU cumulant la
+    salissure jour après jour.
 
-    1. ``code_serie_source`` = la série **PM2.5** (EAC4) ; résolution + contrôle de
-       grandeur (400 si ce n'est pas une série ``pm2_5``).
-    2. Compagne **PM10** (même source ``cams_eac4``, ``_chercher_serie_compagne``)
-       + compagne **precipitation** (``nasa_power``, résolveur bi-source dédié).
-       L'une absente -> 400.
-    3. Lecture des 3 séries (``mesures_ressource``, courantes) ; alignement par
-       **intersection des dates** (fenêtre effective = overlap PM ∩ pluie, bornée
-       par les PM : 2021-01-01 à 2025-08-31) ; garde-fou de contiguïté (HSU
-       path-dependant).
-    4. Modèle HSU (pvlib) sur la fenêtre complète depuis le début (le spin-up n'est
-       amorti qu'une fois) ; tilt / seuil de nettoyage = défauts F1 documentés.
+    Le modèle part de modules propres au premier jour : les premiers jours de la
+    fenêtre sont sous-estimés. L'inclinaison et le seuil de pluie nettoyante
+    sont fixes ; la réponse les rappelle.
     """
     niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, code_serie_source)
@@ -1780,17 +1621,11 @@ def grandeur_taux_salissure_proxy(
     )
 
 
-# === Endpoint pr_realiste (F1 calculee_volee, PR réaliste saisonnier) =======
-
-
 def _chercher_serie_pm_cams(session: Session, localite_id: int, grandeur_code: str) -> int | None:
-    """Résout une série PM (``pm2_5`` / ``pm10``) journalière EAC4 d'une localité.
+    """Série journalière ``pm2_5`` ou ``pm10`` EAC4 de la localité, ou ``None``.
 
-    Résolveur **cross-source dédié** : les PM sont ``cams_eac4``, source différente du
-    GHI source (typiquement ``nasa_power``) ; ``_chercher_serie_compagne`` filtre sur
-    ``source_id`` et les raterait. **Symétrique** du ``_chercher_serie_pluie_nasa``,
-    mais en sens inverse : ici c'est la PM qui est cross-source (la pluie
-    l'était dans l'autre résolveur). Source épinglée explicitement, ordre stable.
+    Les PM viennent de ``cams_eac4``, pas de la source du GHI :
+    ``_chercher_serie_compagne``, qui filtre sur la source, ne les trouverait pas.
     """
     row = session.execute(
         text(
@@ -1824,14 +1659,19 @@ def grandeur_pr_realiste(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> ReponsePRRealiste:
-    """PR effectif = ``PR_fourni x ratio_T x (1 - salissure)`` selon le mode, à la volée.
+    """PR effectif journalier et mensuel : ``PR_fourni x ratio_T x (1 - salissure)``.
 
-    Source = série **GHI** (fournit G + l'index de dates ; 400 si grandeur != ghi).
-    Compagnes selon le mode : T2M et pluie (même source que le GHI), PM2.5/PM10
-    (cross-source EAC4). Alignement par intersection des séries du mode ; la fenêtre
-    effective diverge donc par mode (les modes salissure sont bornés à l'overlap PM
-    EAC4, 2025-08-31), avec garde-fou de contiguïté (HSU path-dependant). Sorties
-    journalier + mensuel (la courbe mensuelle = la PR saisonnière).
+    Calculé à chaque appel, selon ``correction``. ``code_serie_source`` désigne
+    une série GHI (400 ``INCOMPATIBILITE_SOURCE_GRANDEUR`` sinon). Selon le
+    mode, la route lit aussi la série T2M et la série de précipitation de la
+    même source, et les séries PM2.5 et PM10 EAC4 de la localité (400 si une
+    série nécessaire manque). Les modes thermiques exigent ``noct_degc`` et
+    ``coeff_temp_pourcent_par_degc`` (422 ``VALIDATION_CHAMP_MANQUANT`` sinon).
+
+    Le calcul porte sur les jours communs aux séries du mode, qui doivent se
+    suivre sans trou (422 ``PLAGE_TEMPORELLE_NON_DISPONIBLE`` sinon). La fenêtre
+    dépend donc du mode : avec salissure, elle s'arrête là où s'arrêtent les
+    séries PM. La moyenne mensuelle donne la courbe saisonnière du PR.
     """
     niveaux = NiveauxEntrees()
     serie = _resoudre_serie_source(session, code_serie_source)
@@ -1968,13 +1808,11 @@ def grandeur_pr_realiste(
     )
 
 
-# === Endpoint incertitude_inter_source (atlas Temps 2, F1 lecture/assemblage) ===
-
 _AN_DEBUT_ATLAS = 2021
 _AN_FIN_ATLAS = 2023
 _FENETRE_ATLAS_STR = "2021-2023"
 _GRILLE_CERES = "CERES SYN1deg (1 deg / 110 km)"
-# (grandeur exposée, grandeur_code de l'écart matérialisé, libellé de la paire).
+# (grandeur exposée, grandeur_code de l'écart enregistré, libellé de la paire).
 _PAIRES_ECART_ATLAS: tuple[tuple[Literal["ghi", "dni"], str, str], ...] = (
     ("ghi", "ecart_relatif_referentiel", "NASA POWER vs PVGIS-SARAH3"),
     ("dni", "ecart_relatif_dni_cams", "NASA POWER vs CAMS"),
@@ -1982,7 +1820,7 @@ _PAIRES_ECART_ATLAS: tuple[tuple[Literal["ghi", "dni"], str, str], ...] = (
 
 
 def _mediane_abs(valeurs: Sequence[float]) -> float:
-    """Médiane des valeurs absolues (pur). ``valeurs`` non vide (garanti par l'appelant)."""
+    """Médiane des valeurs absolues ; ``valeurs`` ne doit pas être vide."""
     absolues = sorted(abs(v) for v in valeurs)
     n = len(absolues)
     milieu = n // 2
@@ -1994,11 +1832,11 @@ def _mediane_abs(valeurs: Sequence[float]) -> float:
 def _lire_ecart_paire_recent(
     session: Session, code_localite: str, grandeur_ecart: str
 ) -> tuple[list[float], list[tuple[str, str | None]]]:
-    """Lit les écarts mensuels RECENTS (2021-2023) d'une (localité, grandeur d'écart).
+    """Écarts mensuels 2021-2023 d'une localité pour une grandeur d'écart.
 
-    Filtre ``annee_debut >= 2021`` : isole la fenêtre récente et exclut le climato DNI
-    2004-2020 (artefact pilote, anti-mélange de fenêtres). Renvoie ``(valeurs_signees,
-    niveaux)`` sur les mois non-NULL, ou ``([], [])`` si aucune (localité hors atlas).
+    Le filtre sur ``annee_debut`` écarte les écarts calculés sur d'autres fenêtres
+    (climatologie DNI 2004-2020). Renvoie ``(valeurs_signees, niveaux)`` sur les
+    mois renseignés, ou ``([], [])`` si la localité n'en a pas.
     """
     rows = session.execute(
         text(
@@ -2023,10 +1861,11 @@ def _lire_ecart_paire_recent(
 def _lire_degenerescence_localite(
     session: Session, code_localite: str
 ) -> tuple[DegenerescenceFiche | None, list[tuple[str, str | None]]]:
-    """Lit la dégénérescence niveau-localité (grille NASA CERES, via la série ghi).
+    """Dégénérescence de pixel de la localité sur la grille CERES de NASA POWER.
 
-    GHI et DNI partagent la grille CERES -> la ligne ``nasa_power`` + ``ghi`` est
-    représentative et unique par localité. Renvoie ``(fiche, niveaux)`` ou ``(None, [])``.
+    GHI et DNI partagent cette grille : la ligne de la série ``ghi`` de
+    ``nasa_power`` vaut pour les deux. Renvoie ``(fiche, niveaux)`` ou
+    ``(None, [])``.
     """
     row = session.execute(
         text(
@@ -2056,19 +1895,19 @@ def _lire_degenerescence_localite(
 def _assurer_confiance_b(
     niveaux: Sequence[tuple[str, str | None]], code_localite: str
 ) -> Literal["B"]:
-    """Confiance effective (override sinon derive). Exige ``{'B'}``, sinon 500.
+    """Renvoie ``'B'`` si toutes les lignes lues sont en confiance effective B, sinon lève 500.
 
-    Garde d'honnêteté (au lieu d'un 'B' codé en dur) : si une ligne écart/dégénérescence
-    n'est pas B, la fiche ne doit JAMAIS afficher B -> 500 explicite (la donnée a dérivé).
+    La fiche n'affiche ainsi jamais un niveau que ses données ne portent pas.
     """
     effectifs = {(override if override is not None else derive) for derive, override in niveaux}
     if effectifs != {"B"}:
         raise ExceptionKuma(
             code=CodeErreur.SERVEUR_ERREUR_INTERNE,
             message=(
-                f"Incoherence de confiance pour {code_localite!r} : la fiche inter-source "
-                f"attend des donnees en confiance B, trouve {sorted(effectifs)}. "
-                "L'atlas est inter-source (B) ; A est reserve au terrain (D-67)."
+                f"Incohérence de confiance pour {code_localite!r} : la fiche inter-source "
+                f"attend des données en confiance B, trouvé {sorted(effectifs)}. "
+                "L'atlas compare des sources entre elles (confiance B) ; A est réservée "
+                "aux données validées par des mesures au sol."
             ),
             statut_http=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
@@ -2076,12 +1915,12 @@ def _assurer_confiance_b(
 
 
 def _construire_limite_incertitude_inter_source() -> str:
-    """Avertissement éditorial anti-survente."""
+    """Champ ``limite`` des fiches d'incertitude inter-source."""
     return (
-        "Incertitude inter-source / relative : divergence entre NASA POWER et les references "
-        "satellite (SARAH-3 pour le GHI, CAMS pour le DNI), fenetre 2021-2023, confiance B. "
-        "Ne quantifie PAS l'incertitude absolue vs mesure sol (regime terrain, dette D-67) : "
-        "ce n'est pas une barre d'erreur calibree au sol."
+        "Incertitude inter-source, donc relative : divergence entre NASA POWER et les "
+        "références satellite (SARAH-3 pour le GHI, CAMS pour le DNI), fenêtre 2021-2023, "
+        "confiance B. Ne quantifie pas l'incertitude absolue par rapport à des mesures au "
+        "sol : ce n'est pas une barre d'erreur calée au sol."
     )
 
 
@@ -2097,18 +1936,21 @@ def grandeur_incertitude_inter_source(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> ReponseIncertitudeInterSource:
-    """Assemble en LECTURE la fiche d'incertitude inter-source d'une localité (atlas Temps 2).
+    """Fiche d'incertitude inter-source d'une localité.
 
-    Deux axes d'honnêteté DISTINCTS, non fusionnés :
+    Assemblée à partir de grandeurs déjà calculées, elle porte deux informations
+    distinctes :
 
-    - ``ecarts`` : écart inter-source par paire/grandeur (GHI : NASA vs SARAH-3 ; DNI :
-      NASA vs CAMS, fenêtre récente 2021-2023). ``ecart_abs_pct`` (médiane des |écarts|) =
-      signal primaire ; ``ecart_signe_pct`` orientationnel seulement.
-    - ``degenerescence`` : propriété niveau-localité (grille NASA CERES), rendue une fois.
+    - ``ecarts`` : écart entre NASA POWER et une source de référence, par
+      grandeur (GHI : SARAH-3 ; DNI : CAMS), sur 2021-2023. ``ecart_abs_pct``
+      (médiane des écarts mensuels absolus) est l'indicateur à retenir ;
+      ``ecart_signe_pct`` n'indique qu'un sens.
+    - ``degenerescence`` : nombre d'autres localités qui partagent la cellule
+      de la grille CERES de NASA POWER.
 
-    Lecture/assemblage pur des grandeurs DÉJÀ matérialisées, zéro calcul de
-    substrat. Confiance B lue et assérée (jamais A : A = terrain). 404 si la
-    localité n'est pas couverte par l'atlas (33 préfectures + Conakry, 34 points).
+    Confiance B : la fiche compare des sources entre elles, pas à des mesures au
+    sol. 404 ``RESSOURCE_LOCALITE_INCONNUE`` si aucun écart inter-source n'est
+    enregistré pour la localité sur la période.
     """
     ecarts: list[EcartPaireInterSource] = []
     niveaux: list[tuple[str, str | None]] = []
@@ -2131,8 +1973,9 @@ def grandeur_incertitude_inter_source(
         raise ExceptionKuma(
             code=CodeErreur.RESSOURCE_LOCALITE_INCONNUE,
             message=(
-                f"Localite {code_localite!r} non couverte par l'atlas d'incertitude "
-                "inter-source (33 prefectures + Conakry, 34 points d'ingestion sur 2021-2023)."
+                f"Localité {code_localite!r} non couverte par l'atlas d'incertitude "
+                "inter-source : aucun écart entre sources n'est enregistré pour elle "
+                "sur 2021-2023."
             ),
             statut_http=status.HTTP_404_NOT_FOUND,
         )
@@ -2160,10 +2003,9 @@ def grandeur_incertitude_inter_source(
 
 
 def _lister_points_atlas(session: Session) -> list[tuple[int, str]]:
-    """(localite_id, code) des points portant l'écart inter-source récent = périmètre atlas.
+    """``(localite_id, code)`` des localités qui ont un écart inter-source depuis 2021.
 
-    Data-driven : les localités ayant un écart 2021-2023 (ghi vs SARAH-3 et/ou dni vs CAMS).
-    Robuste à une densification future (la liste suit la donnée, pas une énumération figée).
+    Triées par code. La liste suit la donnée, pas une énumération fixe.
     """
     rows = session.execute(
         text(
@@ -2184,11 +2026,9 @@ def _lister_points_atlas(session: Session) -> list[tuple[int, str]]:
 def _assembler_fiche_point(
     session: Session, localite_id: int, code_localite: str
 ) -> FichePointIncertitude:
-    """Assemble la fiche d'un point de l'atlas (fiche Temps 2 + coordonnées), pour la collection.
+    """Fiche d'un point pour la collection : celle de la route par localité, plus les coordonnées.
 
-    Réutilise les mêmes helpers que l'endpoint par-localité (deux axes distincts, confiance B
-    lue + assérée, limite éditoriale). Lève 500 sur incohérence (un point du périmètre sans écart ou
-    sans dégénérescence ne devrait pas exister).
+    Lève 500 si le point n'a pas d'écart ou pas de dégénérescence.
     """
     ecarts: list[EcartPaireInterSource] = []
     niveaux: list[tuple[str, str | None]] = []
@@ -2212,8 +2052,8 @@ def _assembler_fiche_point(
         raise ExceptionKuma(
             code=CodeErreur.SERVEUR_ERREUR_INTERNE,
             message=(
-                f"Incoherence collection atlas : point {code_localite!r} sans ecart ou "
-                "degenerescence (devrait etre garanti par le perimetre data-driven)."
+                f"Incohérence dans la collection de l'atlas : le point {code_localite!r} "
+                "n'a pas d'écart ou pas de dégénérescence enregistrés."
             ),
             statut_http=status.HTTP_500_INTERNAL_SERVER_ERROR,
         )
@@ -2244,13 +2084,14 @@ def grandeur_incertitude_inter_source_collection(
     limit: Annotated[int, Query(ge=1, le=1000)] = 100,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> ReponseIncertitudeInterSourceCollection:
-    """Toutes les fiches d'incertitude inter-source des points de l'atlas, paginées.
+    """Fiches d'incertitude inter-source de tous les points de l'atlas, paginées.
 
-    Un appel pour le snapshot média (carte) au lieu de N. Chaque item = la MÊME fiche
-    que l'endpoint par-localité (deux axes distincts, B, limite éditoriale) + lat/lon.
-    Lecture/assemblage pur des grandeurs déjà matérialisées (écart Temps 1 +
-    dégénérescence), zéro substrat.
-    Enveloppe paginée identique à /v1/series (items / total / limit / offset).
+    Chaque élément est la fiche de
+    ``/v1/grandeurs/incertitude_inter_source/{code_localite}``, complétée de la
+    latitude et de la longitude du point : un seul appel suffit pour dessiner
+    une carte. Les points sont les localités qui ont un écart inter-source
+    depuis 2021, triées par code. Même enveloppe paginée que ``/v1/series``
+    (``items``, ``total``, ``limit``, ``offset``).
     """
     points = _lister_points_atlas(session)
     total = len(points)

@@ -1,31 +1,12 @@
-"""Modèle SQLAlchemy de la table ``grandeurs_metier``.
+"""Modèle SQLAlchemy de la table ``grandeurs_metier`` : grandeurs calculées et stockées.
 
-Table de fabrication éditoriale Kuma. Stocke les grandeurs F1
-``strategie_calcul='stockee'`` calculées par Kuma à partir des mesures
-brutes.
+Identité métier : ``(grandeur_code, localite_id, periode_type, annee_debut,
+annee_fin, COALESCE(mois, 0), version_formule)``. ``version_formule`` en fait
+partie pour que les lignes de deux versions d'une même formule coexistent.
 
-Identité métier étendue : 7-uplet ``(grandeur_code, localite_id,
-periode_type, annee_debut, annee_fin, COALESCE(mois, 0),
-version_formule)`` avec versioning temporel
-``tstzrange(valide_du, valide_au)`` + opérateur de chevauchement strict
-``&&``. Permet la coexistence des lignes v1 et v2 d'une même formule
-après upgrade ``version_formule_actuelle`` dans
-``grandeurs_referentiel``.
-
-Superpose les 3 mécaniques transverses + ``version_formule`` :
-
-- Statut éditorial 5 valeurs : ``brut``, ``valide_auto``,
-  ``valide_humain``, ``publie``, ``deprecie``.
-- Versioning temporel ``valide_du``/``valide_au`` TIMESTAMPTZ + EXCLUDE
-  BTree-GiST.
-- Niveau de confiance A/B/C dérivé par règles R1-R4 + override éditorial
-  avec justification obligatoire.
-
-Helper SQLAlchemy :
-
-- ``@hybrid_property niveau_effectif`` : renvoie l'override si non NULL,
-  sinon le dérive. Équivalent Python de la vue SQL
-  ``v_grandeurs_metier_courantes`` (à créer en migration 024).
+Les versions successives d'une ligne sont bornées par ``valide_du`` /
+``valide_au``. La contrainte EXCLUDE qui interdit leur chevauchement est posée
+en migration et n'apparaît pas dans ce modèle.
 """
 
 from __future__ import annotations
@@ -58,10 +39,8 @@ class GrandeurMetier(Base):
 
     __tablename__ = "grandeurs_metier"
 
-    # === Identifiant ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
 
-    # === Identité métier ===
     grandeur_code: Mapped[str] = mapped_column(
         String(80),
         ForeignKey(
@@ -115,24 +94,16 @@ class GrandeurMetier(Base):
         ),
     )
 
-    # === Valeur ===
-    # Nullable depuis migration 046 : permet de stocker NULL pour les écarts
-    # relatifs dont la valeur SARAH-3 mensuelle est en dessous du seuil
-    # SEUIL_SARAH3_MIN_DEFAUT (donnée amont dégradée, ratio non calculable
-    # sans amplification mathématique absurde). Voir migration 046 docstring
-    # et services/grandeurs/referentiels.py:_calcul_ecart_relatif_avec_seuil.
-    # Si une grandeur veut imposer NOT NULL sur son sous-périmètre, c'est
-    # une CHECK CONSTRAINT conditionnelle qui le porte, pas la nullabilité
-    # de colonne.
+    # Nullable : un écart relatif n'est pas calculable quand la valeur SARAH-3
+    # mensuelle est sous ``SEUIL_SARAH3_MIN_DEFAUT``
+    # (``services/grandeurs/referentiels.py``).
     valeur: Mapped[float | None] = mapped_column(Float(precision=53), nullable=True)
 
-    # === Versioning temporel ===
     valide_du: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     valide_au: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Statut éditorial ===
     statut: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
@@ -146,7 +117,6 @@ class GrandeurMetier(Base):
         ),
     )
 
-    # === Niveau de confiance ===
     niveau_confiance_derive: Mapped[str] = mapped_column(
         String(1),
         nullable=False,
@@ -168,10 +138,8 @@ class GrandeurMetier(Base):
         ),
     )
 
-    # === Commentaire éditorial ===
     commentaire_editorial: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # === Audit applicatif ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -197,21 +165,17 @@ class GrandeurMetier(Base):
         nullable=True,
     )
 
-    # === Relations ===
     serie: Mapped[SerieMetadonnees] = relationship(
         SerieMetadonnees,
         lazy="select",
         foreign_keys=[series_metadonnees_id],
     )
 
-    # === Hybrid properties ===
     @hybrid_property
     def niveau_effectif(self) -> str:
-        """Renvoie ``niveau_confiance_override`` si non NULL, sinon ``niveau_confiance_derive``.
+        """Niveau de confiance à utiliser : l'override s'il existe, sinon le niveau dérivé.
 
-        Équivalent Python de la vue SQL ``v_grandeurs_metier_courantes``
-        (à créer en migration 024). Permet aux callers d'obtenir le niveau
-        consommable sans logique conditionnelle dispersée.
+        Même règle que la vue SQL ``v_grandeurs_metier_courantes``.
         """
         return (
             self.niveau_confiance_override
@@ -219,7 +183,6 @@ class GrandeurMetier(Base):
             else self.niveau_confiance_derive
         )
 
-    # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
             "periode_type IN ('mensuel', 'annuel', 'statique')",
@@ -255,8 +218,7 @@ class GrandeurMetier(Base):
             "valide_au IS NULL OR valide_au > valide_du",
             name="ck_grandeurs_metier_periode_validite_coherente",
         ),
-        # Index partiel sur lignes courantes (usage dominant en lecture).
-        # Pattern symétrique à idx_mesures_ressource_courantes (migration 014).
+        # Index partiel sur les lignes courantes, les plus lues.
         Index(
             "idx_grandeurs_metier_courantes",
             "grandeur_code",
@@ -268,8 +230,7 @@ class GrandeurMetier(Base):
             "version_formule",
             postgresql_where=text("valide_au IS NULL"),
         ),
-        # Commentaire de table porté sur l'ORM pour cohérence avec la
-        # migration 023 (alembic check).
+        # ``alembic check`` compare ce commentaire de table à la base.
         {
             "comment": (
                 "Grandeurs metier calculees par Kuma a partir des mesures brutes. "
