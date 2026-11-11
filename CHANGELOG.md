@@ -46,6 +46,34 @@ le projet suit le versionnement sémantique.
 - Descriptions corrigées d'après le code : `/v1/horaire` sert d'abord la
   série stockée avant de relayer la source amont ; `ghi_exceedance` répond
   `RESSOURCE_LOCALITE_INCONNUE`.
+- Commentaires du schéma (tables, colonnes, vues, fonction de validation de
+  la hiérarchie des localités) réécrits d'après le schéma et les données :
+  ils ne renvoient plus à l'histoire du projet, citent les documents du
+  dépôt par leur URL et corrigent des faits périmés (identité d'une série,
+  valeurs de `periode_type`, exemples de codes, décompte des unités).
+- Libellés de 62 séries d'écart 2021-2023 : la mention entre parenthèses qui
+  suivait la période est retirée, le libellé suit le modèle des autres
+  séries de la même grandeur.
+- `series_metadonnees.methode_collecte_doc` et `url_documentation` : pour
+  170 séries calculées, le chemin de la fiche méthodologique relatif au
+  dépôt devient son URL publique. Les 28 séries de
+  `rang_referentiel_temporel` qui citaient une fiche inexistante ne citent
+  plus rien, comme les autres séries de cette grandeur.
+- Textes enregistrés en base et publiés avec les données, réécrits en clair
+  et avec leurs accents, sans renvoi à l'organisation du projet : fiches des
+  sources (`sources.notes`, quelques valeurs de `sources.metadonnees`),
+  notes des localités, descriptions de 15 grandeurs, provenance des
+  référentiels de calage (la note de méthode et le script y sont cités par
+  leur URL). Seul le texte change ; les corrections sont journalisées.
+- Note publique des séries `rang_referentiel_spatial` : elle nomme les six
+  villes classées, donne le sens du rang et précise que les autres localités
+  n'entrent pas dans ce classement.
+- Commentaire des lignes `degenerescence_pixel`, servi par
+  `/v1/grandeurs/incertitude_inter_source` (champ `degenerescence.note`) :
+  réécrit en clair (cellule partagée, source interpolée ou point seul dans
+  sa cellule). Valeurs, versions et dates de validité sont inchangées.
+- Un test balaie toutes les colonnes de texte des tables publiées et les
+  commentaires du schéma, et refuse le vocabulaire interne.
 
 - Les origines CORS se règlent par déploiement (`CORS_ORIGINES`, liste
   JSON) ; la valeur par défaut est inchangée, `*` est refusé en production.

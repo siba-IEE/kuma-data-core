@@ -87,9 +87,10 @@ class ReferentielCalage(Base):
         Index("idx_referentiels_calage_actif", "actif"),
         {
             "comment": (
-                "Referentiel de calage satellite/sol : biais saisonniers "
-                "mesures aux stations de reference, publies avec provenance "
-                "et portee de transport (ADR-0004)."
+                "Référentiel de calage satellite/sol : biais saisonniers mesurés aux stations "
+                "de référence, publiés avec leur provenance et la portée de leur transport. "
+                "Voir "
+                "https://github.com/siba-IEE/kuma-data-core/blob/main/docs/decisions/0004-exposition-etudes-au-point.md"
             ),
         },
     )

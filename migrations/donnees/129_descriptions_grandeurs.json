@@ -1,0 +1,77 @@
+[
+  {
+    "code": "albedo_surface",
+    "ancien": "Albédo de surface (réflectivité du sol, sans dimension, plage théorique [0, 1]). Donnée brute ingérée depuis NASA POWER paramètre ALLSKY_SRF_ALB. Entrée de la composante réfléchie pour les modèles POA et préparation du bifacial (Phase 2 vague 5).",
+    "nouveau": "Albédo de surface (réflectivité du sol, sans dimension, plage théorique [0, 1]). Donnée brute ingérée depuis NASA POWER, paramètre ALLSKY_SRF_ALB, aux pas journalier et mensuel. Entrée de la composante réfléchie du POA bifacial (poa_bifacial), qui lit l'albédo du jour dans la série de la localité ; le POA paramétrable (poa_parametrable) prend l'albédo fourni dans la requête."
+  },
+  {
+    "code": "degenerescence_pixel",
+    "ancien": "Indicateur d'honnetete structurelle de l'atlas : pour une (localite, source, parametre), nombre d'autres points partageant la meme cellule source (0 = point reellement resolu). Detection empirique par identite de series climato mensuelles sur grille fixe (NASA radiation CERES 1deg, meteo MERRA 0.5deg). Services interpoles (SARAH-3 / CAMS 5 km) : compte 0 + caveat de resolution. F1 calculee_volee, materialisee statique, confiance B (A reservee aux mesures terrain ; exactitude dite par caveat, pas par une remontee en A).",
+    "nouveau": "Dégénérescence de pixel : pour une localité, une source et une grandeur, nombre d'autres localités qui partagent la même cellule de la grille source (0 = localité seule dans sa cellule). Détection empirique, par identité stricte des séries climatologiques mensuelles, pour les sources sur grille fixe (NASA POWER : rayonnement CERES SYN1deg à 1°, météo MERRA-2 à 0,5°). Pour les services interpolés au point (SARAH-3 et CAMS Radiation, 5 km), le compte vaut 0 et une mise en garde rappelle que la finesse sous la maille est illusoire. Famille F1, calculée par le moteur et enregistrée comme valeur statique dans grandeurs_metier, confiance B : le fait est exact, mais le niveau A est réservé aux mesures au sol."
+  },
+  {
+    "code": "ecart_relatif_dni_cams",
+    "ancien": "Ecart relatif inter-source du DNI entre NASA POWER (primaire) et CAMS Radiation (reference d'ecart aerosol-corrigee), formule (nasa - cams)/cams x 100, en pourcent signe. Calculee a la volee, materialisee dans grandeurs_metier par (annee, mois) sur la fenetre commune 2004-2020 (6 villes pilotes). Famille F1.",
+    "nouveau": "Écart relatif du DNI entre NASA POWER (source primaire) et CAMS Radiation (référence de l'écart, corrigée des aérosols) : (nasa - cams) / cams × 100, en pourcent signé. Famille F1. Calculé par le moteur et enregistré dans grandeurs_metier par année et par mois, sur les mois communs aux deux séries mensuelles, à partir de février 2004 (début des séries CAMS Radiation)."
+  },
+  {
+    "code": "ghi",
+    "ancien": "Irradiation globale horizontale (Global Horizontal Irradiance) journalière. Donnée brute ingérée depuis NASA POWER paramètre ALLSKY_SFC_SW_DWN (méthode satellitaire CERES SYN1deg + FLASHFlux) ou autre source de méthode équivalente. Lieu de stockage physique : mesures_ressource (convention cadrage Q7 v1.3 pour methode_collecte=modele_satellitaire).",
+    "nouveau": "Irradiation globale horizontale (Global Horizontal Irradiance). Donnée brute ingérée depuis NASA POWER, paramètre ALLSKY_SFC_SW_DWN (méthode satellitaire CERES SYN1deg + FLASHFlux), ou depuis une autre source : CAMS Radiation, SARAH-3 via PVGIS, ERA5-Land, et les mesures au sol de la station ESMAP/WAPP de Kankan. Les valeurs sont stockées dans les tables de mesures selon le pas de la série (mesures_ressource en journalier, mesures_ressource_mensuelles, mesures_ressource_horaires), et non dans grandeurs_metier. Les séries journalières et mensuelles sont en kWh/m²/jour ; les séries horaires de NASA POWER sont en Wh/m² sur l'heure."
+  },
+  {
+    "code": "ghi_exceedance",
+    "ancien": "Exceedance inter-annuelle de l'irradiation annuelle dérivée de la série GHI mensuelle 1991-2020 (NASA POWER, climatologie OMM). Pour une ville pilote donnée, le calcul reconstruit les 30 totaux annuels (somme des 12 mensuels pondérée par le nombre de jours du mois, années bissextiles incluses) puis extrait deux percentiles : P50 (médiane) et P90 (valeur dépassée 90 % des années = 10ᵉ percentile, scénario conservateur). Grandeur calculée à la volée à chaque appel API, jamais stockée. Indicateur de variabilité inter-annuelle, ne propage pas l'incertitude de modèle ; ce n'est pas un P90 bancable complet.",
+    "nouveau": "Exceedance inter-annuelle de l'irradiation annuelle dérivée de la série GHI mensuelle 1991-2020 (NASA POWER, climatologie OMM). Pour une localité donnée, le calcul reconstruit les 30 totaux annuels (somme des 12 mensuels pondérée par le nombre de jours du mois, années bissextiles incluses) puis extrait deux percentiles : P50 (médiane) et P90 (valeur dépassée 90 % des années, soit le 10ᵉ percentile, scénario conservateur). Grandeur calculée à la volée à chaque appel de l'API, jamais stockée. Indicateur de variabilité inter-annuelle, qui ne propage pas l'incertitude de modèle : ce n'est pas un P90 bancable complet."
+  },
+  {
+    "code": "pm10",
+    "ancien": "Concentration massique journaliere de particules de diametre <= 10 um (ug/m3). Donnee brute EAC4 (ADS Copernicus), moyenne journaliere du pas 3-horaire. Entree particules du modele de salissure HSU (pvlib.soiling.hsu) pour la grandeur proxy taux_salissure_proxy (Vague 5 soiling Lot C). Inclut les PM2.5 (PM10 >= PM2.5). Confiance B.",
+    "nouveau": "Concentration massique journalière des particules de diamètre inférieur ou égal à 10 µm (µg/m³). Donnée brute de la réanalyse CAMS EAC4 (ADS Copernicus), moyenne journalière du pas de 3 heures. Entrée particules du modèle de salissure HSU (pvlib.soiling.hsu) de la grandeur taux_salissure_proxy. Inclut les PM2,5 (PM10 ≥ PM2,5). Confiance B."
+  },
+  {
+    "code": "pm2_5",
+    "ancien": "Concentration massique journaliere de particules fines de diametre <= 2,5 um (ug/m3). Donnee brute EAC4 (ADS Copernicus), moyenne journaliere du pas 3-horaire. Entree particules du modele de salissure HSU (pvlib.soiling.hsu) pour la grandeur proxy taux_salissure_proxy (Vague 5 soiling Lot C). Confiance B (modele satellitaire).",
+    "nouveau": "Concentration massique journalière des particules fines de diamètre inférieur ou égal à 2,5 µm (µg/m³). Donnée brute de la réanalyse CAMS EAC4 (ADS Copernicus), moyenne journalière du pas de 3 heures. Entrée particules du modèle de salissure HSU (pvlib.soiling.hsu) de la grandeur taux_salissure_proxy. Confiance B (modèle satellitaire)."
+  },
+  {
+    "code": "pr_realiste",
+    "ancien": "PR effectif site-specifique = PR_fourni x ratio_T x (1 - salissure), ratio sans dimension. Modes de correction aucune / temperature / salissure / temperature_salissure. Compose le facteur thermique NOCT (Ross 1980, productible_correction_thermique) et le proxy de salissure HSU (taux_salissure_proxy, Lot C). La courbe mensuelle est la 'PR saisonniere' (creux Harmattan). F1 calculee_volee, confiance B. Doctrine PR-reference (anti double-comptage) : le PR_fourni est suppose hors salissure ET hors temperature ; corrections multiplicatives separables. Ne traite pas la correction meteo/climat.",
+    "nouveau": "PR effectif propre au site = PR_fourni × ratio_T × (1 - salissure), ratio sans dimension. Corrections au choix : aucune, température, salissure, ou température et salissure (aucune / temperature / salissure / temperature_salissure). Compose le facteur thermique NOCT (Ross 1980, productible_correction_thermique) et le proxy de salissure HSU (taux_salissure_proxy). La courbe mensuelle donne le PR saisonnier, avec le creux de l'Harmattan. Famille F1, calculé à la volée, confiance B. Le PR_fourni est supposé hors salissure et hors température, les corrections étant multiplicatives et séparables : un PR qui les inclut déjà les compterait deux fois. Ne traite pas la correction météorologique ou climatique."
+  },
+  {
+    "code": "precipitation",
+    "ancien": "Hauteur de precipitation journaliere (mm/jour). Donnee brute ingeree depuis NASA POWER parametre PRECTOTCORR (Precipitation Corrected, source amont MERRA-2 GMAO / IMERG). Entree pluie du modele de salissure HSU (pvlib.soiling.hsu) pour la grandeur proxy taux_salissure_proxy (Vague 5 soiling Lot C). Confiance B (modele satellitaire).",
+    "nouveau": "Hauteur de précipitation journalière (mm/jour). Donnée brute ingérée depuis NASA POWER, paramètre PRECTOTCORR (Precipitation Corrected, source amont MERRA-2 GMAO, corrigée par des observations). Entrée pluie du modèle de salissure HSU (pvlib.soiling.hsu) de la grandeur taux_salissure_proxy. Confiance B (modèle satellitaire)."
+  },
+  {
+    "code": "rang_referentiel",
+    "ancien": "Rang dans le référentiel Kuma. Position ordinale d'une série dans le classement des sites du référentiel pour une grandeur donnée. Calculé à la volée, dépendant du périmètre courant. [D-39 : desactivee en migration 042, decomposee en rang_referentiel_temporel + rang_referentiel_spatial cf. spec 1-7 PR #54.]",
+    "nouveau": "Rang dans le référentiel Kuma : position ordinale d'une série dans le classement des sites du référentiel pour une grandeur donnée. Grandeur désactivée, sans valeur ni série : elle est remplacée par rang_referentiel_temporel (rang dans la climatologie de la localité) et rang_referentiel_spatial (rang entre localités)."
+  },
+  {
+    "code": "rang_referentiel_spatial",
+    "ancien": "Rang spatial dans le perimetre Kuma (rang ordinal 1-6 parmi les 6 villes pilotes guineennes pour le meme mois). Calcule a la volee a partir des mesures NASA POWER 2021-2025 agregees mensuellement. Decomposition de rang_referentiel singulier seede en 1-1C (D-39 fermee dans le meme cycle 1-7b). Cf. note methodologique amont PR #53 et spec 1-7 PR #54.",
+    "nouveau": "Rang spatial dans le périmètre Kuma : rang ordinal, de 1 (irradiation la plus faible) à 6 (la plus forte), d'une localité parmi six villes de Guinée (Kaloum (Conakry), Kankan, Kindia, Labé, Mamou et Nzérékoré) pour le même mois. Calculé par le moteur à partir des mesures GHI journalières de NASA POWER 2021-2025, moyennées par mois, et enregistré dans grandeurs_metier ; un mois n'est classé que si les six villes ont une valeur. Les autres localités n'ont pas de rang spatial. Kindia et Mamou tombent dans la même cellule de NASA POWER et ont des valeurs identiques : leurs deux rangs, consécutifs, sont départagés par l'ordre de traitement, non par une différence d'irradiation."
+  },
+  {
+    "code": "rang_referentiel_temporel",
+    "ancien": "Rang temporel dans la climatologie de reference (percentile calcule par mois calendrier sur la distribution NASA POWER 1991-2020 par localite). Formule type 7 numpy/R : p = (rang - 1) / (n - 1) x 100, capping [0, 100]. Plage de calcul phase 1 : 2021-2025 sur les 6 villes pilotes guineennes. Decomposition de rang_referentiel singulier seede en 1-1C (D-39 fermee dans le meme cycle 1-7b). Cf. note methodologique amont PR #53 et spec 1-7 PR #54.",
+    "nouveau": "Rang temporel dans la climatologie de référence : percentile, par mois calendaire, de la valeur mensuelle de GHI dans la distribution NASA POWER 1991-2020 de la localité. p = (rang - 1) / (n - 1) × 100, borné à [0, 100], où n est le nombre d'années de la distribution et rang le nombre de valeurs strictement inférieures, augmenté de (nombre de valeurs égales + 1) / 2. Calculé par le moteur pour les mois de 2021 à 2025, à partir des mesures journalières NASA POWER moyennées par mois, et enregistré dans grandeurs_metier."
+  },
+  {
+    "code": "taux_salissure_proxy",
+    "ancien": "Proxy de salissure des modules PV : perte de transmission par salissure, en % = (1 - ratio HSU) x 100. Modele HSU (pvlib.soiling.hsu, Coello & Boyle 2019) a partir des PM2.5/PM10 EAC4 (convertis ug/m3 -> g/m3, unite attendue par pvlib) et de la pluie NASA POWER (mm). F1 calculee_volee, confiance B derivee. Tilt et seuil de nettoyage par defaut documentes (10 deg, 1 mm). Caveats L-SOIL : proxy modele (pas une mesure de salissure, terrain) ; spin-up (HSU demarre propre, premiers jours sous-estimes, L-SOIL-3) ; grille EAC4 grossiere 0,75 deg (L-SOIL-4). ",
+    "nouveau": "Proxy de salissure des modules PV : perte de transmission par salissure, en %, soit (1 - ratio HSU) × 100. Modèle HSU (pvlib.soiling.hsu, Coello & Boyle 2019) à partir des PM2,5 et PM10 de CAMS EAC4 (convertis de µg/m³ en g/m³, unité attendue par pvlib) et de la pluie de NASA POWER (mm). Famille F1, calculé à la volée, confiance B. Inclinaison et seuil de nettoyage par défaut : 10° et 1 mm. Limites : c'est un modèle, non une mesure de salissure sur le terrain ; il démarre sur des modules propres, ce qui sous-estime les premiers jours de la fenêtre ; la grille d'EAC4 est grossière (0,75°)."
+  },
+  {
+    "code": "vent_10m",
+    "ancien": "Vitesse moyenne journalière du vent à 10 mètres au-dessus de la surface. Donnée brute ingérée depuis NASA POWER paramètre WS10M (source MERRA-2 GMAO). Cohorte vent complémentaire pour usages potentiels éoliens ; hors périmètre Phase 2 (solaire uniquement).",
+    "nouveau": "Vitesse moyenne du vent à 10 mètres au-dessus de la surface, aux pas horaire, journalier et mensuel. Donnée brute ingérée depuis NASA POWER, paramètre WS10M (source MERRA-2 GMAO), et depuis ERA5-Land. Série complémentaire, pour d'éventuels usages éoliens : aucun calcul solaire du moteur ne l'utilise."
+  },
+  {
+    "code": "vent_2m",
+    "ancien": "Vitesse moyenne journalière du vent à 2 mètres au-dessus de la surface. Donnée brute ingérée depuis NASA POWER paramètre WS2M (source MERRA-2 GMAO). Entrée du modèle Faiman 2008 pour la température cellule de la grandeur F2 productible_correction_thermique (résorbe la dette D-43).",
+    "nouveau": "Vitesse moyenne du vent à 2 mètres au-dessus de la surface, aux pas horaire, journalier et mensuel. Donnée brute ingérée depuis NASA POWER, paramètre WS2M (source MERRA-2 GMAO). N'entre pas dans le calcul de productible_correction_thermique, qui utilise le modèle NOCT (Ross 1980), sans le vent."
+  }
+]

@@ -67,10 +67,11 @@ class CalageCouverture(Base):
         Index("idx_calage_couverture_actif", "actif"),
         {
             "comment": (
-                "Domaine de couverture des referentiels de calage : "
-                "localites qualifiees pour le transport, avec justification. "
-                "Pilote la couverture geographique des consommateurs "
-                "(ADR-0004, couverture progressive)."
+                "Domaine de couverture des référentiels de calage : localités qualifiées pour "
+                "le transport d'un calage, avec la justification de chacune. Cette liste "
+                "détermine où un calage s'applique ; les clients de l'API la lisent au lieu de "
+                "la coder. Voir "
+                "https://github.com/siba-IEE/kuma-data-core/blob/main/docs/decisions/0004-exposition-etudes-au-point.md"
             ),
         },
     )

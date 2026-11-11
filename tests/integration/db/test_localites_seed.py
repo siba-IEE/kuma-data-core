@@ -212,7 +212,7 @@ def test_06_mention_pilote_5_communes_conakry(db_session: Session) -> None:
         select(Localite.code, Localite.notes).where(Localite.code.in_(codes_communes_conakry))
     ).all()
     assert len(rows) == 5
-    pattern = "5 communes historiques pré-réforme 2024"
+    pattern = "5 communes historiques, dans leur périmètre d'avant la réforme du 18 janvier 2024"
     for row in rows:
         assert pattern in (row.notes or ""), row.code
 

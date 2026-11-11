@@ -47,13 +47,15 @@ from sqlalchemy.orm import Session
 
 from kuma_data_core.db.models.audit_log import AuditLog
 from kuma_data_core.db.models.sources import Source
-from kuma_data_core.db.seeds.sources_seed_data import (
-    _MENTION_BETA2_NORMEE,
-    SOURCES_SEED,
-)
+from kuma_data_core.db.seeds.sources_seed_data import SOURCES_SEED
 
 pytestmark = pytest.mark.integration
 
+
+# Phrase commune aux fiches des quatre sources hydrologiques, au caractère près.
+_MENTION_HYDROLOGIE: str = (
+    "Référence pour un volet hydrologique non engagé : aucune série en Guinée."
+)
 
 _CODES_SOURCES: tuple[str, ...] = tuple(entry["code"] for entry in SOURCES_SEED)
 
@@ -157,8 +159,8 @@ def test_04_dt8_mention_beta2_normee_4_hydro(db_session: Session) -> None:
     assert len(rows) == 4
     for row in rows:
         assert row.notes is not None, row.code
-        assert _MENTION_BETA2_NORMEE in row.notes, (
-            f"{row.code} : mention β2 normée DT-8 absente ou modifiée dans notes."
+        assert _MENTION_HYDROLOGIE in row.notes, (
+            f"{row.code} : phrase commune aux fiches hydrologiques absente ou modifiée."
         )
 
 
@@ -169,9 +171,8 @@ def test_04_dt8_pas_de_mention_beta2_hors_4_hydro(db_session: Session) -> None:
     ).all()
     assert len(rows) == 5
     for row in rows:
-        assert _MENTION_BETA2_NORMEE not in (row.notes or ""), (
-            f"{row.code} : mention β2 normée DT-8 présente alors qu'attendue absente "
-            f"(source non hydro structurelle)."
+        assert _MENTION_HYDROLOGIE not in (row.notes or ""), (
+            f"{row.code} : phrase des fiches hydrologiques présente sur une autre source."
         )
 
 
