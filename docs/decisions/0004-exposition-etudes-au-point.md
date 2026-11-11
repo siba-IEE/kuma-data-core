@@ -1,6 +1,7 @@
 # ADR-0004 : exposition des études au point (résolution de cellule et référentiel de calage)
 
-Date : 2026-07-20. Statut : accepté.
+Date : 2026-07-20. Statut : accepté. Amendé par ADR-0010 : la résolution
+s'arrête à la cellule voisine.
 
 ## Contexte
 
