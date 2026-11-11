@@ -1,21 +1,8 @@
-"""Schémas Pydantic des endpoints `/api/v1/horaire/<localite>/<grandeur>`.
+"""Schémas Pydantic des routes ``/v1/horaire/{localite}/{grandeur}``.
 
-Cinq schémas pour le passe-plat horaire :
-
-- :class:`ParametresHoraire` : paramètres communs (localité, grandeur,
-  plage temporelle, format de sortie).
-- :class:`ResultatHoraire` : un point horaire passe-plat (instant ISO,
-  valeur ou null, unité, statut éditorial).
-- :class:`PlageTemporelle` : helper structurel pour les plages
-  temporelles inclusives.
-- :class:`ReponseHoraire` : réponse complète d'un endpoint data.
-- :class:`ReponseDisponibilite` : réponse de l'endpoint
-  ``/disponibilite``.
-
-Principe « Kuma assume » : aucun champ ne mentionne la source amont
-(NASA POWER, SARAH-3, etc.). Le statut éditorial uniforme
-``passe_plat_non_valide`` signale au consommateur que les données
-horaires ne sont pas validées éditorialement par Kuma.
+Aucun champ ne nomme la source amont. ``statut_editorial`` distingue les
+valeurs stockées et validées (``valide_auto``) des valeurs relayées sans
+validation (``passe_plat_non_valide``).
 """
 
 from __future__ import annotations
@@ -24,9 +11,6 @@ from datetime import date, datetime
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
-
-# === Constantes module ====================================================
-
 
 GRANDEURS_AUTORISEES: tuple[str, ...] = (
     "ghi",
@@ -39,31 +23,23 @@ GRANDEURS_AUTORISEES: tuple[str, ...] = (
     "vent_10m",
     "precipitation",
 )
-"""9 grandeurs horaires ingérables (vents et précipitation ajoutés avec la
-densification horaire aux 28 communes)."""
+"""Grandeurs servies en horaire."""
 
 PLAGE_MAX_JOURS: int = 366
 """Plage temporelle maximale par requête (année bissextile incluse)."""
 
 DATE_DEBUT_DISPONIBILITE: date = date(2001, 1, 1)
-"""Borne historique de début de la disponibilité passe-plat horaire."""
-
-
-# === Schémas paramètres ===================================================
+"""Début de la disponibilité des données horaires."""
 
 
 class ParametresHoraire(BaseModel):
-    """Paramètres communs aux endpoints du passe-plat horaire.
+    """Paramètres de la route de données horaires.
 
-    Le champ ``format_sortie`` est exposé en query string sous le nom
-    URL ``format`` via ``Query(alias="format")`` côté handler - alias
-    nécessaire pour éviter le shadow du built-in Python ``format``.
+    ``format_sortie`` se passe dans l'URL sous le nom ``format``.
     """
 
-    # Toute localite du referentiel (code complet, ex. gin_kankan) ;
-    # les codes courts historiques des 6 villes pilotes restent des
-    # alias de compatibilite, resolus par le handler contre la table
-    # (genericite pays : plus de liste codee).
+    # Code complet d'une localité du référentiel (ex. gin_kankan) ; un code
+    # court (kankan) reste accepté, la route le complète.
     localite: str = Field(..., min_length=1, max_length=100, pattern=r"^[a-z0-9_]+$")
     grandeur: Literal[
         "ghi", "dni", "dhi", "t2m", "rh2m", "kt", "vent_2m", "vent_10m", "precipitation"
@@ -83,9 +59,6 @@ class ParametresHoraire(BaseModel):
         if (self.periode_fin - self.periode_debut).days > PLAGE_MAX_JOURS:
             raise ValueError(f"plage maximale {PLAGE_MAX_JOURS} jours par requete")
         return self
-
-
-# === Schémas résultats ====================================================
 
 
 class PlageTemporelle(BaseModel):
@@ -119,11 +92,8 @@ class ResultatHoraire(BaseModel):
     statut_editorial: Literal["valide_auto", "passe_plat_non_valide"] = "passe_plat_non_valide"
 
 
-# === Schémas réponses =====================================================
-
-
 class ReponseHoraire(BaseModel):
-    """Réponse complète d'un endpoint passe-plat horaire data."""
+    """Réponse de la route de données horaires."""
 
     localite: str
     grandeur: str
@@ -132,7 +102,7 @@ class ReponseHoraire(BaseModel):
 
 
 class ReponseDisponibilite(BaseModel):
-    """Réponse de l'endpoint `/disponibilite`."""
+    """Réponse de la route ``/disponibilite``."""
 
     localite: str
     grandeur: str

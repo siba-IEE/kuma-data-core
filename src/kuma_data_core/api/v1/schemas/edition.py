@@ -1,4 +1,4 @@
-"""Schémas Pydantic de l'endpoint ``/v1/edition`` (ADR-0003, D7).
+"""Schémas Pydantic de la route ``/v1/edition`` (ADR-0003).
 
 La fraîcheur est une propriété affichée : chaque déploiement public sert
 une édition datée, et l'API dit laquelle. Les métadonnées sont produites

@@ -1,21 +1,9 @@
-"""Schémas Pydantic des endpoints `/api/v1/grandeurs/<code>`.
+"""Schémas Pydantic des routes ``/v1/grandeurs/<code>``.
 
-Cinq grandeurs F2 paramétrables :
-
-- :class:`ParametresPOA` : POA paramétrable (Perez + Liu-Jordan fallback).
-- :class:`ParametresProductibleCorrectionThermique` : NOCT simple.
-- :class:`ParametresProductiblePRFourni` : PR brut + PR_T (correction
-  paramétrée).
-- :class:`ParametresEnergieUtileECS` : Hottel-Whillier-Bliss bord-capteur.
-- :class:`ParametresDegreJourClimatisation` : moyenne journalière agrégée
-  mensuel.
-
-Schémas résultats discriminés (cohérente avec ``MesureLue``) :
-
-- :class:`ResultatJournalier` : ``granularite = 'journalier'``, ``instant: date``.
-- :class:`ResultatMensuel` : ``granularite = 'mensuel'``, ``instant: str``
-  format ``YYYY-MM``.
-- :data:`ResultatGrandeurF2` : union discriminée.
+Paramètres des grandeurs paramétrables (``Parametres*``), résultats journaliers
+ou mensuels distingués par le champ ``granularite``, et réponses des grandeurs
+calculées à la volée (P50/P90 du GHI, salissure, PR réaliste, incertitude
+inter-source).
 """
 
 from __future__ import annotations
@@ -25,23 +13,18 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-# === Paramètres communs ===================================================
-
 
 class ParametresCommunsF2(BaseModel):
-    """Paramètres communs à tous les endpoints F2 paramétrables.
+    """Paramètres communs aux grandeurs F2 paramétrables.
 
-    Le champ ``format_sortie`` est exposé en query string sous le nom
-    URL ``format`` via ``Query(alias="format")`` côté handler - alias
-    nécessaire pour éviter le shadow du built-in Python ``format``
-    (cf. ``api/v1/series.py``).
+    ``format_sortie`` se passe dans l'URL sous le nom ``format``.
     """
 
     code_serie_source: str = Field(
         ...,
         min_length=1,
         max_length=80,
-        description="Code de la serie F1 source dans series_metadonnees.",
+        description="Code de la série F1 source, tel que listé par /v1/series.",
     )
     periode_debut: date = Field(..., description="Date de debut (inclusive).")
     periode_fin: date = Field(..., description="Date de fin (inclusive).")
@@ -58,11 +41,8 @@ class ParametresCommunsF2(BaseModel):
         return self
 
 
-# === Paramètres par grandeur ==============================================
-
-
 class ParametresPOA(ParametresCommunsF2):
-    """Paramètres POA paramétrable (modèle Perez 1990 + Liu-Jordan fallback)."""
+    """Paramètres du POA paramétrable (modèle de Perez 1990, repli Liu-Jordan)."""
 
     inclinaison_deg: float = Field(
         ...,
@@ -87,22 +67,24 @@ class ParametresPOA(ParametresCommunsF2):
     methode: Literal["moyenne_journaliere", "integration_horaire"] = Field(
         "moyenne_journaliere",
         description=(
-            "Methode de calcul. 'moyenne_journaliere' (defaut, retro-compatible) : "
-            "Perez au midi solaire sur les totaux journaliers, serie source journaliere. "
-            "'integration_horaire' : Perez par heure integre sur la journee, serie source "
-            "horaire (GHI + compagnes DNI/DHI horaires) ; leve le biais de moyennage L-TR-6 "
-            "(surestimation +16 % pour un plan incline, etude §9.2)."
+            "Méthode de calcul. 'moyenne_journaliere' (valeur par défaut) : modèle de "
+            "Perez appliqué au midi solaire sur les totaux journaliers, série source "
+            "journalière. 'integration_horaire' : modèle de Perez appliqué heure par "
+            "heure puis sommé sur la journée, série source horaire (GHI, avec les séries "
+            "DNI et DHI horaires de la même localité et de la même source) ; évite le "
+            "biais de moyennage du calcul journalier, qui surestime le gain d'un plan "
+            "incliné."
         ),
     )
 
 
 class ParametresBifacial(ParametresCommunsF2):
-    """Paramètres POA bifacial (modèle infinite-sheds row-aware, pvlib).
+    """Paramètres du POA bifacial (modèle infinite-sheds de pvlib, champ de rangées).
 
-    Distinct du ``ParametresPOA`` mono-plan : ajoute la géométrie de rangées
-    (gcr, hauteur, pitch) et la bifacialité du module. L'albédo est résolu depuis
-    la série ``albedo_surface`` (réel par localité) ; ``albedo_sol`` n'est qu'un
-    **repli** si cette série est absente.
+    Ajoute à ceux du POA mono-plan la géométrie des rangées (gcr, hauteur, pas
+    entre rangées) et la bifacialité du module. L'albédo vient de la série
+    ``albedo_surface`` de la localité ; ``albedo_sol`` ne sert que les jours où
+    cette série n'a pas de valeur.
     """
 
     inclinaison_deg: float = Field(
@@ -140,22 +122,21 @@ class ParametresBifacial(ParametresCommunsF2):
     methode: Literal["moyenne_journaliere", "integration_horaire"] = Field(
         "moyenne_journaliere",
         description=(
-            "Methode de calcul. 'moyenne_journaliere' (defaut) : infinite-sheds au midi "
-            "solaire sur les totaux journaliers (serie source journaliere). "
-            "'integration_horaire' : infinite-sheds par heure integre sur la journee (serie "
-            "source horaire + compagnes DNI/DHI horaires ; albedo journalier broadcast aux "
-            "heures) ; leve le biais de moyennage L-TR-6."
+            "Méthode de calcul. 'moyenne_journaliere' (valeur par défaut) : modèle "
+            "infinite-sheds appliqué au midi solaire sur les totaux journaliers (série "
+            "source journalière). 'integration_horaire' : modèle appliqué heure par "
+            "heure puis sommé sur la journée (série source horaire, avec les séries DNI "
+            "et DHI horaires ; l'albédo du jour vaut pour chacune de ses heures) ; évite "
+            "le biais de moyennage du calcul journalier."
         ),
     )
 
 
 class ParametresProductibleCorrectionThermique(ParametresCommunsF2):
-    """Paramètres productible avec correction thermique NOCT simple (Ross 1980).
+    """Paramètres du productible avec correction thermique (NOCT simple, Ross 1980).
 
-    Modèle thermique unique en API : Ross 1980 (NOCT simple). Le modèle
-    Faiman 2008 (dépendant du vent) a été codé et testé puis retiré de
-    l'API : Faiman relève du régime terrain, calibration locale u0/u1
-    requise pour éviter une fausse confiance B.
+    Seul ce modèle thermique est proposé : celui de Faiman (2008), qui dépend du
+    vent, demande des coefficients calés localement sur des mesures au sol.
     """
 
     noct_degc: float = Field(
@@ -178,22 +159,22 @@ class ParametresProductibleCorrectionThermique(ParametresCommunsF2):
     methode: Literal["moyenne_journaliere", "integration_horaire"] = Field(
         "moyenne_journaliere",
         description=(
-            "Methode de calcul. 'moyenne_journaliere' (defaut, retro-compatible) : "
-            "T_cell calcule sur l'irradiance moyennee 24 h (serie source journaliere). "
-            "'integration_horaire' : T_cell et correction appliques par heure sur le GHI "
-            "horaire (serie source horaire + T2M horaire), integres sur la journee ; "
-            "leve le biais de moyennage L-TR-6 (la moyenne 24 h sous-estime le pic de "
-            "midi -> surestime le productible)."
+            "Méthode de calcul. 'moyenne_journaliere' (valeur par défaut) : température "
+            "de cellule calculée sur l'irradiance moyenne des 24 h (série source "
+            "journalière). 'integration_horaire' : température de cellule et correction "
+            "calculées heure par heure sur le GHI horaire (série source horaire, avec la "
+            "série T2M horaire), puis sommées sur la journée ; évite le biais de "
+            "moyennage du calcul journalier (la moyenne sur 24 h sous-estime le pic de "
+            "midi, donc la température de cellule, et surestime le productible)."
         ),
     )
 
 
 class ParametresProductiblePRFourni(ParametresCommunsF2):
-    """Paramètres productible avec PR fourni (Marion 2005 + Dierauf 2013).
+    """Paramètres du productible avec PR fourni (Marion 2005, Dierauf 2013).
 
-    Si ``correction == 'temperature'``, les paramètres ``noct_degc`` et
-    ``coeff_temp_pourcent_par_degc`` sont obligatoires (validation
-    conditionnelle ``_valider_parametres_temperature``).
+    Avec ``correction='temperature'``, ``noct_degc`` et
+    ``coeff_temp_pourcent_par_degc`` sont obligatoires.
     """
 
     pr_fourni: float = Field(
@@ -228,13 +209,14 @@ class ParametresProductiblePRFourni(ParametresCommunsF2):
     methode: Literal["moyenne_journaliere", "integration_horaire"] = Field(
         "moyenne_journaliere",
         description=(
-            "Methode de calcul. 'moyenne_journaliere' (defaut, retro-compatible) : "
-            "PR applique sur l'irradiance journaliere, serie source journaliere. "
-            "'integration_horaire' : PR applique par heure (serie source horaire ; + T2M "
-            "horaire si correction='temperature'), integre sur la journee. Pour "
-            "correction='aucune' (PR brut, lineaire), l'horaire est identique au journalier "
-            "(expose pour coherence d'interface) ; le gain L-TR-6 ne porte que sur "
-            "correction='temperature' (T_cell non-lineaire, biais de Jensen)."
+            "Méthode de calcul. 'moyenne_journaliere' (valeur par défaut) : PR appliqué "
+            "à l'irradiation du jour, série source journalière ou mensuelle. "
+            "'integration_horaire' : PR appliqué heure par heure (série source horaire, "
+            "avec la série T2M horaire si correction='temperature'), puis sommé sur la "
+            "journée. Avec correction='aucune', le calcul est linéaire et le résultat "
+            "horaire est identique au résultat journalier ; l'intégration horaire ne "
+            "change le résultat qu'avec correction='temperature', où elle évite le biais "
+            "de moyennage sur la température de cellule."
         ),
     )
 
@@ -252,7 +234,7 @@ class ParametresProductiblePRFourni(ParametresCommunsF2):
 
 
 class ParametresEnergieUtileECS(ParametresCommunsF2):
-    """Paramètres énergie utile ECS bord-capteur (Hottel-Whillier-Bliss 1958)."""
+    """Paramètres de l'énergie utile ECS en sortie de capteur (Hottel-Whillier-Bliss 1958)."""
 
     rendement_optique_eta0: float = Field(
         ...,
@@ -281,17 +263,18 @@ class ParametresEnergieUtileECS(ParametresCommunsF2):
     methode: Literal["moyenne_journaliere", "integration_horaire"] = Field(
         "moyenne_journaliere",
         description=(
-            "Methode de calcul. 'moyenne_journaliere' (defaut, retro-compatible) : "
-            "rendement HWB calcule sur l'irradiance moyennee 24 h (serie source journaliere). "
-            "'integration_horaire' : rendement applique par heure sur le GHI horaire reel "
-            "(serie source horaire + T2M horaire), integre sur la journee ; leve le biais de "
-            "moyennage L-TR-6 (rendement HWB non-lineaire en G, biais de Jensen)."
+            "Méthode de calcul. 'moyenne_journaliere' (valeur par défaut) : rendement du "
+            "capteur calculé sur l'irradiance moyenne des 24 h (série source "
+            "journalière). 'integration_horaire' : rendement calculé heure par heure sur "
+            "le GHI horaire (série source horaire, avec la série T2M horaire), puis "
+            "sommé sur la journée ; évite le biais de moyennage du calcul journalier (le "
+            "rendement n'est pas linéaire en irradiance)."
         ),
     )
 
 
 class ParametresDegreJourClimatisation(ParametresCommunsF2):
-    """Paramètres degrés-jours de climatisation (Erbs 1983 + Schoenau & Kehrig 1990)."""
+    """Paramètres des degrés-jours de climatisation (Erbs 1983, Schoenau & Kehrig 1990)."""
 
     base_temperature_degc: float = Field(
         ...,
@@ -302,24 +285,22 @@ class ParametresDegreJourClimatisation(ParametresCommunsF2):
     methode: Literal["moyenne_journaliere", "integration_horaire"] = Field(
         "moyenne_journaliere",
         description=(
-            "Methode de calcul. 'moyenne_journaliere' (defaut, retro-compatible) : "
-            "ecart de la moyenne quotidienne a T_b, serie source journaliere. "
-            "'integration_horaire' (Erbs 1983) : integration des ecarts horaires "
-            "positifs a T_b, leve le biais de moyennage tropical (-5 a -15 %, dette "
-            "D-42) ; exige une serie source horaire (granularite='horaire')."
+            "Méthode de calcul. 'moyenne_journaliere' (valeur par défaut) : écart de la "
+            "température moyenne du jour à T_b, série source journalière. "
+            "'integration_horaire' (Erbs 1983) : somme des écarts horaires positifs à "
+            "T_b ; évite le biais de moyennage du calcul journalier, qui sous-estime "
+            "les degrés-jours en climat tropical (-5 à -15 %) ; exige une série source "
+            "horaire."
         ),
     )
 
 
-# === Réponse de la grandeur F1 calculee_volee ghi_exceedance ==============
-
-
 class ReponseGhiExceedance(BaseModel):
-    """Réponse de l'endpoint ``/v1/grandeurs/ghi_exceedance/{code_localite}``.
+    """Réponse de ``/v1/grandeurs/ghi_exceedance/{code_localite}``.
 
-    Exceedance inter-annuelle de l'irradiation annuelle pour une ville
-    pilote, dérivée de la série GHI mensuelle 1991-2020 NASA POWER.
-    Calculée à la volée à chaque appel, jamais stockée.
+    Irradiation annuelle dépassée une année sur deux (P50) et neuf années sur dix
+    (P90) pour une localité, d'après sa série GHI mensuelle 1991-2020 NASA POWER.
+    Calculée à chaque appel, jamais stockée.
     """
 
     code_grandeur: Literal["ghi_exceedance"] = "ghi_exceedance"
@@ -330,8 +311,8 @@ class ReponseGhiExceedance(BaseModel):
     code_serie_source: str = Field(
         ...,
         description=(
-            "Code D-32 de la serie GHI mensuelle source 1991-2020 utilisee "
-            "pour le calcul (ex. gin_kankan_ghi_power_1991_2020)."
+            "Code de la série GHI mensuelle 1991-2020 utilisée pour le calcul "
+            "(ex. gin_kankan_ghi_power_1991_2020)."
         ),
     )
     periode: str = Field(
@@ -375,15 +356,12 @@ class ReponseGhiExceedance(BaseModel):
     limite: str = Field(
         ...,
         description=(
-            "Avertissement editorial sur la portee du resultat : exceedance "
-            "inter-annuelle uniquement, pas un P90 bancable complet. Pour les "
-            "villes co-localisees (dette D-29 Kindia/Mamou), mention "
-            "explicite de l'identite des P50/P90 avec la ville jumelle."
+            "Mise en garde sur la portée du résultat : variabilité d'une année à "
+            "l'autre uniquement, pas un P90 bancable complet. Quand deux localités "
+            "tombent dans la même cellule de la source et reçoivent donc des valeurs "
+            "identiques, le texte nomme la localité jumelle."
         ),
     )
-
-
-# === Résultats discriminés (granularité journalier vs mensuel) ============
 
 
 class ResultatJournalier(BaseModel):
@@ -413,15 +391,7 @@ ResultatGrandeurF2 = Annotated[
     ResultatJournalier | ResultatMensuel,
     Field(discriminator="granularite"),
 ]
-"""Union discriminée des 2 catégories de résultats F2.
-
-Le champ discriminant ``granularite`` (Literal) permet la
-désérialisation type-safe côté client : la catégorie est inscrite
-explicitement dans chaque résultat retourné.
-"""
-
-
-# === Soiling (F1 calculee_volee) ====================================
+"""Résultat journalier ou mensuel, distingué par le champ ``granularite``."""
 
 
 class MesureSoilingJour(BaseModel):
@@ -440,34 +410,34 @@ class MesureSoilingJour(BaseModel):
 class ReponseTauxSalissureProxy(BaseModel):
     """Réponse de ``/v1/grandeurs/taux_salissure_proxy/{code_serie_source}``.
 
-    Proxy de salissure (modèle HSU, Coello & Boyle 2019) sur la fenêtre d'overlap
-    PM EAC4 ∩ pluie NASA POWER. Calculée à la volée, jamais stockée.
+    Proxy de salissure (modèle HSU, Coello & Boyle 2019) sur les jours où les
+    séries de particules (PM2.5 et PM10 EAC4) et de pluie (NASA POWER) ont toutes
+    une valeur. Calculée à chaque appel, jamais stockée.
     """
 
     code_grandeur: Literal["taux_salissure_proxy"] = "taux_salissure_proxy"
-    code_serie_source: str = Field(..., description="Code D-32 de la serie PM2.5 source (EAC4).")
+    code_serie_source: str = Field(..., description="Code de la série PM2.5 source (EAC4).")
     code_localite: str = Field(..., description="Code de la localite (derive de la serie source).")
     periode: str = Field(
         ...,
         description="Fenetre effective (intersection PM ∩ pluie), YYYY-MM-DD/YYYY-MM-DD.",
     )
     unite: str = Field(default="%", description="Unite des pertes (pourcent).")
-    surface_tilt_deg: float = Field(..., description="Inclinaison fixe utilisee (defaut F1, deg).")
+    surface_tilt_deg: float = Field(
+        ..., description="Inclinaison fixe utilisée (valeur par défaut, degrés)."
+    )
     cleaning_threshold_mm: float = Field(
-        ..., description="Seuil de pluie nettoyante utilise (defaut F1, mm)."
+        ..., description="Seuil de pluie nettoyante utilisé (valeur par défaut, mm)."
     )
     mesures: list[MesureSoilingJour] = Field(..., description="Perte de salissure par jour.")
     limite: str = Field(
         ...,
         description=(
-            "Avertissement editorial : proxy modele (pas une mesure, terrain D-67) ; "
-            "spin-up (premiers jours sous-estimes, L-SOIL-3) ; grille EAC4 grossiere "
-            "(L-SOIL-4)."
+            "Mise en garde : estimation par modèle et non mesure de salissure, non "
+            "calée sur des mesures au sol ; premiers jours de la fenêtre sous-estimés "
+            "(amorçage du modèle) ; grille EAC4 grossière."
         ),
     )
-
-
-# === PR réaliste saisonnier (F1 calculee_volee) ===================
 
 
 ModeCorrectionPR = Literal["aucune", "temperature", "salissure", "temperature_salissure"]
@@ -475,10 +445,10 @@ ModeCorrectionPR = Literal["aucune", "temperature", "salissure", "temperature_sa
 
 
 class ParametresPRRealiste(BaseModel):
-    """Paramètres (query) de l'endpoint ``pr_realiste``. La série GHI source est en path.
+    """Paramètres de la route ``pr_realiste`` ; la série GHI source est dans le chemin.
 
-    Doctrine PR-référence : ``pr_fourni`` est supposé **hors salissure ET hors
-    température** ; les corrections se superposent en facteurs multiplicatifs séparables.
+    ``pr_fourni`` est supposé hors salissure et hors température : les corrections
+    s'y appliquent en facteurs multiplicatifs séparés.
     """
 
     pr_fourni: float = Field(
@@ -502,8 +472,8 @@ class ParametresPRRealiste(BaseModel):
         ge=-0.6,
         le=-0.1,
         description=(
-            "Coefficient temperature gamma_Pmax (%/°C, negatif) - obligatoire si la "
-            "correction inclut la temperature (validation cote endpoint : 422 si absent)."
+            "Coefficient de température gamma_Pmax (%/°C, négatif), obligatoire si la "
+            "correction inclut la température (422 sinon)."
         ),
     )
 
@@ -528,7 +498,7 @@ class ReponsePRRealiste(BaseModel):
     """Réponse de ``/v1/grandeurs/pr_realiste/{code_serie_source}`` (calculée à la volée)."""
 
     code_grandeur: Literal["pr_realiste"] = "pr_realiste"
-    code_serie_source: str = Field(..., description="Code D-32 de la serie GHI source.")
+    code_serie_source: str = Field(..., description="Code de la série GHI source.")
     code_localite: str = Field(..., description="Code de la localite (derive de la serie GHI).")
     periode: str = Field(
         ..., description="Fenetre effective (intersection selon le mode), YYYY-MM-DD/YYYY-MM-DD."
@@ -540,18 +510,21 @@ class ReponsePRRealiste(BaseModel):
     mesures_mensuel: list[MesureMoisPR] = Field(
         ..., description="PR realiste moyen par mois (courbe saisonniere, creux Harmattan)."
     )
-    limite: str = Field(..., description="Caveats : doctrine PR-reference, L-PR/L-SOIL/L-TR-6.")
-
-
-# === Réponse complète =====================================================
+    limite: str = Field(
+        ...,
+        description=(
+            "Mises en garde : hypothèse sur le PR fourni, amorçage du modèle de "
+            "salissure, biais de moyennage du calcul thermique."
+        ),
+    )
 
 
 class ReponseGrandeurF2(BaseModel):
-    """Réponse complète d'un endpoint F2 paramétrable."""
+    """Réponse complète d'une grandeur F2 paramétrable."""
 
     code_grandeur: str = Field(
         ...,
-        description="Code de la grandeur F2 calculee (cf. grandeurs_referentiel).",
+        description="Code de la grandeur F2 calculée.",
     )
     code_serie_source: str = Field(
         ...,
@@ -567,15 +540,13 @@ class ReponseGrandeurF2(BaseModel):
     )
 
 
-# === Atlas Temps 2 : fiche d'incertitude inter-source (F1 lecture/assemblage) ===
-
-
 class EcartPaireInterSource(BaseModel):
-    """Écart inter-source pour une paire (grandeur), agrégé sur 2021-2023.
+    """Écart entre deux sources pour une grandeur, agrégé sur 2021-2023.
 
-    Pairwise par grandeur (GHI : NASA vs SARAH-3 ; DNI : NASA vs CAMS), pas un consensus
-    à trois. ``ecart_abs_pct`` (magnitude, médiane) = signal d'incertitude PRIMAIRE ; le
-    signe est purement orientationnel, JAMAIS une correction de biais (anti-absolu).
+    La comparaison se fait par paire (GHI : NASA POWER et SARAH-3 ; DNI : NASA POWER
+    et CAMS), pas entre les trois sources à la fois. ``ecart_abs_pct`` (médiane des
+    écarts absolus) est l'indicateur d'incertitude à retenir ; le signe n'indique
+    qu'un sens et ne doit pas servir à corriger un biais.
     """
 
     grandeur: Literal["ghi", "dni"]
@@ -585,14 +556,18 @@ class EcartPaireInterSource(BaseModel):
     ecart_abs_pct: float = Field(
         ...,
         ge=0.0,
-        description="Mediane des |ecarts mensuels| (%), 2021-2023. Signal d'incertitude PRIMAIRE.",
+        description=(
+            "Médiane des écarts mensuels absolus (%), 2021-2023. Indicateur "
+            "d'incertitude principal."
+        ),
     )
     ecart_signe_pct: float = Field(
         ...,
         description=(
-            "Moyenne signee des ecarts mensuels (%). Orientation SEULEMENT (ex. negatif = "
-            "NASA < reference) ; jamais une correction de biais (l'atlas est inter-source / "
-            "relatif, pas l'absolu vs sol, D-67)."
+            "Moyenne signée des écarts mensuels (%). N'indique qu'un sens (négatif : "
+            "NASA POWER inférieur à la référence) et ne doit pas servir à corriger un "
+            "biais : l'écart compare deux sources entre elles, pas une source à des "
+            "mesures au sol."
         ),
     )
     n_mois: int = Field(
@@ -601,11 +576,11 @@ class EcartPaireInterSource(BaseModel):
 
 
 class DegenerescenceFiche(BaseModel):
-    """Dégénérescence de pixel, propriété du (localité, grille-source), rendue UNE fois.
+    """Dégénérescence de pixel d'une localité dans la grille de la source.
 
-    Niveau-localité (pas par grandeur) : GHI et DNI partagent la grille NASA CERES, donc
-    une seule valeur représentative. ``note`` = caveat éditorial (groupe de jumeaux +
-    nature exacte) transmis brut.
+    Une seule valeur par localité : le GHI et le DNI de NASA POWER partagent la
+    grille CERES. ``note`` reprend tel quel le commentaire éditorial enregistré
+    (groupe de jumeaux et nature de l'indicateur).
     """
 
     n_jumeaux: int = Field(
@@ -617,45 +592,56 @@ class DegenerescenceFiche(BaseModel):
         ...,
         description="Grille source de la degenerescence (ex. 'CERES SYN1deg 1 deg / 110 km').",
     )
-    note: str = Field(..., description="Caveat editorial brut (groupe de jumeaux + nature, B-3).")
+    note: str = Field(
+        ...,
+        description=(
+            "Commentaire éditorial tel qu'enregistré (groupe de jumeaux et nature de l'indicateur)."
+        ),
+    )
 
 
 class ReponseIncertitudeInterSource(BaseModel):
-    """Fiche d'incertitude INTER-SOURCE d'une localité (atlas Temps 2, lecture/assemblage).
+    """Fiche d'incertitude inter-source d'une localité.
 
-    Assemble SANS les fusionner les deux axes d'honnêteté : écart inter-source (relatif,
-    par paire/grandeur) et dégénérescence de pixel. Confiance B (inter-source, relatif) ;
-    ne quantifie PAS l'incertitude absolue vs mesure sol (terrain).
+    Présente séparément deux informations : l'écart entre sources (par paire et
+    par grandeur) et la dégénérescence de pixel. Confiance B : la fiche compare
+    des sources entre elles et ne quantifie pas l'incertitude absolue par rapport
+    à des mesures au sol.
     """
 
     code_grandeur: Literal["incertitude_inter_source"] = "incertitude_inter_source"
     code_localite: str = Field(..., description="Code de la localite (ex. gin_boffa).")
-    fenetre: str = Field(..., description="Fenetre commune du triptyque (figee, ex. '2021-2023').")
+    fenetre: str = Field(
+        ..., description="Fenêtre commune aux sources comparées (fixe, ex. '2021-2023')."
+    )
     ecarts: list[EcartPaireInterSource] = Field(
-        ..., description="Ecart inter-source par paire/grandeur (AXE 1, distinct)."
+        ..., description="Écart entre sources, par paire et par grandeur."
     )
     degenerescence: DegenerescenceFiche = Field(
         ...,
-        description="Degenerescence de pixel niveau-localite (AXE 2, distinct), rendue une fois.",
+        description="Dégénérescence de pixel de la localité.",
     )
     niveau_confiance: Literal["A", "B", "C"] = Field(
         ...,
-        description="Confiance derivee LUE des donnees (B attendu : inter-source, pas terrain).",
+        description=(
+            "Niveau de confiance lu dans les données (B attendu : comparaison entre "
+            "sources, sans mesure au sol)."
+        ),
     )
     limite: str = Field(
         ...,
         description=(
-            "Avertissement editorial : incertitude inter-source / relative, confiance B ; "
-            "ne quantifie PAS l'incertitude absolue vs mesure sol (terrain, D-67)."
+            "Mise en garde : incertitude relative entre sources, confiance B ; ne "
+            "quantifie pas l'incertitude absolue par rapport à des mesures au sol."
         ),
     )
 
 
 class FichePointIncertitude(ReponseIncertitudeInterSource):
-    """Fiche d'incertitude inter-source d'un point + ses coordonnées (pour la carte/collection).
+    """Fiche d'incertitude inter-source d'un point, avec ses coordonnées.
 
-    Strictement la fiche Temps 2 (héritée, contrat inchangé) augmentée de lat/lon, pour que
-    le consommateur média (snapshot atlas) place chaque point sans second appel.
+    Mêmes champs que la fiche par localité, plus la latitude et la longitude, pour
+    placer le point sur une carte sans second appel.
     """
 
     latitude_deg: float = Field(..., description="Latitude du point (degres).")
@@ -665,13 +651,12 @@ class FichePointIncertitude(ReponseIncertitudeInterSource):
 class ReponseIncertitudeInterSourceCollection(BaseModel):
     """Collection paginée des fiches d'incertitude inter-source des points de l'atlas.
 
-    Enveloppe identique à /v1/series (``items`` / ``total`` / ``limit`` / ``offset``), pour
-    que la sync média (Zod) la valide avec le pattern existant. Lecture/assemblage pur.
+    Même enveloppe que /v1/series (``items``, ``total``, ``limit``, ``offset``).
     """
 
     items: list[FichePointIncertitude] = Field(
-        ..., description="Fiches par point de l'atlas (chacune = fiche Temps 2 + coordonnees)."
+        ..., description="Fiches par point de l'atlas (fiche de la localité et coordonnées)."
     )
-    total: int = Field(..., ge=0, description="Nombre total de points de l'atlas (34 attendu).")
+    total: int = Field(..., ge=0, description="Nombre total de points de l'atlas.")
     limit: int = Field(..., ge=1, description="Taille de page demandee.")
     offset: int = Field(..., ge=0, description="Decalage de pagination.")

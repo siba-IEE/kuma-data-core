@@ -73,9 +73,9 @@ def test_pr_realiste_temperature_salissure_fenetre_pm(
     for m in p["mesures_journalier"]:
         assert 0.0 <= m["pr_realiste"] <= 1.0
         assert m["niveau_confiance"] == "B"
-    assert "PR-reference" in p["limite"]
-    assert "L-TR-6" in p["limite"]  # caveat thermique optimiste
-    assert "spin-up" in p["limite"]  # caveat salissure
+    assert "hors salissure et hors température" in p["limite"]
+    assert "biais de moyennage" in p["limite"]  # mise en garde thermique
+    assert "amorçage" in p["limite"]  # mise en garde salissure
 
 
 def test_pr_realiste_saisonnalite_harmattan(

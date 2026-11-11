@@ -1,35 +1,27 @@
-"""Calcul de la grandeur F1 ``degenerescence_pixel``.
+"""Calcul de la grandeur ``degenerescence_pixel``.
 
-2e couche d'honnêteté de l'atlas (distincte de l'écart inter-source) : pour chaque
-(localite, source, parametre), dit si ce point **partage sa cellule source** avec
-d'autres préfectures (donnée qui se répète) ou s'il est **réellement résolu**.
+Pour chaque (localité, source, grandeur), dit si le point partage sa cellule source
+avec d'autres localités (la donnée se répète) ou s'il y est seul.
 
-Méthode empirique : sur une **grille fixe** (NASA POWER), deux points dans la même
-cellule lisent **la valeur de la cellule** -> leurs séries mensuelles sont
-**strictement identiques**. On groupe les localités par vecteur de valeurs identique
-(égalité exacte) : un groupe de taille > 1 = des **jumeaux-pixel**. C'est ainsi que le
-cas Kindia/Mamou a été constaté. Aucune définition de grille n'est inventée.
+Méthode empirique : sur une grille fixe (NASA POWER), deux points de la même cellule
+lisent la valeur de la cellule, donc leurs séries mensuelles sont strictement
+identiques. Les localités sont groupées par vecteur de valeurs identique (égalité
+exacte) ; un groupe de plus d'un point est un groupe de jumeaux. Aucune définition
+de grille n'est supposée.
 
-Nuance par type de source :
+- Grille fixe (rayonnement NASA : CERES 1°, météo NASA : MERRA-2 0,5°) : le nombre
+  de jumeaux est mesuré.
+- Service interpolé au point (SARAH-3, CAMS, 5 km) : les valeurs diffèrent par
+  construction, le compte vaut 0 ; le commentaire signale alors que la finesse
+  sous la maille est illusoire.
 
-- **grille fixe** (NASA radiation CERES 1deg, météo MERRA 0.5deg) : compte de
-  jumeaux **mesuré** ;
-- **service interpolé au point** (SARAH-3 / CAMS 5 km) : valeurs distinctes par
-  construction -> compte **0** naturellement ; le sens est porté par un **caveat de
-  résolution** (finesse sub-maille illusoire), pas par le compte.
+Sortie : une ligne ``grandeurs_metier`` par (localité, source, grandeur),
+``periode_type='statique'``, ``valeur`` = nombre de jumeaux (0 = point seul dans sa
+cellule), rattachée à la série climatologique mensuelle comparée. Confiance B et non
+A : la dégénérescence est un fait exact, mais A est réservée aux mesures au sol. Le
+groupe de jumeaux et les mises en garde sont dans ``commentaire_editorial``.
 
-Sortie : 1 ligne ``grandeurs_metier`` par (localite x source x parametre),
-``periode_type='statique'``, ``valeur`` = nombre de jumeaux (0 = point résolu),
-``niveau_confiance_derive='B'`` (la confiance **A est réservée aux mesures terrain**,
-déjà tenue par le GHI/DNI sol Kankan/Tarambaly ESMAP-WAPP. La dégénérescence est
-**exacte**, mais l'échelle A/B/C classe la fiabilité d'une *mesure de substrat*, pas la
-certitude d'un fait structurel : B + caveat, jamais A). La série source (climato
-mensuelle) porte le FK ``series_metadonnees_id`` (précédent
-``indicateur_qualite_donnees``, lui-même B). Le groupe de jumeaux + les caveats vivent
-dans ``commentaire_editorial``.
-
-Pattern fonctions pures + orchestrateur I/O, miroir de ``referentiels`` /
-``ecart_dni_cams``. Calcul déterministe depuis la base, aucun réseau.
+Calcul déterministe depuis la base, sans appel réseau.
 """
 
 from __future__ import annotations
@@ -40,15 +32,12 @@ from typing import TypedDict
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-# === Constantes module =====================================================
-
 GRANDEUR_DEGENERESCENCE: str = "degenerescence_pixel"
 NIVEAU_CONFIANCE_DERIVE: str = "B"
 VERSION_FORMULE: int = 1
 
-# Caveat de nature appose sur chaque ligne : dit l'exactitude SANS usurper le
-# palier A (reserve terrain). La degenerescence est un fait structurel exact, mais
-# A/B/C classe la fiabilite d'une mesure de substrat, pas la certitude d'un fait.
+# Ajouté à chaque commentaire : l'indicateur est exact, mais reste en confiance B
+# parce que A est réservée aux mesures au sol.
 _CAVEAT_CONFIANCE: str = (
     " Indicateur exact (identite structurelle observee, non modelise), tague confiance B : "
     "A est reservee aux mesures terrain et l'echelle A/B/C classe la fiabilite d'une mesure "
@@ -57,25 +46,25 @@ _CAVEAT_CONFIANCE: str = (
 
 
 class _ConfigSource(TypedDict):
-    """Un (source, parametre) dont on mesure la degenerescence de pixel."""
+    """Un couple (source, grandeur) dont on mesure la dégénérescence de pixel."""
 
     source_code: str
     grandeur_code: str
-    periode_debut: str  # borne de la serie climato mensuelle a comparer
+    periode_debut: str  # début de la série climatologique mensuelle à comparer
     grille: str
     resolution: str
     grille_fixe: bool
 
 
-# Epine radiative posee aux 33 localites. Radiation NASA = CERES SYN1deg 1deg ;
-# meteo NASA = MERRA-2 0.5deg (grille deux fois plus fine, donc moins de
-# degenerescence) ; SARAH-3 / CAMS = services interpoles 5 km (compte 0 + caveat).
+# Rayonnement NASA : CERES SYN1deg 1° ; météo NASA : MERRA-2 0,5° (grille deux fois
+# plus fine, donc moins de jumeaux) ; SARAH-3 et CAMS : services interpolés à 5 km
+# (compte 0 et mise en garde de résolution).
 _CERES = ("CERES SYN1deg", "1 deg (110 km)")
 _MERRA = ("MERRA-2", "0.5 deg (55 km)")
 _INTERP = "5 km"
 
 _CONFIG: tuple[_ConfigSource, ...] = (
-    # NASA radiation (CERES 1deg) : ghi sur 1991-2020, les 4 autres sur 2001-2020.
+    # Rayonnement NASA (CERES 1°) : ghi sur 1991-2020, les quatre autres sur 2001-2020.
     {
         "source_code": "nasa_power",
         "grandeur_code": "ghi",
@@ -116,7 +105,7 @@ _CONFIG: tuple[_ConfigSource, ...] = (
         "resolution": _CERES[1],
         "grille_fixe": True,
     },
-    # NASA meteo (MERRA-2 0.5deg), tout sur 1991-2020.
+    # Météo NASA (MERRA-2 0,5°), tout sur 1991-2020.
     {
         "source_code": "nasa_power",
         "grandeur_code": "t2m",
@@ -149,7 +138,7 @@ _CONFIG: tuple[_ConfigSource, ...] = (
         "resolution": _MERRA[1],
         "grille_fixe": True,
     },
-    # Services interpoles 5 km (compte 0 naturel + caveat de resolution).
+    # Services interpolés à 5 km (compte 0 et mise en garde de résolution).
     {
         "source_code": "sarah3_monthly",
         "grandeur_code": "ghi",
@@ -169,17 +158,11 @@ _CONFIG: tuple[_ConfigSource, ...] = (
 )
 
 
-# === Fonction pure =========================================================
-
-
 def _grouper_par_pixel(vecteurs: dict[int, tuple[float, ...]]) -> dict[int, list[int]]:
-    """Pour chaque localite, la liste des AUTRES localites au vecteur identique.
+    """Pour chaque localité, les identifiants triés des autres localités au vecteur identique.
 
-    Egalite **exacte** : sur grille fixe, l'identite est binaire. Toute quasi-egalite
-    non exacte = points distincts (releve de l'ecart, pas de la degenerescence).
-
-    Returns:
-        ``{localite_id: [jumeaux_localite_id tries]}`` (liste vide = point resolu).
+    Égalité exacte : deux séries presque égales sont deux points distincts. Une
+    liste vide signifie que le point est seul dans sa cellule.
     """
     groupes: dict[tuple[float, ...], list[int]] = defaultdict(list)
     for loc_id, vec in vecteurs.items():
@@ -192,8 +175,8 @@ def _grouper_par_pixel(vecteurs: dict[int, tuple[float, ...]]) -> dict[int, list
 
 
 def _commentaire(cfg: _ConfigSource, grandeur: str, codes_jumeaux: list[str]) -> str:
-    """Texte d'honnetete : groupe de jumeaux pour les grilles fixes, caveat de
-    resolution pour les sources interpolees."""
+    """Commentaire éditorial de la ligne : groupe de jumeaux sur grille fixe, mise en
+    garde de résolution pour une source interpolée."""
     if not cfg["grille_fixe"]:
         base = (
             f"Source interpolee au point ({cfg['grille']}, {cfg['resolution']}) : valeurs "
@@ -216,21 +199,13 @@ def _commentaire(cfg: _ConfigSource, grandeur: str, codes_jumeaux: list[str]) ->
     return base + _CAVEAT_CONFIANCE
 
 
-# === Orchestrateur I/O =====================================================
-
-
 def calculer_et_inserer_degenerescence(session: Session) -> int:
-    """Calcule et insere ``degenerescence_pixel`` dans ``grandeurs_metier``.
+    """Calcule ``degenerescence_pixel`` et l'insère dans ``grandeurs_metier``.
 
-    Pour chaque (source, parametre) de l'epine radiative, lit les series climato
-    mensuelles de toutes les localites, groupe par vecteur identique (jumeaux-pixel),
-    et insere 1 ligne statique par localite (valeur = nombre de jumeaux).
-
-    Args:
-        session : session SQLAlchemy active (l'appelant commit).
-
-    Returns:
-        Nombre de lignes inserees.
+    Pour chaque couple (source, grandeur) de ``_CONFIG``, lit les séries
+    climatologiques mensuelles de toutes les localités, les groupe par vecteur
+    identique et insère une ligne statique par localité. Renvoie le nombre de lignes
+    insérées. Flush sans commit : l'appelant valide la transaction.
     """
     nb_insere = 0
     for cfg in _CONFIG:
@@ -254,7 +229,6 @@ def calculer_et_inserer_degenerescence(session: Session) -> int:
             {"src": cfg["source_code"], "g": cfg["grandeur_code"], "pdeb": cfg["periode_debut"]},
         ).all()
 
-        # Reconstruit, par localite : id, code, serie source, fenetre, vecteur de valeurs.
         vecteurs: dict[int, tuple[float, ...]] = {}
         meta: dict[int, dict[str, object]] = {}
         accum: dict[int, list[float]] = defaultdict(list)
@@ -273,7 +247,7 @@ def calculer_et_inserer_degenerescence(session: Session) -> int:
             vecteurs[loc_id] = tuple(vals)
 
         if not vecteurs:
-            continue  # source/parametre absent (garde defensive)
+            continue  # aucune série pour ce couple
 
         jumeaux = _grouper_par_pixel(vecteurs)
         code_par_id = {loc_id: str(m["code"]) for loc_id, m in meta.items()}

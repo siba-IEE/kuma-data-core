@@ -58,7 +58,7 @@ def test_vide() -> None:
     """Mesures vides -> resultat vide, caveat present."""
     r = calculer_pr_realiste([], _PR, "temperature_salissure", _NOCT, _GAMMA)
     assert r.mesures == []
-    assert "PR-reference" in r.limite
+    assert "hors salissure et hors température" in r.limite
 
 
 def test_aucune_echo() -> None:

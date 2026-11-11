@@ -1,21 +1,14 @@
-"""Endpoints `/api/v1/series` - listing + detail.
+"""Routes ``/v1/series`` : liste et détail.
 
-Deux endpoints :
+- ``GET /v1/series`` : liste paginée des séries (filtres localité, grandeur,
+  source, actif ; 100 par page, 1000 au plus).
+- ``GET /v1/series/{code_serie}`` : détail d'une série et ses mesures (1000 par
+  page, 10 000 au plus ; bornes ``from`` et ``to`` ; JSON ou CSV).
 
-- ``GET /v1/series`` (authentifie) : listing des series disponibles
-  (filtrage par localite / grandeur / source / actif, pagination
-  offset-based limit=100/max=1000).
-- ``GET /v1/series/{code_serie}`` (authentifie) : detail d'une serie
-  identifiee par son code naming, avec ses mesures resolues via
-  ``resolve_table_from_series_metadata``.
-  Pagination limit=1000/max=10 000, filtre temporel ``from``/``to``,
-  format JSON ou CSV.
-
-Couvre les 3 tables-cibles :
-- ``mesures_ressource`` (journalier)
-- ``mesures_ressource_mensuelles`` (mensuel brut)
-- ``grandeurs_metier`` (calcule Kuma) - via la vue
-  ``v_grandeurs_metier_courantes`` pour semantique « valeurs publiables »
+Les mesures viennent de ``mesures_ressource`` (journalier),
+``mesures_ressource_mensuelles`` (mensuel) ou, pour une grandeur calculée, de
+la vue ``v_grandeurs_metier_courantes``, qui ne rend que les valeurs courantes
+et non dépréciées. Les séries horaires se lisent par ``/v1/horaire``.
 """
 
 from __future__ import annotations
@@ -51,8 +44,6 @@ from kuma_data_core.db.session import obtenir_session
 routeur = APIRouter(prefix="/series", tags=["series"])
 
 
-# === Constantes pagination ================================================
-
 _LIMIT_DEFAUT_LISTING: int = 100
 _LIMIT_MAX_LISTING: int = 1000
 _LIMIT_DEFAUT_DETAIL: int = 1000
@@ -61,22 +52,10 @@ _LIMIT_MAX_DETAIL: int = 10_000
 _FORMATS_SUPPORTES: tuple[str, ...] = ("json", "csv")
 
 
-# === Helpers ==============================================================
-
-
 def _parser_borne_temporelle(valeur: str | None, nom_param: str) -> date | None:
-    """Parse ``YYYY-MM-DD`` ou ``YYYY-MM`` (interprete 1er du mois).
+    """Lit ``YYYY-MM-DD`` ou ``YYYY-MM`` (alors le 1er du mois) ; ``None`` reste ``None``.
 
-    Args:
-        valeur : chaine a parser ou None.
-        nom_param : nom du parametre query pour les messages d'erreur.
-
-    Returns:
-        ``date`` parsee ou ``None`` si entree None.
-
-    Raises:
-        ExceptionKuma : HTTP 400 ``VALIDATION_FORMAT_DATE_INVALIDE`` si
-            format non reconnu.
+    Lève 400 ``VALIDATION_FORMAT_DATE_INVALIDE`` si le format n'est pas reconnu.
     """
     if valeur is None:
         return None
@@ -95,7 +74,7 @@ def _parser_borne_temporelle(valeur: str | None, nom_param: str) -> date | None:
 
 
 def _valider_format(format_demande: str) -> str:
-    """Valide ``format`` parmi ``_FORMATS_SUPPORTES``."""
+    """Lève 400 ``VALIDATION_FORMAT_NON_SUPPORTE`` si le format n'est ni json ni csv."""
     if format_demande not in _FORMATS_SUPPORTES:
         raise ExceptionKuma(
             code=CodeErreur.VALIDATION_FORMAT_NON_SUPPORTE,
@@ -108,19 +87,16 @@ def _valider_format(format_demande: str) -> str:
     return format_demande
 
 
-# === Endpoint listing =====================================================
-
-
 @routeur.get(
     "",
     response_model=SerieListeePaginee,
     status_code=status.HTTP_200_OK,
     summary="Listing des series disponibles",
     description=(
-        "Retourne la liste paginee des series presentes dans "
-        "`series_metadonnees`, dans une envelope "
-        "`{items, total, limit, offset}`. Filtrage optionnel par "
-        "localite, grandeur, source, ou statut actif. Cf. ADR-0001."
+        "Retourne la liste paginée des séries du catalogue, triée par code, "
+        "dans une enveloppe `{items, total, limit, offset}`. Filtrage "
+        "optionnel par localité, grandeur, source ou statut actif ; par "
+        "défaut, seules les séries actives sont listées."
     ),
 )
 def lister_series(
@@ -137,13 +113,7 @@ def lister_series(
     limit: Annotated[int, Query(ge=1, le=_LIMIT_MAX_LISTING)] = _LIMIT_DEFAUT_LISTING,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> SerieListeePaginee:
-    """Listing paginé des séries dans une envelope `{items, total, limit, offset}`.
-
-    La réponse est une envelope paginée (et non un tableau JSON nu).
-    Cohérent avec les conventions d'API publique et permet aux
-    consommateurs de connaître le nombre total de séries matchant les
-    filtres sans boucler jusqu'à une page vide. Cf. ADR-0001 Data Core.
-    """
+    """Liste paginée des séries, triée par code ; ``actif`` vaut TRUE par défaut."""
     clauses: list[str] = []
     params: dict[str, object] = {"limit": limit, "offset": offset}
 
@@ -162,10 +132,6 @@ def lister_series(
 
     where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
 
-    # Count total filtré (séparé du SELECT items pour lisibilité ; le
-    # coût supplémentaire est négligeable sur le volume de séries
-    # actuel, à monitorer si la couverture passe à plusieurs centaines).
-    # cf. ADR-0001 §performance.
     total = session.execute(
         text(
             f"""
@@ -246,9 +212,6 @@ def lister_series(
     return SerieListeePaginee(items=items, total=int(total), limit=limit, offset=offset)
 
 
-# === Endpoint detail ======================================================
-
-
 def _lire_mesures_journalier(
     session: Session,
     serie_id: int,
@@ -256,7 +219,7 @@ def _lire_mesures_journalier(
     limit: int,
     offset: int,
 ) -> list[MesureLue]:
-    """Lit les mesures journalieres depuis ``mesures_ressource``."""
+    """Mesures journalières courantes de la série (``mesures_ressource``)."""
     from_d, to_d = bornes
     clauses = ["mr.serie_id = :serie_id", "mr.valide_au IS NULL"]
     params: dict[str, object] = {"serie_id": serie_id, "limit": limit, "offset": offset}
@@ -304,7 +267,7 @@ def _lire_mesures_mensuel(
     limit: int,
     offset: int,
 ) -> list[MesureLue]:
-    """Lit les mesures mensuelles depuis ``mesures_ressource_mensuelles``."""
+    """Mesures mensuelles courantes de la série (``mesures_ressource_mensuelles``)."""
     from_d, to_d = bornes
     clauses = ["m.serie_id = :serie_id", "m.valide_au IS NULL"]
     params: dict[str, object] = {"serie_id": serie_id, "limit": limit, "offset": offset}
@@ -355,11 +318,10 @@ def _lire_mesures_grandeurs_metier(
     limit: int,
     offset: int,
 ) -> list[MesureLue]:
-    """Lit les valeurs grandeurs_metier via la vue v_grandeurs_metier_courantes.
+    """Valeurs de grandeur calculée de la série, par la vue ``v_grandeurs_metier_courantes``.
 
-    La vue applique automatiquement les filtres ``valide_au IS NULL`` +
-    ``version_formule = version_formule_actuelle`` + ``statut <> 'deprecie'``
-    et expose ``niveau_effectif`` resolu.
+    La vue ne rend que les lignes courantes, de la version de formule actuelle
+    et non dépréciées, avec leur ``niveau_effectif``.
     """
     from_d, to_d = bornes
     clauses = ["v.series_metadonnees_id = :serie_id"]
@@ -407,10 +369,10 @@ def _lire_mesures_grandeurs_metier(
 
 
 def _serialiser_csv(serie_detail: SerieDetail) -> str:
-    """Serialise un SerieDetail en CSV (helper interne)."""
+    """Sérialise le détail d'une série en CSV."""
     buffer = io.StringIO()
     w = csv.writer(buffer)
-    # Header generique pour les 3 categories de mesures
+    # Un seul en-tête pour les trois catégories de mesures.
     w.writerow(
         [
             "code_serie",
@@ -488,10 +450,11 @@ def _serialiser_csv(serie_detail: SerieDetail) -> str:
     status_code=status.HTTP_200_OK,
     summary="Detail d'une serie avec ses mesures",
     description=(
-        "Retourne le detail d'une serie identifiee par son code naming "
-        "D-32, avec ses mesures resolues sur la table-cible adequate "
-        "(mesures_ressource, mesures_ressource_mensuelles, ou "
-        "grandeurs_metier via v_grandeurs_metier_courantes)."
+        "Retourne le détail d'une série identifiée par son code, avec ses "
+        "mesures : journalières, mensuelles ou valeurs de grandeur calculée "
+        "selon la série. Bornes `from` et `to` facultatives, sortie JSON ou "
+        "CSV. Les séries horaires se lisent par "
+        "`/v1/horaire/{localite}/{grandeur}` : cette route répond 404 pour elles."
     ),
 )
 def detailler_serie(
@@ -508,13 +471,11 @@ def detailler_serie(
     limit: Annotated[int, Query(ge=1, le=_LIMIT_MAX_DETAIL)] = _LIMIT_DEFAUT_DETAIL,
     offset: Annotated[int, Query(ge=0)] = 0,
 ) -> Response:
-    """Detail d'une serie avec ses mesures (3 tables-cibles, format JSON/CSV)."""
+    """Détail d'une série avec ses mesures, en JSON ou en CSV."""
     _valider_format(format_sortie)
     from_d = _parser_borne_temporelle(from_, "from")
     to_d = _parser_borne_temporelle(to, "to")
 
-    # Resolution serie + metadonnees enrichies (18 champs SerieListee
-    # + unite_code pour SerieDetail).
     row = session.execute(
         text(
             """
@@ -559,7 +520,6 @@ def detailler_serie(
             statut_http=status.HTTP_404_NOT_FOUND,
         )
 
-    # Resolution table-cible par granularite (source-first)
     table_cible = resolve_table_from_series_metadata(
         source_code=row.source_code,
         granularite=row.granularite,
@@ -573,7 +533,7 @@ def detailler_serie(
         mesures = _lire_mesures_mensuel(session, int(row.id), bornes, limit, offset)
     elif table_cible == TableMesures.GRANDEURS_METIER:
         mesures = _lire_mesures_grandeurs_metier(session, int(row.id), bornes, limit, offset)
-    else:  # TableMesures.HORAIRE - servi par l'endpoint dedie /v1/horaire
+    else:  # TableMesures.HORAIRE, servie par /v1/horaire
         raise ExceptionKuma(
             code=CodeErreur.RESSOURCE_INTROUVABLE,
             message=(

@@ -1,33 +1,8 @@
-"""Schémas Pydantic des endpoints `/api/v1/localites` (cycle C-DC-3).
+"""Schémas Pydantic des routes ``/v1/localites``.
 
-3 schémas exposés :
-
-- :class:`LocaliteListee` : ligne du listing
-  (``GET /api/v1/localites``) et payload du détail
-  (``GET /api/v1/localites/{code}``).
-- :class:`LocaliteListeePaginee` : envelope paginée
-  ``{items, total, limit, offset}`` - pattern identique à
-  :class:`SerieListeePaginee` (cf. ADR-0001 Data Core).
-- :data:`LocaliteDetail` : alias de :class:`LocaliteListee` pour cette
-  itération. Si un futur cycle enrichit le détail (séries associées,
-  hiérarchie récursive complète, etc.), créer une sous-classe sur le
-  pattern :class:`SerieDetail`.
-
-Conventions d'alignement avec :class:`SerieListee` (ADR-0001) :
-
-- IDs en ``int`` natif (BigInteger DB, pas UUID).
-- Datetimes en ISO-8601 UTC avec suffixe ``Z`` (géré par Pydantic
-  sérialisation par défaut).
-- Renommage public ``cree_le`` -> ``created_at``,
-  ``modifie_le`` -> ``updated_at`` (cf. nommage public ADR-0001).
-- ``latitude``/``longitude`` exposés en ``float`` (converti depuis
-  ``Numeric(11,8)`` / ``Numeric(12,8)`` DB pour interop JSON ;
-  précision pratique 7 décimales 1 cm).
-- ``parent_code`` dénormalisé via self-JOIN ``localites P`` côté
-  routeur (évite un appel en cascade côté consommateur Kuma Science
-  pour résoudre la hiérarchie).
-
-Cf. ADR-0002 Data Core.
+Mêmes conventions que les séries (ADR-0001, ADR-0002) : identifiants entiers,
+dates ISO 8601 UTC, ``cree_le`` et ``modifie_le`` publiés sous les noms
+``created_at`` et ``updated_at``, latitude et longitude en ``float``.
 """
 
 from __future__ import annotations
@@ -38,57 +13,43 @@ from pydantic import BaseModel, Field
 
 
 class LocaliteListee(BaseModel):
-    """Ligne du listing `GET /api/v1/localites` et payload du détail.
+    """Localité, telle que rendue par la liste ``GET /v1/localites`` et par le détail.
 
-    Couvre identité, hiérarchie, géolocalisation, démographie,
-    métadonnées techniques et audit.
-
-    Tous les champs viennent directement de la table ``localites`` (cf.
-    modèle SQLAlchemy ``Localite``). Aucune déformation côté producteur
-    sauf le ``parent_code`` qui est dénormalisé via self-JOIN pour
-    éviter aux consommateurs un second appel.
+    Identité, hiérarchie, géolocalisation, démographie, fuseau horaire et
+    dates de création et de modification. ``parent_code`` est le code de la
+    localité parente, fourni pour éviter un second appel.
     """
 
-    # === Identifiants ====================================================
     id: int
     code: str = Field(min_length=1, max_length=100)
     nom: str
 
-    # === Type et hiérarchie ==============================================
-    type_localite: str  # enum : continent, region_supranationale, pays,
+    type_localite: str  # continent, region_supranationale, pays,
     #                     region_administrative, commune, site
     parent_id: int | None
-    parent_code: str | None  # dénormalisé via self-JOIN (LEFT JOIN
-    #                          localites P ON L.parent_id = P.id)
+    parent_code: str | None
 
-    # === Géolocalisation =================================================
     pays_iso3: str | None = Field(default=None, pattern=r"^[A-Z]{3}$")
-    latitude: float | None  # converti Numeric(11,8) -> float
-    longitude: float | None  # converti Numeric(12,8) -> float
+    latitude: float | None  # Numeric(11,8) en base
+    longitude: float | None  # Numeric(12,8) en base
     altitude_metres: int | None
 
-    # === Démographie =====================================================
     population_estimee: int | None
     annee_population: int | None
 
-    # === Métadonnées techniques ==========================================
-    fuseau_horaire: str | None  # IANA TZ (e.g. "Africa/Conakry")
+    fuseau_horaire: str | None  # nom IANA (ex. "Africa/Conakry")
 
-    # === Audit (renommé public) ==========================================
     created_at: datetime  # <- cree_le
     updated_at: datetime  # <- modifie_le
 
-    # === Flag actif ======================================================
     actif: bool
 
 
 class LocaliteListeePaginee(BaseModel):
-    """Envelope paginée du listing `GET /api/v1/localites` (ADR-0002).
+    """Enveloppe paginée de la liste ``GET /v1/localites``.
 
-    Pattern identique à :class:`SerieListeePaginee` mergée en cycle
-    1-7d (ADR-0001). Le champ ``total`` permet aux consommateurs de
-    connaître le nombre total de localités matchant les filtres sans
-    avoir à boucler jusqu'à une page vide.
+    ``total`` est le nombre de localités correspondant aux filtres, toutes
+    pages confondues.
     """
 
     items: list[LocaliteListee]
@@ -97,15 +58,8 @@ class LocaliteListeePaginee(BaseModel):
     offset: int = Field(ge=0)
 
 
-# Pour cette première itération, le détail expose les mêmes champs que
-# le listing. Si un futur cycle enrichit le détail (séries associées,
-# hiérarchie complète via WITH RECURSIVE, etc.), créer une sous-classe
-# ``LocaliteDetail(LocaliteListee)`` ajoutant les champs additionnels -
-# pattern :class:`SerieDetail`.
+# Le détail a les mêmes champs que la liste.
 LocaliteDetail = LocaliteListee
-
-
-# === Schemas resolution au point (ADR-0004) ===============================
 
 
 class PointGeographique(BaseModel):
@@ -116,12 +70,10 @@ class PointGeographique(BaseModel):
 
 
 class CelluleResolution(BaseModel):
-    """Cellule de la grille de climatologie contenant le point.
+    """Cellule de la grille de climatologie qui contient le point.
 
-    Grille de la source de climatologie mensuelle : 1 degre x 1 degre,
-    frontieres aux degres entiers (verification empirique 2026-07-20 :
-    serie de Kerouane vs releve au point de Tokounou, meme cellule,
-    ecart nul sur les 12 moyennes mensuelles 1991-2020).
+    Grille de la source de climatologie mensuelle : 1° x 1°, frontières aux
+    degrés entiers.
     """
 
     lat_min: float
@@ -140,13 +92,13 @@ class LocaliteResolue(BaseModel):
 
 
 class ReponseResolution(BaseModel):
-    """Reponse de ``GET /v1/localites/resolution``.
+    """Réponse de ``GET /v1/localites/resolution``.
 
-    ``meme_cellule`` : vrai si la localite retenue echantillonne la
-    cellule du point (sa climatologie est celle du point) ; faux si
-    aucune candidate ne partage la cellule - la plus proche est alors
-    renvoyee avec sa distance, et le consommateur doit afficher
-    l'hypothese de transport.
+    ``meme_cellule`` est vrai si la localité retenue est dans la cellule du
+    point : sa climatologie est alors celle du point. Il est faux si aucune
+    localité ne partage la cellule ; la plus proche est alors renvoyée avec
+    sa distance, et l'appelant doit signaler que la climatologie est
+    transportée depuis une autre cellule.
     """
 
     point: PointGeographique
@@ -157,10 +109,9 @@ class ReponseResolution(BaseModel):
     meme_cellule: bool
     serie_climatologie: str = Field(
         description=(
-            "Code de la serie de climatologie mensuelle de la localite "
-            "retenue : la serie qui represente la cellule du point. Le "
-            "Core dit quelle serie consommer, les clients ne le "
-            "reconstruisent jamais par convention de nommage (genericite "
-            "pays, residu 2 du brief de chantier)."
+            "Code de la série de climatologie mensuelle de la localité "
+            "retenue : la série qui représente la cellule du point. À lire "
+            "dans cette réponse plutôt qu'à reconstruire par convention de "
+            "nommage."
         )
     )

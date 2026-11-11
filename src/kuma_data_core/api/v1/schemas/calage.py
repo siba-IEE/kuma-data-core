@@ -1,4 +1,4 @@
-"""Schémas Pydantic de l'endpoint ``/api/v1/calage``.
+"""Schémas Pydantic des routes ``/v1/calage``.
 
 Le référentiel de calage satellite/sol (ADR-0004) : biais saisonniers
 mesurés aux stations de référence, publiés avec provenance et portée.
@@ -23,12 +23,10 @@ class SaisonCalage(BaseModel):
 class ReponseCalage(BaseModel):
     """Référentiel de calage d'un couple (station, grandeur).
 
-    ``localites_couvertes`` porte le domaine de couverture du
-    transport (ADR-0004, couverture progressive) : les codes des
-    localités qualifiées, triés. C'est la donnée qui pilote la
-    couverture géographique des consommateurs - une étude calée
-    n'est permise que si la localité résolue du site en fait partie.
-    ``justification_couverture`` en donne la provenance.
+    ``localites_couvertes`` liste, triés, les codes des localités où ce
+    calage peut être transporté : une étude calée n'est possible que si la
+    localité du site en fait partie. ``justification_couverture`` en donne
+    la provenance.
     """
 
     localite: str
@@ -42,15 +40,15 @@ class ReponseCalage(BaseModel):
     justification_couverture: str | None = None
     serie_sol: str = Field(
         description=(
-            "Code de la serie sol de fondation du referentiel : la "
-            "sequence horaire de reference a utiliser avec ce calage. "
-            "Decouverte par l'API, jamais une constante consommateur."
+            "Code de la série sol sur laquelle le référentiel est fondé : la "
+            "séquence horaire de référence à utiliser avec ce calage. À lire "
+            "dans cette réponse plutôt qu'à coder en dur."
         )
     )
 
 
 class ReferentielListe(BaseModel):
-    """Un referentiel de calage au listing (une entree par code)."""
+    """Un référentiel de calage dans la liste (une entrée par code)."""
 
     code: str
     localite: str
@@ -61,7 +59,7 @@ class ReferentielListe(BaseModel):
 
 
 class ReponseCalageListe(BaseModel):
-    """Reponse de ``GET /v1/calage`` : les referentiels publies."""
+    """Réponse de ``GET /v1/calage`` : les référentiels publiés."""
 
     items: list[ReferentielListe]
     total: int

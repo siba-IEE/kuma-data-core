@@ -924,19 +924,20 @@ def test_ti117_ghi_exceedance_ville_pilote_succes(
     assert body["p90"] < body["p50"]
     # Limite presente, mention "inter-annuelle" garantie.
     assert "inter-annuelle" in body["limite"]
-    # Conakry-Kaloum n'est pas dans une paire D-29 : pas de mention D-29.
-    assert "D-29" not in body["limite"]
+    # Conakry-Kaloum ne partage pas sa cellule : pas de mention de localité jumelle.
+    assert "même cellule" not in body["limite"]
 
 
 def test_ti118_ghi_exceedance_localite_inconnue_404(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """localite hors des 6 villes pilotes -> 404 RESSOURCE_LOCALITE_INCONNUE."""
+    """localite sans serie GHI mensuelle 1991-2020 -> 404 RESSOURCE_LOCALITE_INCONNUE."""
     response = client.get("/v1/grandeurs/ghi_exceedance/gin_inexistante_xyz", headers=headers_auth)
     assert response.status_code == 404
     body = response.json()
     assert body["erreur"]["code"] == CodeErreur.RESSOURCE_LOCALITE_INCONNUE.value
-    assert "ghi_exceedance" in body["erreur"]["message"]
+    assert "GHI mensuelle 1991-2020" in body["erreur"]["message"]
+    assert "gin_inexistante_xyz" in body["erreur"]["message"]
 
 
 def test_ti119_ghi_exceedance_d29_kindia_mamou_identiques(
@@ -945,7 +946,7 @@ def test_ti119_ghi_exceedance_d29_kindia_mamou_identiques(
     """Kindia et Mamou retournent strictement les memes P50 / P90
     (co-localisation meme pixel CERES SYN1deg).
 
-    Verifie aussi que le champ `limite` mentionne explicitement D-29 et
+    Verifie aussi que le champ `limite` dit la cellule partagee et nomme
     la ville jumelle pour chacune des deux.
     """
     r_kindia = client.get("/v1/grandeurs/ghi_exceedance/gin_kindia", headers=headers_auth)
@@ -957,10 +958,10 @@ def test_ti119_ghi_exceedance_d29_kindia_mamou_identiques(
     # Identite stricte des percentiles (consequence directe du pixel commun).
     assert b_kindia["p50"] == b_mamou["p50"]
     assert b_kindia["p90"] == b_mamou["p90"]
-    # Mentions explicites D-29 + ville jumelle dans le champ limite.
-    assert "D-29" in b_kindia["limite"]
+    # Le champ limite dit la cellule partagée et nomme la localité jumelle.
+    assert "même cellule" in b_kindia["limite"]
     assert "gin_mamou" in b_kindia["limite"]
-    assert "D-29" in b_mamou["limite"]
+    assert "même cellule" in b_mamou["limite"]
     assert "gin_kindia" in b_mamou["limite"]
 
 
@@ -990,17 +991,17 @@ def test_ti120_ghi_exceedance_plausibilite_6_villes(
 def test_ti121_ghi_exceedance_ville_hors_d29_limite_sans_mention(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """Conakry-Kaloum (hors paires D-29) -> limite sans mention D-29.
+    """Conakry-Kaloum (seule dans sa cellule) -> limite sans localite jumelle.
 
-    Verifie l'isolation conditionnelle de la mention D-29 dans le champ
-    `limite` (test miroir du cas Kindia/Mamou).
+    Test miroir du cas Kindia/Mamou : la mention de cellule partagee
+    n'apparait que pour les localites jumelles.
     """
     response = client.get("/v1/grandeurs/ghi_exceedance/gin_conakry_kaloum", headers=headers_auth)
     assert response.status_code == 200
     body = response.json()
     assert "inter-annuelle" in body["limite"]
-    assert "D-29" not in body["limite"]
-    assert "pixel" not in body["limite"]
+    assert "même cellule" not in body["limite"]
+    assert "gin_" not in body["limite"]
 
 
 # === PR & ECS par integration horaire =====================================

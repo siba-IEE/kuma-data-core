@@ -5,9 +5,8 @@ Deux endpoints :
 * ``GET /v1/health``    - public, indique que l'API répond.
 * ``GET /v1/health/db`` - authentifié, vérifie la connectivité PostgreSQL.
 
-La vérification Redis est volontairement absente : aucun endpoint de
-l'API n'utilise encore Redis. Elle sera ajoutée le jour où le cache
-devient critique pour un endpoint métier.
+Redis n'est pas vérifié : il ne sert qu'au comptage des quotas et du débit,
+et une requête passe même s'il est injoignable.
 """
 
 from __future__ import annotations
@@ -34,14 +33,14 @@ class ReponseSantePublique(BaseModel):
     Ne divulgue ni la version logicielle ni l'environnement : sur un
     endpoint non authentifié, ces informations aident un attaquant à
     cibler des vulnérabilités connues sans bénéfice pour un client
-    légitime (finding F-05 pentest). Elles restent disponibles sur
-    ``/v1/health/db`` (authentifié).
+    légitime. Elles restent disponibles sur ``/v1/health/db``
+    (authentifié).
     """
 
     statut: Literal["operationnel"]
-    # Identifiant de l'édition publiée servie par ce déploiement
-    # (ADR-0003, D7). ``None`` hors régime édition (base de dev) ou si
-    # la lecture échoue : le health ne dépend de rien, jamais de 5xx.
+    # Identifiant de l'édition publiée servie (ADR-0003). ``None`` si le
+    # déploiement ne sert pas d'édition ou si la lecture échoue : cette
+    # route ne doit jamais répondre 5xx.
     edition: str | None = None
 
 
@@ -64,9 +63,9 @@ class ReponseSanteDetailee(BaseModel):
 def _edition_courante_silencieuse() -> str | None:
     """Identifiant de l'édition servie, ou ``None`` - jamais d'exception.
 
-    Lecture best-effort pour préserver la propriété du health public :
-    il répond toujours, même base injoignable. Le détail de l'édition
-    (date, révision, couverture) vit sur ``GET /v1/edition``.
+    La route de santé publique doit répondre même si la base est injoignable.
+    Le détail de l'édition (date, révision, couverture) est sur
+    ``GET /v1/edition``.
     """
     try:
         from kuma_data_core.db.session import get_engine
@@ -93,7 +92,7 @@ def _edition_courante_silencieuse() -> str | None:
     description="Endpoint non authentifié indiquant que l'API répond.",
 )
 def sante() -> ReponseSantePublique:
-    """Réponse minimale ; l'édition est lue en best-effort (jamais de 5xx)."""
+    """Réponse minimale ; une édition illisible donne ``null``, jamais une erreur."""
     return ReponseSantePublique(
         statut="operationnel",
         edition=_edition_courante_silencieuse(),
@@ -107,8 +106,8 @@ def sante() -> ReponseSantePublique:
     summary="Santé détaillée (base de données)",
     description=(
         "Endpoint authentifié vérifiant la connectivité à la base "
-        "PostgreSQL. La vérification Redis sera ajoutée quand un "
-        "endpoint en aura besoin."
+        "PostgreSQL. Redis, qui ne sert qu'au comptage des quotas et du "
+        "débit, n'est pas vérifié."
     ),
 )
 def sante_detailee(

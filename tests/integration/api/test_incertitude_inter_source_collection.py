@@ -35,7 +35,7 @@ def test_collection_34_points_enveloppe_paginee(
 
 
 def test_item_structure_complete(client: TestClient, headers_auth: dict[str, str]) -> None:
-    """Chaque item = deux axes distincts + coords + B + limite 'd-67'."""
+    """Chaque item = deux axes distincts + coords + B + limite sur les mesures au sol."""
     items = client.get(_URL, headers=headers_auth).json()["items"]
     for it in items:
         assert it["code_grandeur"] == "incertitude_inter_source"
@@ -44,7 +44,7 @@ def test_item_structure_complete(client: TestClient, headers_auth: dict[str, str
         assert isinstance(it["latitude_deg"], (int, float))
         assert isinstance(it["longitude_deg"], (int, float))
         assert it["niveau_confiance"] == "B"
-        assert "d-67" in it["limite"].lower()
+        assert "mesures au sol" in it["limite"]
 
 
 def test_recoupe_unitaire_gin_boffa(client: TestClient, headers_auth: dict[str, str]) -> None:
