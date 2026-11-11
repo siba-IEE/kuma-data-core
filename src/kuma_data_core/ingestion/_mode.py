@@ -1,13 +1,9 @@
-"""Mode d'ingestion (``live`` / ``offline``).
+"""Mode d'ingestion : ``live`` (réseau, par défaut) ou ``offline``.
 
-Mode unique cohérent remplaçant progressivement
-les ``KUMA_SKIP_*`` : sous ``KUMA_INGESTION_MODE=offline``, un module d'ingestion
-**converti** renvoie la donnée d'un seed committé au lieu du réseau.
-
-**Gating fail-safe** : défaut ``live`` (réseau réel) ; le mode
-``offline`` ne sert **jamais** en production. Si l'environnement est ``prod`` et
-le mode ``offline``, :func:`est_mode_offline` **lève** plutôt que de servir de la
-donnée figée (un flag qui « fuit » échoue franchement).
+Sous ``KUMA_INGESTION_MODE=offline``, les modules d'ingestion qui le gèrent
+lisent un payload versionné dans ``db/seeds/`` au lieu d'appeler le réseau. Ce
+mode est interdit en production : ``est_mode_offline`` lève alors une erreur
+plutôt que de servir une donnée figée.
 """
 
 from __future__ import annotations
@@ -23,7 +19,7 @@ _MODES_VALIDES: tuple[str, ...] = (MODE_LIVE, MODE_OFFLINE)
 
 
 def mode_ingestion() -> str:
-    """Mode d'ingestion courant. Défaut : ``live`` (réseau réel)."""
+    """Mode d'ingestion courant ; ``RuntimeError`` si la valeur est inconnue."""
     valeur = os.environ.get(VARIABLE_ENV_MODE, MODE_LIVE).strip().lower() or MODE_LIVE
     if valeur not in _MODES_VALIDES:
         raise RuntimeError(
@@ -33,16 +29,7 @@ def mode_ingestion() -> str:
 
 
 def est_mode_offline() -> bool:
-    """True si le mode offline (seed) est actif - fail-safe : interdit en prod.
-
-    Returns:
-        ``True`` si ``KUMA_INGESTION_MODE=offline`` **et** environnement non-prod.
-        ``False`` si mode ``live`` (défaut).
-
-    Raises:
-        RuntimeError : si mode ``offline`` **et** ``API_ENVIRONNEMENT=prod``
-            (le mode offline ne doit jamais servir de la donnée figée en prod).
-    """
+    """Vrai si le mode ``offline`` est actif ; ``RuntimeError`` si ``API_ENVIRONNEMENT=prod``."""
     if mode_ingestion() != MODE_OFFLINE:
         return False
     environnement = os.environ.get(VARIABLE_ENV_ENVIRONNEMENT, "dev").strip().lower()

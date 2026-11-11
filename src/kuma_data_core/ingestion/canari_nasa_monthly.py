@@ -1,22 +1,11 @@
-"""Canari de dérive NASA POWER monthly - climato figée.
+"""Canari de dérive NASA POWER mensuel.
 
-Compare la donnée NASA POWER monthly **live** au seed committé, pour détecter une
-dérive amont (reprocessing / changement de version POWER) que l'offline
-masquerait sinon.
+Compare la réponse actuelle de NASA POWER au seed versionné, sur toute la
+période : la climatologie de long terme n'étant pas révisée au fil de l'eau, un
+écart supérieur à ``SEUIL_DERIVE`` signale un retraitement amont.
 
-**Spécificité (vs canari daily)** : la climato long-terme est **figée** (ne mûrit
-pas, contrairement au daily NRT). Donc **pas de fenêtre maturation** : on compare
-**tout** l'historique. Tout écart non nul (> seuil) signale un reprocessing
--> exit 1, re-seed (gel/compare, comme ``canari_sarah3``).
-
-Logique d'exit différenciée (idem daily / SARAH-3) :
-
-- **blip réseau** (fetch indisponible) -> **exit 0** (warning, nightly verte) ;
-- **dérive réelle** (fetch OK + écart > seuil) -> **exit 1** -> re-seed
-  (``scripts/preparer_seed_nasa_monthly.py``).
-
-Requiert ``KUMA_INGESTION_MODE=live`` (en offline, ``fetch_monthly_raw``
-renverrait le seed et le canari serait aveugle -> garde).
+Codes de sortie et exigence du mode ``live`` : comme ``canari_nasa_daily`` ; le
+seed se régénère par ``scripts/preparer_seed_nasa_monthly.py``.
 """
 
 from __future__ import annotations
@@ -38,7 +27,6 @@ from kuma_data_core.ingestion.nasa_power_monthly import (
     ecart_relatif_max_nasa_monthly,
 )
 
-# 34 points surveilles : 6 pilotes + 28 nouvelles communes (memes que le seed).
 LOCALITES_PILOTES: tuple[str, ...] = (
     "gin_conakry_kaloum",
     "gin_kankan",
@@ -62,8 +50,7 @@ PARAMETRES_NASA_MONTHLY: tuple[str, ...] = (
     "ALLSKY_SRF_ALB",
 )
 ANNEE_DEBUT, ANNEE_FIN = 1991, 2020
-# Seuil d'ecart relatif : 1e-3 absorbe le bruit flottant, capte un reprocessing.
-# Coherent avec les canaris daily / SARAH-3.
+# Même seuil, pour la même raison, que le canari journalier.
 SEUIL_DERIVE: float = 1e-3
 
 _ERREURS_FETCH: tuple[type[Exception], ...] = (
@@ -76,7 +63,7 @@ _ERREURS_FETCH: tuple[type[Exception], ...] = (
 
 
 def _coordonnees_tous_points() -> dict[str, tuple[float, float]]:
-    """34 points : 6 pilotes (``LOCALITES_SEED``) + 28 communes (densification)."""
+    """Coordonnées (lat, lon) des points surveillés."""
     index = {e["code"]: e for e in LOCALITES_SEED}
     coords: dict[str, tuple[float, float]] = {
         c: (float(index[c]["latitude"]), float(index[c]["longitude"])) for c in LOCALITES_PILOTES
@@ -88,7 +75,7 @@ def _coordonnees_tous_points() -> dict[str, tuple[float, float]]:
 
 
 def executer_canari(*, httpx_client: httpx.Client | None = None) -> int:
-    """Exécute le canari NASA monthly. Retourne le code de sortie (0 OK/blip, 1 dérive)."""
+    """Exécute le canari ; rend le code de sortie (0 : pas de dérive, 1 : dérive)."""
     if mode_ingestion() == MODE_OFFLINE:
         raise RuntimeError(
             "Le canari requiert KUMA_INGESTION_MODE=live (compare le fetch reel au seed)."

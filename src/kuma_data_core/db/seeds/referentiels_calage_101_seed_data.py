@@ -1,4 +1,4 @@
-"""Seed du référentiel de calage GHI de Kankan (migration 101).
+"""Seed du référentiel de calage GHI de Kankan.
 
 Biais relatif moyen satellite moins sol par saison, mesuré au pixel
 co-localisé de la station ESMAP/WAPP de Kankan (série sol

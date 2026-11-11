@@ -1,21 +1,9 @@
-"""Modèle SQLAlchemy de la table ``grandeurs_referentiel``.
+"""Modèle SQLAlchemy de la table ``grandeurs_referentiel`` : référentiel des grandeurs.
 
-Référentiel statique des grandeurs solaires/climatiques traduites par
-Kuma (15 entrées prévues). Cité en aval par
-``series_metadonnees.grandeur_code``,
-``mesures_ressource.grandeur_code`` et
-``grandeurs_metier.grandeur_code`` via la clé naturelle
-``code`` (``UNIQUE NOT NULL``).
-
-PK ``id BIGINT IDENTITY`` + clé naturelle ``code`` : la fonction
-d'audit ``kuma_log_audit()`` (migration 005) suppose une colonne
-``id`` sur les tables auditées (cf. ``docs/conventions/01-naming.md``
-§*Audit et convention de PK pour les tables auditées*).
-
-Constantes ``FAMILLES_AUTORISEES`` et ``STRATEGIES_CALCUL_AUTORISEES``
-non encore consommées. Préparées pour la validation applicative
-(cf. ``docs/conventions/01-naming.md`` §*Catégoriels et listes
-fermées*).
+Les autres tables citent une grandeur par sa clé naturelle ``code`` (unique).
+La clé primaire reste un ``id`` numérique : la fonction d'audit
+``kuma_log_audit()`` attend cette colonne sur toute table auditée (voir
+``docs/conventions/01-naming.md``).
 """
 
 from __future__ import annotations
@@ -49,7 +37,6 @@ class GrandeurReferentiel(Base):
 
     __tablename__ = "grandeurs_referentiel"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     code: Mapped[str] = mapped_column(
         String(80),
@@ -61,7 +48,6 @@ class GrandeurReferentiel(Base):
         ),
     )
 
-    # === Métier ===
     libelle: Mapped[str] = mapped_column(
         Text,
         nullable=False,
@@ -104,11 +90,9 @@ class GrandeurReferentiel(Base):
     )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # === Soft delete ===
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     desactive_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Audit applicatif ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -134,7 +118,6 @@ class GrandeurReferentiel(Base):
         nullable=True,
     )
 
-    # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
             "famille IN ('F1', 'F2')",
@@ -154,9 +137,8 @@ class GrandeurReferentiel(Base):
             name="ck_grandeurs_referentiel_actif_desactive_coherent",
         ),
         Index("idx_grandeurs_referentiel_actif", "actif"),
-        # Commentaire de table porté sur l'ORM pour cohérence avec la
-        # migration 007 (alembic check). Le dict doit être le dernier
-        # élément du tuple __table_args__ selon la convention SQLAlchemy.
+        # ``alembic check`` compare ce commentaire de table à la base. Le dict
+        # doit rester le dernier élément de ``__table_args__``.
         {
             "comment": (
                 "Referentiel des grandeurs Kuma. 15 grandeurs traduites (1-1C) + "

@@ -1,33 +1,19 @@
-"""Ingestion daily NASA POWER → ``mesures_ressource``.
+"""Ingestion journalière NASA POWER vers ``mesures_ressource``.
 
-Consomme le client ``kuma_data_core.external.nasa_power``, transforme la
-réponse en lignes ``mesures_ressource`` versionnées, et fait l'INSERT
-bulk via SQLAlchemy.
+``ingerer_serie_daily`` ingère une série (un paramètre) par appel ;
+``ingerer_series_daily_groupe`` ingère plusieurs séries d'une même localité en
+un seul appel multi-paramètres : toutes les grandeurs viennent alors de la même
+réponse, donc de la même version amont (CERES SYN1deg + MERRA-2).
 
-Le module expose deux fonctions complémentaires :
+Les deux écartent les valeurs manquantes (``-999.0``), insèrent, puis font un
+``flush`` sans ``commit``.
 
-- ``ingerer_serie_daily`` : ingère **1 série** (1 paramètre
-  NASA POWER) en 1 appel. Utilisé par la migration 018 pour Conakry
-  GHI initial.
-
-- ``ingerer_series_daily_groupe`` : ingère **N séries** d'une
-  même localité en **1 seul appel multi-paramètres** NASA POWER.
-  Cohérence transactionnelle des N grandeurs garantie (même version
-  API, même release CERES SYN1deg + MERRA-2). La fonction 1-série est
-  préservée pour rétrocompatibilité, la multi-séries est l'extension
-  API du module.
-
-Variable d'environnement ``KUMA_SKIP_NASA_POWER_INGESTION`` (truthy)
-court-circuite l'appel réseau et retourne 0 lignes insérées (ou un
-dict vide). Utile pour CI sans accès réseau et pour les tests
-d'intégration qui préfèrent mocker le client httpx via ``httpx_client``.
-
-**Mode offline** : sous ``KUMA_INGESTION_MODE=offline``,
-``_fetch_nasa_daily_raw`` renvoie le payload NASA POWER **committé** (seed
-``nasa_power_daily_seed_data``), restreint aux paramètres et à la fenêtre
-demandés, au lieu de l'appel live -> réseau nul en CI, parse/insert inchangés
-(fidélité). Défaut ``live`` ; gating fail-safe (interdit en prod). Le seed fige
-le sous-ensemble NASA daily courant -> décomptes déterministes.
+Deux variables d'environnement évitent le réseau.
+``KUMA_SKIP_NASA_POWER_INGESTION`` (``1``, ``true`` ou ``yes``) court-circuite
+l'ingestion : aucun appel, aucune insertion. ``KUMA_INGESTION_MODE=offline``
+remplace l'appel par le payload versionné dans
+``db/seeds/nasa_power_daily_seed_data``, restreint aux paramètres et à la
+fenêtre demandés, puis validé et inséré par le même code qu'une réponse réseau.
 """
 
 from __future__ import annotations
@@ -52,16 +38,11 @@ from kuma_data_core.external.nasa_power import (
 from kuma_data_core.ingestion._mode import est_mode_offline
 
 _VARIABLE_ENV_SKIP_INGESTION: str = "KUMA_SKIP_NASA_POWER_INGESTION"
-"""Variable d'environnement court-circuitant l'ingestion réseau.
-
-Truthy values : '1', 'true', 'yes' (case-insensitive). Utile en CI ou
-quand le test d'intégration mock le client httpx en aval. La fonction
-retourne 0 quand activée.
-"""
+"""Court-circuite l'ingestion quand elle vaut ``1``, ``true`` ou ``yes`` (casse indifférente)."""
 
 
 def _ingestion_doit_etre_skip() -> bool:
-    """Lit la variable d'environnement et retourne True si elle est truthy."""
+    """Vrai si la variable de court-circuit est activée."""
     valeur = os.environ.get(_VARIABLE_ENV_SKIP_INGESTION, "").strip().lower()
     return valeur in ("1", "true", "yes")
 
@@ -71,15 +52,11 @@ def _parse_cle_date_nasa(cle: str) -> date:
     return datetime.strptime(cle, "%Y%m%d").replace(tzinfo=None).date()
 
 
-# === Chemin offline-seed (NASA daily) =====================================
-
-
 def _cle_ville_offline(latitude: float, longitude: float) -> str:
-    """Clé du seed offline NASA daily : coordonnées arrondies (4 décimales).
+    """Clé du seed hors ligne : coordonnées arrondies à 4 décimales.
 
-    Un seul payload **riche** est committé par ville (les paramètres NASA daily
-    de l'union des migrations sur la fenêtre pleine 2021-2025) ; la requête
-    effective est reconstituée par tranchage (cf. ``_trancher_payload_offline``).
+    Le seed porte un seul payload par ville ; ``_trancher_payload_offline`` en
+    extrait la requête demandée.
     """
     return f"{round(float(latitude), 4)}_{round(float(longitude), 4)}"
 
@@ -91,14 +68,12 @@ def _trancher_payload_offline(
     periode_debut: date,
     periode_fin: date,
 ) -> dict[str, Any]:
-    """Restreint le payload ville (union params, fenêtre pleine) à une requête.
+    """Restreint le payload d'une ville aux paramètres et à la fenêtre demandés.
 
-    Reproduit **exactement** ce qu'un appel live ``(parameters, periode_debut,
-    periode_fin)`` aurait renvoyé : ne conserve que les ``parameters`` demandés
-    et les clés-date (``YYYYMMDD``) comprises dans la fenêtre. Les sentinelles
-    ``-999`` sont conservées (filtrées en aval, comme en live). Les autres champs
-    du payload (geometry, header, parameters meta) sont conservés pour que
-    ``parser_reponse_nasa`` valide la structure.
+    Le résultat a la forme d'une réponse réseau : les ``-999`` sont conservés
+    (écartés en aval), ainsi que les champs hors ``properties``, dont
+    ``parser_reponse_nasa`` a besoin. Lève ``RuntimeError`` si un paramètre
+    manque au seed.
     """
     debut = periode_debut.strftime("%Y%m%d")
     fin = periode_fin.strftime("%Y%m%d")
@@ -127,10 +102,10 @@ def _charger_payload_offline(
     periode_debut: date,
     periode_fin: date,
 ) -> dict[str, Any]:
-    """Renvoie le payload NASA committé restreint à la requête (mode offline).
+    """Rend le payload versionné de la ville, restreint à la requête.
 
-    Import du seed différé (le script de préparation tourne en live avant que le
-    seed existe ; le mode live ne dépend pas du compagnon gzippé).
+    L'import du seed est différé : le script qui prépare le seed doit pouvoir
+    charger ce module avant que le seed existe.
     """
     from kuma_data_core.db.seeds.nasa_power_daily_seed_data import NASA_DAILY_PAYLOADS
 
@@ -159,13 +134,7 @@ def _fetch_nasa_daily_raw(
     periode_fin: date,
     httpx_client: httpx.Client | None,
 ) -> dict[str, Any]:
-    """Renvoie le payload NASA daily brut : seed committé (offline) ou live.
-
-    Seam offline-seed (patron SARAH-3) : sous ``KUMA_INGESTION_MODE=offline``
-    (gating fail-safe, interdit en prod), renvoie le payload committé restreint à
-    la requête, sans réseau. Sinon, appel live ``fetch_daily_raw``. Le parse
-    (``parser_reponse_nasa``) est commun aux deux chemins -> fidélité.
-    """
+    """Rend le payload journalier brut : seed versionné en mode hors ligne, appel réseau sinon."""
     if est_mode_offline():
         return _charger_payload_offline(
             latitude=latitude,
@@ -190,14 +159,12 @@ def ecart_relatif_max_nasa_daily(
     *,
     derniere_date_stable: date,
 ) -> float:
-    """Écart relatif max entre payload live et seed, sur la FENÊTRE STABLE (canari).
+    """Écart relatif maximal entre un payload réseau et le seed, sur les dates stables.
 
-    Canari maturation-aware : NASA POWER NRT mûrit, donc la
-    queue récente change légitimement. On ne compare donc que les dates
-    ``<= derniere_date_stable`` (mûries au moment de la capture du seed), excluant
-    la queue maturante. Les paires sentinelles (``-999``) sont ignorées (on ne
-    juge que la donnée réelle). Renvoie le max de ``|live - seed| / max(|seed|,
-    eps)``, ``0.0`` si rien de comparable.
+    Les valeurs récentes de NASA POWER sont provisoires et révisées par la suite :
+    seules les dates ``<= derniere_date_stable`` sont comparées. Les valeurs
+    manquantes (``-999``) sont ignorées. Rend le maximum de
+    ``|live - seed| / max(|seed|, 1e-9)``, ``0.0`` si rien n'est comparable.
     """
     fin = derniere_date_stable.strftime("%Y%m%d")
     seed_params = payload_seed["properties"]["parameter"]
@@ -230,39 +197,15 @@ def ingerer_serie_daily(
 ) -> int:
     """Ingère les mesures journalières d'une série NASA POWER dans ``mesures_ressource``.
 
-    Args:
-        session : session SQLAlchemy active. La fonction add+flush mais ne
-            commit pas (responsabilité du caller).
-        code_serie : code naturel de la série dans ``series_metadonnees``
-            (ex. ``gin_conakry_ghi_nasa_power_2021_2025``). Doit exister
-            sinon ``RuntimeError``.
-        parametre_nasa : code NASA POWER à ingérer (ex.
-            ``ALLSKY_SFC_SW_DWN`` pour GHI).
-        latitude, longitude : coordonnées WGS84 du point de mesure.
-        periode_debut, periode_fin : bornes inclusives (dates).
-        httpx_client : client httpx injectable pour tests via
-            ``httpx.MockTransport``. Si None, un client temporaire est
-            créé par ``fetch_daily``.
-
-    Returns:
-        Nombre de lignes effectivement insérées dans ``mesures_ressource``
-        (= nombre de jours retournés par NASA POWER moins les sentinelles
-        ``-999.0`` filtrées).
-
-        Retourne ``0`` si la variable d'env
-        ``KUMA_SKIP_NASA_POWER_INGESTION`` est truthy (court-circuit
-        sans appel réseau ni INSERT).
-
-    Raises:
-        RuntimeError : si ``code_serie`` n'existe pas dans
-            ``series_metadonnees``.
-        kuma_data_core.exceptions.NasaPowerError : remontée du client
-            si l'appel API échoue.
+    ``periode_debut`` et ``periode_fin`` sont incluses. Rend le nombre de lignes
+    insérées (jours reçus moins les valeurs manquantes), 0 si l'ingestion est
+    court-circuitée. Lève ``RuntimeError`` si ``code_serie`` est absent de
+    ``series_metadonnees`` ou si ``parametre_nasa`` manque à la réponse ; les
+    erreurs du client (``NasaPowerError``) sont propagées.
     """
     if _ingestion_doit_etre_skip():
         return 0
 
-    # Récupération du contexte série + source en une seule requête JOIN
     row = session.execute(
         text(
             """
@@ -294,8 +237,6 @@ def ingerer_serie_daily(
         fiabilite_source=fiabilite_source,
     )
 
-    # Payload NASA POWER brut : seed committé (offline) ou appel live, puis
-    # parse commun (seam offline-seed, fidélité). Client httpx injectable.
     payload = _fetch_nasa_daily_raw(
         latitude=latitude,
         longitude=longitude,
@@ -306,7 +247,6 @@ def ingerer_serie_daily(
     )
     response = parser_reponse_nasa(payload)
 
-    # Extraction des valeurs (clé date -> valeur)
     if parametre_nasa not in response.properties.parameter:
         raise RuntimeError(
             f"Paramètre {parametre_nasa!r} absent du payload NASA POWER. "
@@ -314,7 +254,6 @@ def ingerer_serie_daily(
         )
     valeurs_par_cle: dict[str, float] = response.properties.parameter[parametre_nasa]
 
-    # Filtrage des sentinelles + construction des lignes à insérer
     lignes_a_inserer: list[dict[str, object]] = []
     for cle_date, valeur in valeurs_par_cle.items():
         if valeur == SENTINELLE_VALEUR_MANQUANTE:
@@ -325,16 +264,14 @@ def ingerer_serie_daily(
                 "instant_mesure": _parse_cle_date_nasa(cle_date),
                 "valeur": float(valeur),
                 "niveau_confiance_derive": niveau_derive,
-                # statut, valide_du, valide_au, cree_le, modifie_le
-                # laissés aux server_defaults (statut='brut',
-                # valide_du=now(), valide_au=NULL, etc.)
             }
         )
 
     if not lignes_a_inserer:
         return 0
 
-    # Bulk INSERT en SQL brut pour exploiter les server_defaults
+    # SQL brut : les colonnes omises (statut, valide_du, valide_au, cree_le,
+    # modifie_le) prennent leur valeur par défaut côté serveur.
     session.execute(
         text(
             """
@@ -361,50 +298,17 @@ def ingerer_series_daily_groupe(
     periode_fin: date,
     httpx_client: httpx.Client | None = None,
 ) -> dict[str, int]:
-    """Ingère N séries d'une même localité en 1 appel NASA POWER multi-paramètres.
+    """Ingère plusieurs séries d'une même localité en un seul appel multi-paramètres.
 
-    Élargissement Conakry à toutes grandeurs brutes.
-    Économie réseau (1 appel pour N grandeurs) + cohérence transactionnelle
-    (même version API, même release CERES SYN1deg + MERRA-2 pour les N
-    valeurs ingérées).
+    ``mapping_grandeur_parametre_nasa`` associe à chaque ``grandeur_code`` des
+    séries son paramètre NASA POWER (par exemple ``{"dni": "ALLSKY_SFC_SW_DNI"}``).
+    Les coordonnées sont celles passées en argument, pas celles des séries.
 
-    Args:
-        session : session SQLAlchemy active. La fonction add+flush mais ne
-            commit pas (responsabilité du caller).
-        codes_series : codes naturels des séries dans
-            ``series_metadonnees`` (ex. ``['gin_conakry_dni_nasa_power_2021_2025',
-            'gin_conakry_dhi_*', 'gin_conakry_t2m_*', 'gin_conakry_rh2m_*']``).
-            Toutes doivent exister sinon ``RuntimeError``. Toutes doivent
-            partager la même localité (latitude/longitude fournies en
-            arguments, pas re-déduites de la série).
-        mapping_grandeur_parametre_nasa : pour chaque grandeur_code d'une
-            série, le paramètre NASA POWER correspondant. Ex.
-            ``{'dni': 'ALLSKY_SFC_SW_DNI', 'dhi': 'ALLSKY_SFC_SW_DIFF',
-            't2m': 'T2M', 'rh2m': 'RH2M'}``. Chaque grandeur_code des
-            séries en argument doit avoir une entrée dans le mapping.
-        latitude, longitude : coordonnées WGS84 du point unique de mesure
-            (commun aux N séries de la même localité).
-        periode_debut, periode_fin : bornes inclusives (dates).
-        httpx_client : client httpx injectable pour tests via
-            ``httpx.MockTransport``. Si None, un client temporaire est
-            créé par ``fetch_daily``.
-
-    Returns:
-        dict[str, int] : pour chaque code de série en entrée, le nombre de
-        lignes effectivement insérées dans ``mesures_ressource`` (= nombre
-        de jours retournés moins sentinelles ``-999.0`` filtrées).
-
-        Retourne un dict vide ``{}`` si la variable d'env
-        ``KUMA_SKIP_NASA_POWER_INGESTION`` est truthy (court-circuit
-        sans appel réseau ni INSERT).
-
-    Raises:
-        RuntimeError : si une série de ``codes_series`` n'existe pas, ou
-            si une grandeur_code de série n'a pas d'entrée dans
-            ``mapping_grandeur_parametre_nasa``, ou si un paramètre
-            attendu est absent de la réponse NASA POWER.
-        kuma_data_core.exceptions.NasaPowerError : remontée du client
-            si l'appel API échoue.
+    Rend le nombre de lignes insérées par code de série, ``{}`` si l'ingestion
+    est court-circuitée ou si ``codes_series`` est vide. Lève ``RuntimeError`` si
+    une série est introuvable, si une grandeur n'a pas de paramètre associé ou si
+    un paramètre manque à la réponse ; les erreurs du client (``NasaPowerError``)
+    sont propagées.
     """
     if _ingestion_doit_etre_skip():
         return {}
@@ -412,8 +316,6 @@ def ingerer_series_daily_groupe(
     if not codes_series:
         return {}
 
-    # Récupération du contexte série + source + grandeur pour les N séries
-    # en une seule requête JOIN.
     rows = session.execute(
         text(
             """
@@ -439,7 +341,6 @@ def ingerer_series_daily_groupe(
             f"{sorted(codes_manquants)}. Vérifier le seed (migration 019)."
         )
 
-    # Vérification que chaque grandeur_code a son paramètre NASA POWER mappé.
     grandeurs_manquantes = {r.grandeur_code for r in rows} - set(mapping_grandeur_parametre_nasa)
     if grandeurs_manquantes:
         raise RuntimeError(
@@ -448,10 +349,7 @@ def ingerer_series_daily_groupe(
             f"mapping_grandeur_parametre_nasa."
         )
 
-    # Construction du contexte par série (id, grandeur, niveau dérivé).
-    # Toutes les séries partagent la même methode_collecte / fiabilite_source
-    # en pratique (toutes NASA POWER modele_satellitaire), mais on calcule
-    # le niveau série par série pour ne pas l'assumer en dur.
+    # Le niveau est calculé série par série plutôt que supposé commun.
     contexte_par_grandeur: dict[str, dict[str, object]] = {}
     for row in rows:
         niveau_derive = calculer_niveau_confiance_derive(
@@ -464,7 +362,6 @@ def ingerer_series_daily_groupe(
             "niveau_derive": niveau_derive,
         }
 
-    # 1 seul appel NASA POWER avec tous les paramètres demandés.
     parametres_demandes = sorted(
         {mapping_grandeur_parametre_nasa[g] for g in contexte_par_grandeur}
     )
@@ -478,7 +375,6 @@ def ingerer_series_daily_groupe(
     )
     response = parser_reponse_nasa(payload)
 
-    # Pour chaque grandeur, extraction + filtrage sentinelles + lignes prêtes.
     lignes_a_inserer: list[dict[str, object]] = []
     decompte_par_serie: dict[str, int] = {
         ctx["code_serie"]: 0  # type: ignore[misc]

@@ -1,42 +1,31 @@
-"""Données de seed pour la densification préfectorale (migration 085).
+"""Données de seed des 33 préfectures de Guinée et de leurs communes chefs-lieux.
 
-Référentiel administratif complet des **33 préfectures de Guinée** (la zone
-spéciale de Conakry n'est pas une préfecture : elle a des communes directement,
-hors périmètre densification). Source des codes 3-lettres : décret guinéen de
-codification administrative 2025. Coordonnées : chef-lieu (ville éponyme),
-Wikidata P625 recoupée GeoNames/OSM, compilation 2026-06-20 (recherche par
-région, recoupement par point, vérification superviseur des 3 corrections).
+La zone spéciale de Conakry n'est pas une préfecture et n'est pas traitée ici.
+Codes à 3 lettres : décret guinéen de codification administrative de 2025.
+Coordonnées du chef-lieu : Wikidata (P625) recoupée avec GeoNames et OSM,
+compilation du 2026-06-20.
 
-Modélisation tranchée : chaque préfecture porte DEUX nœuds localités :
+Chaque préfecture donne deux localités de mêmes coordonnées :
 
-* un nœud ``prefecture`` ``gin_<slug>_prefecture`` (parent = région), qui porte
-  le ``code_administratif_national`` du décret et les coordonnées du chef-lieu
-  (comme les régions) ;
-* une commune chef-lieu ``gin_<slug>`` (parent = la préfecture), **point
-  d'ingestion solaire uniforme**, mêmes coordonnées.
+* un nœud ``prefecture`` ``gin_<slug>_prefecture`` (parent : la région), qui
+  porte le ``code_administratif_national`` ;
+* une commune chef-lieu ``gin_<slug>`` (parent : la préfecture), point
+  d'ingestion solaire.
 
-Pour les **5 préfectures dont le chef-lieu est une capitale régionale déjà
-ingérée** (Kankan, Kindia, Labé, Mamou, Nzérékoré - migration 011), seul le
-nœud préfecture est créé ; la commune existante est **re-parentée** de la
-région vers la préfecture (``REPARENTAGES``), coordonnées verrouillées inchangées.
+Pour les 5 préfectures dont le chef-lieu est une capitale régionale déjà
+présente (Kankan, Kindia, Labé, Mamou, Nzérékoré), seul le nœud préfecture est
+créé ; la commune existante change de parent, de la région vers la préfecture
+(``REPARENTAGES``).
 
-Démographie : **NULL** pour tous les nouveaux nœuds (``population_estimee``
-et ``annee_population`` toutes deux nulles). Les chiffres ville disponibles
-mélangent les périmètres (ville / sous-préfecture / préfecture) et les années
-(RGPH-3 2014 brut / extrapolations 2016 / RGPH-4 2025 préliminaire) : un seed à
-périmètre incohérent serait un passif de qualité silencieux. La démographie sera
-sourcée plus tard, homogène, sur le rapport INS RGPH primaire. Les 5 communes
-existantes conservent leur démographie sourcée (inchangée).
+La démographie des nouveaux nœuds est laissée à NULL : les chiffres disponibles
+mélangent les périmètres (ville, sous-préfecture, préfecture) et les années
+(RGPH-3 2014, extrapolations 2016, RGPH-4 2025 préliminaire).
 
-Codes communes en collision (décision B, pas d'harmonisation) : les régions
-``gin_boke`` et ``gin_faranah`` portent déjà le code ``gin_<slug>`` sans suffixe
-``_region`` (asymétrie héritée : Boké et Faranah n'étaient pas des villes
-pilotes). Plutôt que de re-signifier ces codes existants région -> commune
-(anti-pattern : un identifiant ne change pas de sens en silence), les deux
-communes chef-lieu en collision prennent le suffixe ``_centre``
-(``gin_boke_centre``, ``gin_faranah_centre``), calqué sur la convention INS
-« X-Centre » des communes urbaines. Additif, zéro mutation, zéro re-signification.
-Les 26 autres communes neuves gardent ``gin_<slug>``.
+Les régions ``gin_boke`` et ``gin_faranah`` portent déjà le code ``gin_<slug>``,
+sans suffixe ``_region``. Pour ne pas changer le sens d'un identifiant existant,
+leurs communes chefs-lieux prennent le suffixe ``_centre`` (``gin_boke_centre``,
+``gin_faranah_centre``), d'après la convention INS « X-Centre » des communes
+urbaines.
 """
 
 from __future__ import annotations
@@ -44,9 +33,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-# Codes des régions parentes tels qu'existants en base (migration 011 ; AUCUN
-# renommage). Boke et Faranah n'ont pas le suffixe _region (asymétrie héritée :
-# pas des villes pilotes) ; on ne les renomme PAS (gestion _centre plus bas).
+# Codes des régions parentes tels qu'ils existent en base. Boké et Faranah n'ont
+# pas le suffixe ``_region`` et ne sont pas renommées.
 _R_BOKE = "gin_boke"
 _R_FARANAH = "gin_faranah"
 _R_KINDIA = "gin_kindia_region"
@@ -56,13 +44,12 @@ _R_KANKAN = "gin_kankan_region"
 _R_NZEREKORE = "gin_nzerekore_region"
 
 
-# Descripteur par préfecture (source de vérité auditable, une ligne par
-# préfecture, 33 au total). ``existante`` = code de la commune chef-lieu déjà
-# seedée (migration 011) à re-parenter, ou ``None`` si nouvelle commune à créer.
-# ``lat`` / ``lon`` = coordonnées chef-lieu retenues (deg. décimaux). ``coord``
-# = traçabilité de la coordonnée (Q-ID Wikidata + recoupement, flags inclus).
+# Une ligne par préfecture. ``existante`` : code de la commune chef-lieu déjà
+# présente, à rattacher à la préfecture, ou ``None`` si la commune est à créer.
+# ``lat`` / ``lon`` : coordonnées du chef-lieu en degrés décimaux. ``coord`` :
+# origine de la coordonnée (identifiant Wikidata et recoupement).
 PREFECTURES_GUINEE: list[dict[str, Any]] = [
-    # ===== Région de Boké (5) =====
+    # Région de Boké (5)
     {
         "slug": "boffa",
         "nom": "Boffa",
@@ -116,7 +103,7 @@ PREFECTURES_GUINEE: list[dict[str, Any]] = [
         "existante": None,
         "coord": "Wikidata Q985374 (P625, arrondie) = GeoNames 2418596.",
     },
-    # ===== Région de Faranah (4) =====
+    # Région de Faranah (4)
     {
         "slug": "dabola",
         "nom": "Dabola",
@@ -157,7 +144,7 @@ PREFECTURES_GUINEE: list[dict[str, Any]] = [
         "existante": None,
         "coord": "Wikidata Q1358885 (P625) ; recoupee GeoNames 2419472 (0,17 km).",
     },
-    # ===== Région de Kindia (5 : 4 nouvelles + Kindia existante) =====
+    # Région de Kindia (5 : 4 nouvelles + Kindia existante)
     {
         "slug": "coyah",
         "nom": "Coyah",
@@ -216,7 +203,7 @@ PREFECTURES_GUINEE: list[dict[str, Any]] = [
         "existante": "gin_kindia",
         "coord": "Chef-lieu deja ingere (migration 011, Wikidata Q997057) ; coordonnees verrouillees.",
     },
-    # ===== Région de Mamou (3 : 2 nouvelles + Mamou existante) =====
+    # Région de Mamou (3 : 2 nouvelles + Mamou existante)
     {
         "slug": "dalaba",
         "nom": "Dalaba",
@@ -247,7 +234,7 @@ PREFECTURES_GUINEE: list[dict[str, Any]] = [
         "existante": "gin_mamou",
         "coord": "Chef-lieu deja ingere (migration 011, Wikidata Q644131) ; coordonnees verrouillees.",
     },
-    # ===== Région de Labé (5 : 4 nouvelles + Labé existante) =====
+    # Région de Labé (5 : 4 nouvelles + Labé existante)
     {
         "slug": "koubia",
         "nom": "Koubia",
@@ -308,7 +295,7 @@ PREFECTURES_GUINEE: list[dict[str, Any]] = [
         "existante": "gin_labe",
         "coord": "Chef-lieu deja ingere (migration 011, Wikidata Q1020384) ; coordonnees verrouillees.",
     },
-    # ===== Région de Kankan (5 : 4 nouvelles + Kankan existante) =====
+    # Région de Kankan (5 : 4 nouvelles + Kankan existante)
     {
         "slug": "kerouane",
         "nom": "Kerouane",
@@ -359,7 +346,7 @@ PREFECTURES_GUINEE: list[dict[str, Any]] = [
         "existante": "gin_kankan",
         "coord": "Chef-lieu deja ingere (migration 011, Wikidata Q874317) ; coordonnees verrouillees.",
     },
-    # ===== Région de Nzérékoré (6 : 5 nouvelles + Nzérékoré existante) =====
+    # Région de Nzérékoré (6 : 5 nouvelles + Nzérékoré existante)
     {
         "slug": "beyla",
         "nom": "Beyla",
@@ -430,25 +417,20 @@ PREFECTURES_GUINEE: list[dict[str, Any]] = [
 
 
 def _commune_code(slug: str, region: str) -> str:
-    """Code de la commune chef-lieu.
-
-    Suffixe ``_centre`` si ``gin_<slug>`` entre en collision avec le code de la
-    région parente (cas Boke/Faranah, régions sans suffixe ``_region``) : on
-    n'écrase jamais ni ne re-signifie un code existant.
-    """
+    """Code de la commune chef-lieu : ``gin_<slug>``, ou ``gin_<slug>_centre`` si la région le porte."""
     base = f"gin_{slug}"
     return f"{base}_centre" if base == region else base
 
 
-# Normalisation : code commune effectif par préfecture (commune existante déjà
-# ingérée si capitale régionale, sinon code chef-lieu avec gestion de collision).
+# Code effectif de la commune : celui de la commune existante, sinon le code
+# calculé par ``_commune_code``.
 for _p in PREFECTURES_GUINEE:
     _p["commune_code"] = _p["existante"] or _commune_code(_p["slug"], _p["region"])
 del _p
 
 
 def _note_prefecture(p: dict[str, Any]) -> str:
-    """Note du nœud préfecture (code décret + traçabilité coordonnée)."""
+    """Note du nœud préfecture : code du décret et origine de la coordonnée."""
     return (
         f"Prefecture de {p['nom']}, code administratif national {p['code_admin']} "
         f"(decret guineen de codification 2025). Coordonnees du chef-lieu (Sec. 5.3), "
@@ -468,7 +450,7 @@ def _note_commune(p: dict[str, Any]) -> str:
     )
 
 
-# Nœuds préfecture à insérer (33). Parent = région (résolu en migration).
+# Nœuds préfecture à insérer. Le parent (la région) est résolu par la migration.
 PREFECTURE_NODES: list[dict[str, Any]] = [
     {
         "code": f"gin_{p['slug']}_prefecture",
@@ -489,8 +471,7 @@ PREFECTURE_NODES: list[dict[str, Any]] = [
 ]
 
 
-# Nouvelles communes chef-lieu à insérer (28). Parent = la préfecture homonyme.
-# Code = gin_<slug>, suffixe _centre pour Boke/Faranah (collision région, cf. _commune_code).
+# Nouvelles communes chefs-lieux à insérer, chacune sous la préfecture homonyme.
 NOUVELLES_COMMUNES: list[dict[str, Any]] = [
     {
         "code": p["commune_code"],
@@ -512,7 +493,7 @@ NOUVELLES_COMMUNES: list[dict[str, Any]] = [
 ]
 
 
-# Re-parentage des 5 communes capitales régionales existantes (région -> préfecture).
+# Communes existantes à rattacher à leur préfecture.
 REPARENTAGES: list[dict[str, str]] = [
     {"commune": p["existante"], "prefecture": f"gin_{p['slug']}_prefecture"}
     for p in PREFECTURES_GUINEE
@@ -520,7 +501,7 @@ REPARENTAGES: list[dict[str, str]] = [
 ]
 
 
-# === Garde-fous de cohérence (exécutés à l'import) ===
+# Contrôles de cohérence exécutés à l'import.
 
 assert len(PREFECTURES_GUINEE) == 33, f"Attendu 33 prefectures, obtenu {len(PREFECTURES_GUINEE)}"
 assert len(PREFECTURE_NODES) == 33, f"Attendu 33 noeuds prefecture, obtenu {len(PREFECTURE_NODES)}"
@@ -529,20 +510,20 @@ assert len(NOUVELLES_COMMUNES) == 28, (
 )
 assert len(REPARENTAGES) == 5, f"Attendu 5 re-parentages, obtenu {len(REPARENTAGES)}"
 
-# Codes décret uniques et conformes au format CHECK ^[A-Z]{3}$.
+# Codes du décret uniques et conformes au CHECK ``^[A-Z]{3}$``.
 _codes_admin = [p["code_admin"] for p in PREFECTURES_GUINEE]
 assert len(set(_codes_admin)) == 33, "Codes administratifs decret dupliques"
 for _ca in _codes_admin:
     assert len(_ca) == 3 and _ca.isupper() and _ca.isalpha(), f"Code decret invalide : {_ca!r}"
 
-# Codes localités uniques (33 préfectures + 28 communes) et conformes ^[a-z][a-z0-9_]*$.
+# Codes de localité uniques et conformes au CHECK ``^[a-z][a-z0-9_]*$``.
 _tous_codes = [n["code"] for n in PREFECTURE_NODES] + [c["code"] for c in NOUVELLES_COMMUNES]
 assert len(set(_tous_codes)) == len(_tous_codes), "Codes localites dupliques dans le seed"
 _motif = re.compile(r"^[a-z][a-z0-9_]*$")
 for _code in _tous_codes:
     assert _motif.match(_code), f"Code localite non conforme au CHECK : {_code!r}"
 
-# Décision B : Boke/Faranah en collision sont suffixées _centre, jamais re-signifiées.
+# Boké et Faranah, en collision avec leur région, prennent le suffixe ``_centre``.
 _codes_communes = {c["code"] for c in NOUVELLES_COMMUNES}
 assert {"gin_boke_centre", "gin_faranah_centre"} <= _codes_communes, (
     "Communes en collision Boke/Faranah doivent etre suffixees _centre"

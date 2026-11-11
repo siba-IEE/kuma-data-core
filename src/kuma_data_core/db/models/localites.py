@@ -1,59 +1,19 @@
-"""Modèle SQLAlchemy de la table ``localites``.
+"""Modèle SQLAlchemy de la table ``localites`` : référentiel géographique hiérarchique.
 
-Référentiel des localités géographiques utilisées dans Kuma Data Core.
-Couvre 7 niveaux hiérarchiques : ``continent``, ``region_supranationale``,
-``pays``, ``region_administrative``, ``prefecture``, ``commune``, ``site``.
+Sept niveaux : ``continent``, ``region_supranationale``, ``pays``,
+``region_administrative``, ``prefecture``, ``commune``, ``site``. La matrice
+parent-enfant est validée par le trigger PL/pgSQL
+``valider_hierarchie_localites()``, défini en migration et absent de ce modèle ;
+il ne détecte pas les cycles. Une commune peut avoir pour parent une
+``region_administrative`` : c'est le cas à Conakry, qui n'a pas de préfecture.
 
-Validation hiérarchique en deux étages
---------------------------------------
-* Migration 003 : CHECK simple - un ``continent`` ne peut pas avoir de
-  ``parent_id`` (c'est une racine de la hiérarchie).
-* Migration 084 (densification préfectorale) : trigger PL/pgSQL
-  ``valider_hierarchie_localites()`` (``BEFORE INSERT OR UPDATE``,
-  ``SECURITY DEFINER``) qui valide la matrice parent-enfant des 7 types.
-  **Clôture la dette du trigger 007** (resté « à venir » de la 003 à la 083).
-  Détection de boucles ``WITH RECURSIVE`` non incluse (différée : le seed
-  n'a pas de cycle). Exception Conakry : ``commune.parent`` peut être une
-  ``region_administrative`` (région spéciale sans préfecture).
+Convention de ``code`` : slug ASCII pour un continent ou une région
+supranationale (``afrique``, ``uemoa``), code ISO 3166-1 alpha-3 en minuscules
+pour un pays (``gin``), ``<code_pays>_<slug>`` en dessous (``gin_conakry``). La
+cohérence entre ``code`` et ``pays_iso3`` n'est pas contrainte en base.
 
-Convention pour le ``code``
----------------------------
-* ``continent`` / ``region_supranationale`` : slug ASCII
-  (``afrique``, ``uemoa``).
-* ``pays`` : code ISO 3166-1 alpha-3 en minuscule
-  (``gin``, ``sen``, ``mar``).
-* ``region_administrative`` / ``commune`` / ``site`` :
-  ``<code_pays>_<slug>`` (``gin_conakry``, ``gin_souapiti``,
-  ``mar_noor_ouarzazate``).
-
-La cohérence stricte ``code='gin'`` ⇒ ``pays_iso3='GIN'`` n'est pas
-contrainte en base (regex CHECK insuffisamment expressive). Validation
-applicative.
-
-Internationalisation différée
-------------------------------
-Le champ ``nom_local`` du brief v1 a été supprimé : Kuma publie
-exclusivement en français. Si une i18n devient nécessaire, une table
-``localites_traductions`` sera créée.
-
-Précision géographique
-----------------------
-``Numeric(11, 8)`` pour la latitude, ``Numeric(12, 8)`` pour la
-longitude. 8 décimales = 1 mm de précision à l'équateur (niveau
-levés professionnels). Bornes vérifiées par CHECK
-(``[-90, 90]`` / ``[-180, 180]``).
-
-Format ``fuseau_horaire``
--------------------------
-IANA Time Zone Database (par exemple ``Africa/Conakry``,
-``Africa/Casablanca``, ``Europe/Paris``). Pas de CHECK : la liste
-IANA évolue.
-
-FK ``localite_id`` sur ``contributeurs``
-----------------------------------------
-Reportée en migration 005 dédiée. Une migration = un changement
-logique : la 003 crée la table ``localites``, la 005 ajoutera la FK
-inverse.
+Les coordonnées ont 8 décimales (environ 1 mm à l'équateur). ``fuseau_horaire``
+suit la base IANA (``Africa/Conakry``), sans CHECK car la liste évolue.
 """
 
 from __future__ import annotations
@@ -86,11 +46,9 @@ class Localite(Base):
 
     __tablename__ = "localites"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     code: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
 
-    # === Métier ===
     nom: Mapped[str] = mapped_column(Text, nullable=False)
     type_localite: Mapped[str] = mapped_column(
         String(50),
@@ -106,7 +64,7 @@ class Localite(Base):
         ForeignKey("localites.id", name="fk_localites_parent_id__localites"),
         nullable=True,
     )
-    # Code administratif officiel externe (decret guineen 2025, 3 lettres, ex. CKY).
+    # Code administratif national officiel (décret guinéen de 2025, 3 lettres, ex. CKY).
     code_administratif_national: Mapped[str | None] = mapped_column(
         String(8),
         nullable=True,
@@ -117,25 +75,20 @@ class Localite(Base):
         ),
     )
 
-    # === Géographie ===
     pays_iso3: Mapped[str | None] = mapped_column(String(3), nullable=True)
     latitude: Mapped[Decimal | None] = mapped_column(Numeric(11, 8), nullable=True)
     longitude: Mapped[Decimal | None] = mapped_column(Numeric(12, 8), nullable=True)
     altitude_metres: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # === Démographie ===
     population_estimee: Mapped[int | None] = mapped_column(Integer, nullable=True)
     annee_population: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
-    # === Métadonnées ===
     fuseau_horaire: Mapped[str | None] = mapped_column(String(50), nullable=True)
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # === Soft delete ===
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     desactive_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Audit applicatif ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -153,7 +106,6 @@ class Localite(Base):
         nullable=True,
     )
 
-    # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
             "type_localite IN ("

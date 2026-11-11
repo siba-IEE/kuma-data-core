@@ -1,16 +1,11 @@
-"""Seed du domaine de couverture initial du calage GHI Kankan (migration 102).
+"""Domaine de couverture initial du calage GHI de Kankan.
 
-Domaine initial arrete par le fondateur le 2026-07-20 : la region
-administrative de Kankan, soit les 5 communes points d'ingestion des
-prefectures (Kankan, Kerouane, Kouroussa, Mandiana, Siguiri).
+Les 5 communes points d'ingestion des préfectures de la région administrative
+de Kankan (Kankan, Kérouané, Kouroussa, Mandiana, Siguiri).
 
-Justification : meme regime climatique soudanien que la station de
-reference, portee regionale du biais aerosol (guide 8), precedent de
-transport declare de l'etude publique de Tokounou (76 km, cellule de
-Kerouane). L'extension du domaine passe par la recherche
-(qualification par coherence inter-source, campagnes de mesure,
-leave-one-out quand une deuxieme station sol existera), une edition
-a la fois.
+Justification : même régime climatique soudanien que la station de référence,
+portée régionale du biais aérosol, et précédent de transport déclaré dans
+l'étude publique de Tokounou (76 km, cellule de Kérouané).
 """
 
 from __future__ import annotations

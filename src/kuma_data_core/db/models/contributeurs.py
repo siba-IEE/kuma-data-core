@@ -1,13 +1,8 @@
 """Modèle SQLAlchemy de la table ``contributeurs``.
 
-Premier modèle de Kuma Data Core, support de toutes les autres tables
-via les colonnes d'audit ``cree_par`` et ``modifie_par`` (FK vers
-``contributeurs.id``). La table est auto-référente : la première ligne
-(seed initial inséré par la migration 001) est créée avec
-``cree_par = NULL`` et ``modifie_par = NULL``, faute d'antécédent.
-
-Note : la colonne ``localite_id`` n'apparaît pas ici. Elle sera ajoutée
-par une migration ultérieure, une fois la table ``localites`` créée.
+Les colonnes d'audit ``cree_par`` et ``modifie_par`` des autres tables pointent
+ici. La table est auto-référente : son premier contributeur a ``cree_par`` et
+``modifie_par`` à NULL, faute d'antécédent.
 """
 
 from __future__ import annotations
@@ -39,20 +34,16 @@ class Contributeur(Base):
 
     __tablename__ = "contributeurs"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     code: Mapped[str] = mapped_column(String(100), nullable=False, unique=True)
 
-    # === Identité ===
     nom_complet: Mapped[str] = mapped_column(Text, nullable=False)
     nom_court: Mapped[str | None] = mapped_column(Text, nullable=True)
     email_principal: Mapped[str] = mapped_column(Text, nullable=False, unique=True)
 
-    # === Type et statut ===
     type_contributeur: Mapped[str] = mapped_column(String(50), nullable=False)
     statut: Mapped[str] = mapped_column(String(50), nullable=False)
 
-    # === Profil ===
     biographie: Mapped[str | None] = mapped_column(Text, nullable=True)
     affiliation_principale: Mapped[str | None] = mapped_column(Text, nullable=True)
     pays_iso3: Mapped[str | None] = mapped_column(String(3), nullable=True)
@@ -60,16 +51,13 @@ class Contributeur(Base):
     orcid: Mapped[str | None] = mapped_column(String(19), nullable=True)
     domaines_expertise: Mapped[list[str] | None] = mapped_column(ARRAY(Text()), nullable=True)
 
-    # === Engagement ===
     date_premier_engagement: Mapped[date | None] = mapped_column(Date, nullable=True)
     date_dernier_engagement: Mapped[date | None] = mapped_column(Date, nullable=True)
     notes_internes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # === Soft delete ===
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     desactive_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Audit applicatif (FK auto-référentes) ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -87,7 +75,6 @@ class Contributeur(Base):
         nullable=True,
     )
 
-    # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
             "type_contributeur IN ("

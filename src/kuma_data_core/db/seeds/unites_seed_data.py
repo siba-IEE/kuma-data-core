@@ -1,22 +1,17 @@
-"""Données de seed exhaustif de la table ``unites`` (153 unités).
+"""Données de seed de la table ``unites`` (153 unités).
 
-Issue d'une session de validation rigoureuse contre 20+ organismes
-normatifs internationaux : BIPM, AIE, ONU, NIST, IUPAC, IEC, DIN, ISO,
-WMO, NASA, IRENA, IPCC, GHG Protocol, UAI, UNECE, API, OPEP, BCRG,
+Valeurs vérifiées auprès des organismes normatifs : BIPM, AIE, ONU, NIST, IUPAC,
+IEC, DIN, ISO, WMO, NASA, IRENA, IPCC, GHG Protocol, UAI, UNECE, API, OPEP, BCRG,
 BCEAO, BEAC, IHO, ICAO.
 
-Chaque entrée est un dictionnaire prêt pour ``op.bulk_insert``.
-Les colonnes non incluses dans les dictionnaires (``actif``,
-``cree_le``, ``modifie_le``) sont laissées à leurs ``server_default``
-PostgreSQL. ``cree_par`` et ``modifie_par`` restent ``NULL`` :
-les unités primordiales n'ont pas d'antécédent humain (seedées par la
-migration 002 elle-même), de la même manière que le contributeur
-génétique de la migration 001.
+Chaque entrée est un dictionnaire prêt pour ``op.bulk_insert``. ``actif``,
+``cree_le`` et ``modifie_le`` prennent leur valeur par défaut côté serveur ;
+``cree_par`` et ``modifie_par`` restent NULL.
 
-Ordre stratégique du seed (préservé dans ``UNITES_SEED``) :
+Ordre de ``UNITES_SEED`` :
 
   1. Unités SI fondamentales (5 SI de base + multiples décimaux).
-  2. Énergie (cœur de Kuma).
+  2. Énergie.
   3. Puissance et puissance-crête PV.
   4. Solaire (irradiance et irradiation).
   5. Électricité avancée.
@@ -24,8 +19,8 @@ Ordre stratégique du seed (préservé dans ``UNITES_SEED``) :
   7. Carbone.
   8. Pouvoir calorifique.
   9. Auxiliaires (sans dimension).
- 10. Coût unitaire de l'énergie - GNF prioritaire (signal éditorial).
- 11. CAPEX (cout_investissement_capacite) - GNF prioritaire.
+ 10. Coût unitaire de l'énergie, GNF en tête.
+ 11. CAPEX (cout_investissement_capacite), GNF en tête.
 """
 
 from __future__ import annotations
@@ -33,13 +28,11 @@ from __future__ import annotations
 from decimal import Decimal
 from typing import Any
 
-# Alias court pour préserver la lisibilité des facteurs.
+# Alias court, pour la lisibilité des facteurs.
 D = Decimal
 
 
-# =============================================================================
 # SECTION 1 - Grandeurs SI fondamentales (18 unités)
-# =============================================================================
 
 # 1.1 - Temps (5 unités)
 TEMPS_UNITS: list[dict[str, Any]] = [
@@ -334,12 +327,10 @@ SI_FONDAMENTALES_UNITS: list[dict[str, Any]] = (
 assert len(SI_FONDAMENTALES_UNITS) == 18
 
 
-# =============================================================================
 # SECTION 2 - Énergie (29 unités)
-# =============================================================================
 
 ENERGIE_UNITS: list[dict[str, Any]] = [
-    # --- Joules et préfixes SI (7) ---
+    # Joules et préfixes SI (7)
     {
         "code": "joule",
         "libelle": "joule",
@@ -437,7 +428,7 @@ ENERGIE_UNITS: list[dict[str, Any]] = [
             "IEA World Energy Balances",
         ],
     },
-    # --- Watt-heures et préfixes (5) ---
+    # Watt-heures et préfixes (5)
     {
         "code": "wattheure",
         "libelle": "wattheure",
@@ -503,7 +494,7 @@ ENERGIE_UNITS: list[dict[str, Any]] = [
         "note_methodologique": "Multiple du wattheure (10¹²). Utilisé pour les bilans énergétiques nationaux et continentaux.",
         "references_normatives": ["BIPM SI Brochure 9ème édition (2019)", "IEC 60050"],
     },
-    # --- tep (3) ---
+    # tep (3)
     {
         "code": "tonne_equivalent_petrole",
         "libelle": "tonne équivalent pétrole",
@@ -546,7 +537,7 @@ ENERGIE_UNITS: list[dict[str, Any]] = [
         "note_methodologique": "Multiple de la tep (10⁶). Utilisé pour les bilans énergétiques continentaux.",
         "references_normatives": ["IEA World Energy Balances"],
     },
-    # --- tec (3) ---
+    # tec (3)
     {
         "code": "tonne_equivalent_charbon",
         "libelle": "tonne équivalent charbon",
@@ -586,7 +577,7 @@ ENERGIE_UNITS: list[dict[str, Any]] = [
         "note_methodologique": "Multiple de la tec (10⁶).",
         "references_normatives": ["ONU Energy Statistics Yearbook"],
     },
-    # --- Calories (4) ---
+    # Calories (4)
     {
         "code": "calorie_internationale",
         "libelle": "calorie internationale",
@@ -644,7 +635,7 @@ ENERGIE_UNITS: list[dict[str, Any]] = [
         "note_methodologique": 'Multiple de la calorie thermochimique (10³). Souvent utilisée en nutrition ("Calorie alimentaire" ≡ kcal_th).',
         "references_normatives": ["NIST SP 811", "IUPAC Gold Book"],
     },
-    # --- BTU (4) ---
+    # BTU (4)
     {
         "code": "btu_internationale",
         "libelle": "British Thermal Unit internationale",
@@ -697,18 +688,16 @@ ENERGIE_UNITS: list[dict[str, Any]] = [
         "grandeur": "energie",
         "systeme": "imperial",
         "est_unite_de_base": False,
-        # Correction métrologique : 1 quad = 10^15 BTU_IT × 1055,05585262 J/BTU_IT
-        # = 1,05505585262 × 10^18 J. Le document additionnel mentionnait par erreur
-        # 1.05505585262e15 (oubli du facteur 1000 du BTU vers le joule).
-        # Sanity check : consommation USA 100 quad/an ≈ 100 EJ/an, cohérent avec
-        # les bilans EIA/AIE.
+        # 1 quad = 10^15 BTU_IT × 1055,05585262 J/BTU_IT = 1,05505585262 × 10^18 J
+        # (et non 10^15 : le facteur 1000 du BTU vers le joule compte). Contrôle :
+        # la consommation des États-Unis, environ 100 quad/an, vaut environ 100 EJ/an.
         "facteur_conversion_si": D("1.05505585262E18"),
         "decalage_conversion_si": D("0"),
         "code_unite_si": "joule",
         "note_methodologique": "Quadrillion BTU = 10¹⁵ BTU_IT = 1,05505585262 × 10¹⁸ J exactement. Utilisé par EIA pour les bilans énergétiques américains (consommation USA 100 quad/an, soit 100 EJ/an). Note de transcription Kuma : la valeur 1,05505585262 × 10¹⁵ qui apparaît parfois dans la littérature confond le BTU lui-même (10³ J) avec le joule.",
         "references_normatives": ["EIA Annual Energy Review"],
     },
-    # --- Électronvolts (3) - précision Numeric(60,30) requise ---
+    # Électronvolts (3) - précision Numeric(60,30) requise
     {
         "code": "electronvolt",
         "libelle": "électronvolt",
@@ -756,9 +745,7 @@ ENERGIE_UNITS: list[dict[str, Any]] = [
 assert len(ENERGIE_UNITS) == 29
 
 
-# =============================================================================
 # SECTION 3 - Puissance (8) + Puissance crête PV (4) = 12 unités
-# =============================================================================
 
 PUISSANCE_UNITS: list[dict[str, Any]] = [
     {
@@ -934,9 +921,7 @@ PUISSANCE_TOTAL_UNITS: list[dict[str, Any]] = PUISSANCE_UNITS + PUISSANCE_CRETE_
 assert len(PUISSANCE_TOTAL_UNITS) == 12
 
 
-# =============================================================================
 # SECTION 4 - Solaire (5 unités)
-# =============================================================================
 
 IRRADIANCE_UNITS: list[dict[str, Any]] = [
     {
@@ -1033,9 +1018,7 @@ SOLAIRE_UNITS: list[dict[str, Any]] = IRRADIANCE_UNITS + IRRADIATION_UNITS
 assert len(SOLAIRE_UNITS) == 5
 
 
-# =============================================================================
 # SECTION 5 - Électricité avancée (19 unités)
-# =============================================================================
 
 TENSION_UNITS: list[dict[str, Any]] = [
     {
@@ -1313,9 +1296,7 @@ ELECTRICITE_AVANCEE_UNITS: list[dict[str, Any]] = (
 assert len(ELECTRICITE_AVANCEE_UNITS) == 19
 
 
-# =============================================================================
 # SECTION 6 - Mécanique (23 unités)
-# =============================================================================
 
 SURFACE_UNITS: list[dict[str, Any]] = [
     {
@@ -1703,9 +1684,7 @@ MECANIQUE_UNITS: list[dict[str, Any]] = (
 assert len(MECANIQUE_UNITS) == 23
 
 
-# =============================================================================
 # SECTION 7 - Carbone (10 unités)
-# =============================================================================
 
 MASSE_CO2_UNITS: list[dict[str, Any]] = [
     {
@@ -1877,9 +1856,7 @@ CARBONE_UNITS: list[dict[str, Any]] = (
 assert len(CARBONE_UNITS) == 10
 
 
-# =============================================================================
 # SECTION 8 - Pouvoir calorifique (5 unités) - Convention PCI
-# =============================================================================
 
 POUVOIR_CALORIFIQUE_UNITS: list[dict[str, Any]] = [
     {
@@ -1967,9 +1944,7 @@ POUVOIR_CALORIFIQUE_UNITS: list[dict[str, Any]] = [
 assert len(POUVOIR_CALORIFIQUE_UNITS) == 5
 
 
-# =============================================================================
 # SECTION 9 - Auxiliaires : sans dimension (2 unités)
-# =============================================================================
 
 SANS_DIMENSION_UNITS: list[dict[str, Any]] = [
     {
@@ -2008,12 +1983,10 @@ SANS_DIMENSION_UNITS: list[dict[str, Any]] = [
 assert len(SANS_DIMENSION_UNITS) == 2
 
 
-# =============================================================================
 # SECTION 10 - Coût unitaire de l'énergie (12 unités) - GNF prioritaire
-# =============================================================================
 
 COUT_UNITAIRE_ENERGIE_UNITS: list[dict[str, Any]] = [
-    # 1. GNF prioritaire (signal éditorial Kuma)
+    # 1. GNF
     {
         "code": "gnf_par_kwh",
         "libelle": "franc guinéen par kilowattheure",
@@ -2192,9 +2165,7 @@ COUT_UNITAIRE_ENERGIE_UNITS: list[dict[str, Any]] = [
 assert len(COUT_UNITAIRE_ENERGIE_UNITS) == 12
 
 
-# =============================================================================
 # SECTION 11 - CAPEX par capacité (18 unités) - Famille A (par kW) + Famille B (par Wc)
-# =============================================================================
 
 CAPEX_FAMILLE_A_UNITS: list[dict[str, Any]] = [
     {
@@ -2451,9 +2422,7 @@ CAPEX_UNITS: list[dict[str, Any]] = CAPEX_FAMILLE_A_UNITS + CAPEX_FAMILLE_B_UNIT
 assert len(CAPEX_UNITS) == 18
 
 
-# =============================================================================
 # Concaténation finale dans l'ordre stratégique
-# =============================================================================
 
 UNITES_SEED: list[dict[str, Any]] = (
     SI_FONDAMENTALES_UNITS  # 18

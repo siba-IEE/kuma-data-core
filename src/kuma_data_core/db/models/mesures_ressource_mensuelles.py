@@ -1,33 +1,8 @@
-"""Modèle SQLAlchemy de la table ``mesures_ressource_mensuelles``.
+"""Modèle SQLAlchemy de la table ``mesures_ressource_mensuelles`` : mesures mensuelles ingérées.
 
-Table dédiée aux mesures ressource **mensuelles** ingérées depuis sources
-externes. Pendant symétrique de ``mesures_ressource``
-(strictement journalier) pour la granularité mensuelle -
-préservation stricte de « journalier comme produit éditorial fini ».
-
-Identité métier : 3-uplet ``(serie_id, annee, mois)`` avec versioning
-temporel ``tstzrange(valide_du, valide_au)`` + EXCLUDE BTree-GiST.
-Séparation explicite ``annee SMALLINT`` + ``mois SMALLINT`` (cohérent
-avec ``grandeurs_metier`` qui sépare ``annee_debut/annee_fin/mois``)
-plutôt que ``periode_debut DATE`` au 1er du mois (qui introduirait une
-ambiguïté sémantique pour le consommateur SQL/API).
-
-Superpose les 4 mécaniques structurantes :
-
-- Statut éditorial 5 valeurs.
-- Versioning temporel ``valide_du``/``valide_au`` TIMESTAMPTZ +
-  EXCLUDE BTree-GiST.
-- Niveau de confiance A/B/C dérivé par règles R1-R4 + override éditorial
-  avec justification obligatoire.
-- Identité métier 3-uplet via ``serie_id`` (FK vers
-  ``series_metadonnees`` qui porte le triplet ``localite_id,
-  grandeur_code, source_id`` + ``methode_collecte``).
-
-Helper SQLAlchemy :
-
-- ``@hybrid_property niveau_effectif`` : renvoie l'override si non NULL,
-  sinon le dérive (cohérent avec ``mesures_ressource`` et
-  ``grandeurs_metier``).
+Identité métier : ``(serie_id, annee, mois)``. L'année et le mois sont deux
+colonnes plutôt qu'une date au premier du mois, qui laisserait croire à une
+mesure datée de ce jour. Même versionnement que ``mesures_ressource``.
 """
 
 from __future__ import annotations
@@ -60,10 +35,8 @@ class MesureRessourceMensuelle(Base):
 
     __tablename__ = "mesures_ressource_mensuelles"
 
-    # === Identifiant ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
 
-    # === Identité métier (3-uplet serie_id + annee + mois) ===
     serie_id: Mapped[int] = mapped_column(
         BigInteger,
         ForeignKey(
@@ -76,30 +49,24 @@ class MesureRessourceMensuelle(Base):
     annee: Mapped[int] = mapped_column(SmallInteger, nullable=False)
     mois: Mapped[int] = mapped_column(SmallInteger, nullable=False)
 
-    # === Valeur ===
     valeur: Mapped[float] = mapped_column(Float(precision=53), nullable=False)
 
-    # === Versioning temporel ===
     valide_du: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     valide_au: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Statut éditorial ===
     statut: Mapped[str] = mapped_column(
         String(16),
         nullable=False,
         server_default=text("'brut'"),
     )
 
-    # === Niveau de confiance ===
     niveau_confiance_derive: Mapped[str] = mapped_column(String(1), nullable=False)
     niveau_confiance_override: Mapped[str | None] = mapped_column(String(1), nullable=True)
 
-    # === Commentaire éditorial ===
     commentaire_editorial: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # === Audit applicatif ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -125,24 +92,21 @@ class MesureRessourceMensuelle(Base):
         nullable=True,
     )
 
-    # === Relations ===
     serie: Mapped[SerieMetadonnees] = relationship(
         SerieMetadonnees,
         lazy="select",
         foreign_keys=[serie_id],
     )
 
-    # === Hybrid properties ===
     @hybrid_property
     def niveau_effectif(self) -> str:
-        """Renvoie ``niveau_confiance_override`` si non NULL, sinon ``niveau_confiance_derive``."""
+        """Niveau de confiance à utiliser : l'override s'il existe, sinon le niveau dérivé."""
         return (
             self.niveau_confiance_override
             if self.niveau_confiance_override is not None
             else self.niveau_confiance_derive
         )
 
-    # === Contraintes et index ===
     __table_args__ = (
         CheckConstraint(
             "annee BETWEEN 1981 AND 2099",
@@ -168,7 +132,7 @@ class MesureRessourceMensuelle(Base):
             "valide_au IS NULL OR valide_au > valide_du",
             name="ck_mesures_ressource_mensuelles_periode_coherente",
         ),
-        # Index partiel sur lignes courantes (usage dominant en lecture)
+        # Index partiel sur les lignes courantes, les plus lues.
         Index(
             "idx_mesures_ressource_mensuelles_courantes",
             "serie_id",

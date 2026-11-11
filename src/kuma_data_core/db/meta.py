@@ -1,37 +1,28 @@
-"""Base de service ``kuma_api_meta`` : modèle et provisioning (ADR-0003, WP6).
+"""Base de service ``kuma_api_meta`` : modèles et création des tables (ADR-0003).
 
-La table ``cles_api`` est un **état du serveur**, pas une donnée
-éditoriale : elle vit dans la base de service ``kuma_api_meta``,
-persistante à travers les bascules d'édition (D1), et **hors lignée
-Alembic** (D3) - ``alembic check`` garantit l'alignement modèles <-> base
-de référence, une table absente de la référence casserait cet invariant.
-D'où la ``BaseMeta`` déclarative distincte : ``Base.metadata`` de
-référence ne voit jamais ``cles_api``, et le manifeste de publication
-n'a rien à en dire (elle n'existe pas côté édition).
+``cles_api`` est un état du serveur, pas une donnée éditoriale : elle vit dans
+une base distincte, qui persiste à travers les bascules d'édition, et hors de
+la lignée Alembic. D'où une ``BaseMeta`` déclarative séparée : ``alembic check``
+compare ``Base.metadata`` à la base de référence, où ces tables n'existent pas.
 
-Les clés ne sont **jamais stockées en clair** : seule l'empreinte
-SHA-256 est persistée, plus un préfixe non secret (``kuma_xxxxxxxx``)
-qui sert d'identifiant public pour la révocation.
+Les clés ne sont jamais stockées en clair : seule l'empreinte SHA-256 est
+persistée, avec un préfixe non secret (``kuma_xxxxxxxx``) qui sert
+d'identifiant public pour la révocation.
 
-La table ``licences_solclim`` vit à côté : une clé API, qu'elle vienne du
-self-service ou non, n'ouvre pas SolClim-3 à elle seule. Il faut qu'une
-licence lui soit accordée par l'administrateur ; c'est elle qui donne
-droit au bail signé de ``POST /v1/licence/bail``. Retirer la licence ôte
-SolClim-3 sans toucher à la clé ; révoquer la clé coupe tout.
+``licences_solclim`` : une clé API n'ouvre pas SolClim-3 à elle seule, il faut
+qu'une licence lui soit accordée ; c'est elle qui donne droit au bail signé de
+``POST /v1/licence/bail``. Retirer la licence ôte SolClim-3 sans toucher à la
+clé ; révoquer la clé coupe tout.
 
-La table ``contributions_etudes`` reçoit les fiches d'études que les
-utilisateurs de SolClim-3 partagent (ADR-0006) : une fiche par étude et par
-clé, remplacée à chaque envoi, retirée à la demande. Son schéma ne nomme
-pas les modules : la fiche est un document JSON validé à l'entrée, si bien
-qu'un module de plus n'exige aucune modification de table (``create_all``
-ne migre pas une table existante).
+``contributions_etudes`` (ADR-0006) : une fiche par étude et par clé, remplacée
+à chaque envoi. La fiche est un document JSON validé à l'entrée, si bien qu'un
+nouveau module n'exige aucune modification de table (``create_all`` ne migre
+pas une table existante).
 
-Provisioning : ``python -m kuma_data_core.db.meta`` crée les tables
-(idempotent, ``create_all`` : une table déjà présente n'est pas touchée,
-une table nouvelle est créée) dans la base désignée par ``META_DB``. À
-exécuter avec le rôle administrateur après ``provisionner-serveur.sh``
-(qui crée la base et les rôles, et pose les default privileges pour
-``kuma_api_service``).
+``python -m kuma_data_core.db.meta`` crée les tables absentes dans la base
+désignée par ``META_DB``, sans toucher aux tables présentes. À exécuter avec le
+rôle administrateur, après ``provisionner-serveur.sh`` qui crée la base et les
+rôles.
 """
 
 from __future__ import annotations
@@ -66,7 +57,6 @@ class CleApi(BaseMeta):
 
     __tablename__ = "cles_api"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     # Empreinte SHA-256 (hex, 64 caractères) de la clé complète.
     cle_hash: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
@@ -75,23 +65,19 @@ class CleApi(BaseMeta):
     # théorie (collision possible), la révocation opère par préfixe.
     prefixe: Mapped[str] = mapped_column(String(16), nullable=False)
 
-    # === Titulaire ===
     email: Mapped[str] = mapped_column(Text, nullable=False)
     usage_prevu: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # Adresse IP au moment de l'émission : support de la limite
-    # d'émission par IP (seule surface d'écriture publique, D2).
+    # Adresse IP à l'émission : support de la limite d'émission par IP.
     adresse_ip_creation: Mapped[str] = mapped_column(String(64), nullable=False)
 
-    # === Quotas (consommés par le rate limiting, WP7) ===
     quota_journalier: Mapped[int] = mapped_column(
         Integer, nullable=False, server_default=text("5000")
     )
 
-    # === Soft delete (révocation) ===
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     desactive_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Traçabilité (pas d'audit par triggers ici : base de service) ===
+    # Pas d'audit par triggers : base de service.
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -113,7 +99,6 @@ class LicenceSolclim(BaseMeta):
 
     __tablename__ = "licences_solclim"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     cle_api_id: Mapped[int] = mapped_column(
         BigInteger,
@@ -121,25 +106,21 @@ class LicenceSolclim(BaseMeta):
         nullable=False,
     )
 
-    # === Titulaire ===
     # La personne qui utilise le logiciel, et son organisation : c'est ce
     # que le bail porte et ce que le rapport pourra citer.
     titulaire: Mapped[str] = mapped_column(Text, nullable=False)
     organisation: Mapped[str | None] = mapped_column(Text, nullable=True)
     notes_internes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
-    # === Terme ===
     # Fin de la licence ; ``None`` = sans terme. Le bail ne dépasse jamais
     # cette date, quelle que soit sa durée nominale.
     expire_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     # Dernier bail émis : dit qui se sert du logiciel, sans journal de plus.
     dernier_bail_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Soft delete (retrait de la licence) ===
     actif: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("TRUE"))
     desactive_le: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # === Traçabilité (pas d'audit par triggers ici : base de service) ===
     cree_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -167,7 +148,6 @@ class ContributionEtude(BaseMeta):
 
     __tablename__ = "contributions_etudes"
 
-    # === Identifiants ===
     id: Mapped[int] = mapped_column(BigInteger, Identity(start=1, increment=1), primary_key=True)
     # La clé qui a déposé la fiche : la source de la donnée. Elle ne sort
     # jamais de cette base.
@@ -181,13 +161,11 @@ class ContributionEtude(BaseMeta):
     # fiches de son auteur.
     etude_uid: Mapped[str] = mapped_column(String(36), nullable=False)
 
-    # === La fiche ===
     module: Mapped[str] = mapped_column(String(32), nullable=False)
     format_fiche: Mapped[str] = mapped_column(String(32), nullable=False)
     version_logiciel: Mapped[str] = mapped_column(String(32), nullable=False)
     fiche: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
-    # === Traçabilité ===
     recue_le: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
