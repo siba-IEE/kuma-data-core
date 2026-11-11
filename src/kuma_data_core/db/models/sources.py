@@ -55,9 +55,9 @@ class Source(Base):
         nullable=False,
         unique=True,
         comment=(
-            "Identifiant court unique. Convention : <organisme>_<theme>[_<annee>]. "
-            "Ex: irena_lcoe_2024, bcrg_rapport_annuel_2023, iso_50001_2018. "
-            "Pour les publications recurrentes, inclure l'annee."
+            "Identifiant court unique. Convention : <organisme>_<theme>[_<annee>], ex. "
+            "ecmwf_era5_land, cams_radiation, wmo_8_2024. Pour les publications récurrentes ou "
+            "éditées, inclure l'année."
         ),
     )
 
@@ -68,11 +68,10 @@ class Source(Base):
         String(50),
         nullable=False,
         comment=(
-            "11 valeurs autorisees : rapport, article_scientifique, texte_legal, "
-            "communique, page_web, base_donnees, livre, chapitre_livre, these, "
-            "norme_technique (10 valeurs documentaires externes initiales, "
-            "migration 004) + auteur_kuma (couche editoriale interne Kuma, "
-            "introduite en 1-5D-i pour la source synthetique kuma_calculs)."
+            "11 valeurs autorisées : rapport, article_scientifique, texte_legal, communique, "
+            "page_web, base_donnees, livre, chapitre_livre, these, norme_technique (sources "
+            "documentaires externes) et auteur_kuma (couche éditoriale interne, source "
+            "kuma_calculs)."
         ),
     )
 
@@ -105,8 +104,9 @@ class Source(Base):
         String(20),
         nullable=True,
         comment=(
-            "Qualification editoriale Kuma (3 niveaux). "
-            "Voir docs/architecture/04-api.md pour le mapping editorial complet."
+            "Qualification éditoriale Kuma de la source : haute, moyenne ou faible. Elle entre "
+            "dans le niveau de confiance dérivé : voir "
+            "https://github.com/siba-IEE/kuma-data-core/blob/main/docs/contribution/confiance-et-statuts.md"
         ),
     )
     langue: Mapped[str | None] = mapped_column(

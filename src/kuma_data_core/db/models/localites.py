@@ -55,8 +55,9 @@ class Localite(Base):
         nullable=False,
         comment=(
             "7 valeurs : continent, region_supranationale, pays, region_administrative, "
-            "prefecture, commune, site. prefecture ajoutee en densification prefectorale "
-            "Etape 1 (niveau pays > region > prefecture > commune)."
+            "prefecture, commune, site. En Guinée : pays, région administrative, préfecture, "
+            "commune ; les communes de Conakry sont rattachées directement à leur région "
+            "administrative."
         ),
     )
     parent_id: Mapped[int | None] = mapped_column(

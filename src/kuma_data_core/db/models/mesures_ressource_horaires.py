@@ -134,14 +134,14 @@ class MesureRessourceHoraire(Base):
         ),
         {
             "comment": (
-                "Mesures horaires ingerees depuis sources externes (NASA POWER, "
-                "Vague 3). Pendant horaire de mesures_ressource (journalier) et "
-                "mesures_ressource_mensuelles (mensuel). instant_mesure en "
-                "TIMESTAMPTZ (UTC) pour le controle qualite horaire (position "
-                "solaire sans ambiguite de fuseau). Versioning temporel par "
-                "(valide_du, valide_au) + EXCLUDE BTree-GiST sur identite metier "
-                "(serie_id, instant_mesure). Statut editorial et niveau de "
-                "confiance derive/override par couche service editoriale."
+                "Mesures horaires ingérées depuis les sources externes : modèle satellitaire "
+                "NASA POWER et mesures au sol de la campagne ESMAP/WAPP. Pendant horaire de "
+                "mesures_ressource (journalier) et de mesures_ressource_mensuelles (mensuel). "
+                "instant_mesure en TIMESTAMPTZ (UTC) pour le contrôle qualité horaire (position"
+                " solaire sans ambiguïté de fuseau). Versionnement temporel par (valide_du, "
+                "valide_au) et contrainte EXCLUDE BTree-GiST sur l'identité métier (serie_id, "
+                "instant_mesure). Statut éditorial et niveau de confiance dérivé ou forcé par "
+                "la couche de service éditoriale."
             ),
         },
     )

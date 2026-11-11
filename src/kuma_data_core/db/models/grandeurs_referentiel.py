@@ -43,8 +43,9 @@ class GrandeurReferentiel(Base):
         nullable=False,
         unique=True,
         comment=(
-            "Cle naturelle metier (ASCII pur, snake_case, citee par les FK aval). "
-            "Cf. 01-naming.md section Codes metier des referentiels."
+            "Clé naturelle métier (ASCII pur, snake_case, citée par les clés étrangères des "
+            "tables aval). Convention : section « Codes métier des référentiels » de "
+            "https://github.com/siba-IEE/kuma-data-core/blob/main/docs/conventions/01-naming.md"
         ),
     )
 
@@ -141,10 +142,12 @@ class GrandeurReferentiel(Base):
         # doit rester le dernier élément de ``__table_args__``.
         {
             "comment": (
-                "Referentiel des grandeurs Kuma. 15 grandeurs traduites (1-1C) + "
-                "5 grandeurs brutes ingerees (1-2b) = 20 entrees post-1-2b. "
-                "Le lieu de stockage physique d'une F1 stockee est determine par "
-                "series_metadonnees.methode_collecte (cadrage Q7 v1.3)."
+                "Référentiel des grandeurs Kuma : grandeurs brutes ingérées et grandeurs "
+                "calculées par Kuma. La table qui porte les valeurs d'une série dépend de sa "
+                "source et de sa granularité (series_metadonnees.granularite) : "
+                "grandeurs_metier pour les séries de la source kuma_calculs, sinon "
+                "mesures_ressource (journalier), mesures_ressource_mensuelles (mensuel) ou "
+                "mesures_ressource_horaires (horaire)."
             ),
         },
     )

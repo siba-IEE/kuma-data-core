@@ -46,9 +46,10 @@ class SerieMetadonnees(Base):
         nullable=False,
         unique=True,
         comment=(
-            "Cle naturelle metier (ASCII pur, snake_case). "
-            "Convention : <localite>_<grandeur>_<source>[_<periode>] "
-            "ex. gin_conakry_hep_nasa_power_2010_2024."
+            "Clé naturelle métier (ASCII pur, snake_case). Convention : "
+            "<localite>_<grandeur>_<source>[_<granularite>]_<periode>, ex. "
+            "gin_conakry_hep_kuma_calculs_2021_2025. Voir "
+            "https://github.com/siba-IEE/kuma-data-core/blob/main/docs/conventions/01-naming.md"
         ),
     )
     libelle: Mapped[str] = mapped_column(Text, nullable=False)
@@ -99,11 +100,11 @@ class SerieMetadonnees(Base):
         String(16),
         nullable=True,
         comment=(
-            "Discriminant de granularite temporelle pour le routage "
-            "table-cible (journalier/mensuel/horaire). NULL pour les series "
-            "kuma_calculs (routees par source vers grandeurs_metier ; "
-            "temporalite portee par grandeurs_metier.periode_type). "
-            "Resout D-36 (Vague 3 lot 1)."
+            "Discriminant de granularité temporelle, qui désigne la table des mesures de la "
+            "série : journalier (mesures_ressource), mensuel (mesures_ressource_mensuelles) ou "
+            "horaire (mesures_ressource_horaires). NULL pour les séries de la source "
+            "kuma_calculs, dont les valeurs sont dans grandeurs_metier et la temporalité dans "
+            "grandeurs_metier.periode_type."
         ),
     )
 
@@ -111,9 +112,11 @@ class SerieMetadonnees(Base):
         String(40),
         nullable=True,
         comment=(
-            "Methode dominante de collecte de la serie. "
-            "Liste indicative des 6 valeurs en spec mecaniques-transverses sec. 6.4. "
-            "CHECK formel pose en 1-2b."
+            "Méthode dominante de collecte de la série : mesure_directe, modele_satellitaire, "
+            "interpolation_geographique, extrapolation_temporelle, calcul_derive ou "
+            "expertise_humaine (contrainte CHECK, NULL admis). Elle entre dans le niveau de "
+            "confiance dérivé : voir "
+            "https://github.com/siba-IEE/kuma-data-core/blob/main/docs/contribution/confiance-et-statuts.md"
         ),
     )
     methode_collecte_doc: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -198,9 +201,9 @@ class SerieMetadonnees(Base):
         # doit rester le dernier élément de ``__table_args__``.
         {
             "comment": (
-                "Referentiel editorial des series de mesures Kuma. "
-                "Une serie = un triplet (localite, grandeur, source) "
-                "avec ses metadonnees editoriales communes."
+                "Référentiel éditorial des séries de mesures Kuma. Une série est identifiée par"
+                " sa localité, sa grandeur, sa source, sa période et sa granularité ; elle "
+                "porte les métadonnées éditoriales communes à ses mesures."
             ),
         },
     )

@@ -112,10 +112,9 @@ class Unite(Base):
         # doit rester le dernier élément de ``__table_args__``.
         {
             "comment": (
-                "Référentiel des unités de mesure de Kuma Data Core. "
-                "153 unités sur 30 grandeurs, validées contre 20+ organismes "
-                "normatifs internationaux (BIPM, AIE, ONU, NIST, IUPAC, IEC, "
-                "DIN, ISO, IPCC, IRENA, UNECE, etc.)."
+                "Référentiel des unités de mesure de Kuma Data Core, avec leur conversion vers "
+                "le Système international et leurs références normatives (BIPM, AIE, ONU, NIST, "
+                "IUPAC, IEC, DIN, ISO, IPCC, IRENA, UNECE, etc.)."
             ),
         },
     )

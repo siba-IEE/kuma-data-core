@@ -142,13 +142,12 @@ class MesureRessourceMensuelle(Base):
         ),
         {
             "comment": (
-                "Mesures mensuelles ingerees depuis sources externes "
-                "(SARAH-3 ICDR + NASA POWER 1991-2020, etape 1-7a). Pendant "
-                "mensuel de mesures_ressource (journalier strict, cadrage "
-                "Q2 phase 1). Versioning temporel par (valide_du, "
-                "valide_au) + EXCLUDE BTree-GiST sur identite metier "
-                "(serie_id, annee, mois). Statut editorial et niveau de "
-                "confiance derive/override par couche service editoriale."
+                "Mesures mensuelles ingérées depuis les sources externes (NASA POWER, SARAH-3 "
+                "via PVGIS, CAMS Radiation, ERA5-Land). Pendant mensuel de mesures_ressource "
+                "(journalier). Versionnement temporel par (valide_du, valide_au) et contrainte "
+                "EXCLUDE BTree-GiST sur l'identité métier (serie_id, annee, mois). Statut "
+                "éditorial et niveau de confiance dérivé ou forcé par la couche de service "
+                "éditoriale."
             ),
         },
     )
