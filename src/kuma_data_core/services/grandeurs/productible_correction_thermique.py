@@ -45,13 +45,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Literal, TypedDict
+from typing import Literal, Protocol, TypedDict
 
-from kuma_data_core.api.v1.schemas.grandeurs import (
-    ParametresProductibleCorrectionThermique,
-    ResultatJournalier,
-)
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+from kuma_data_core.services.grandeurs.types import ResultatJournalier
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables."""
@@ -74,6 +71,19 @@ TEMPERATURE_NOCT_REFERENCE_DEGC: float = 20.0
 
 IRRADIANCE_NOCT_REFERENCE_W_PAR_M2: float = 800.0
 """Irradiance de référence du test NOCT (W/m², Ross 1980)."""
+
+
+class ParametresCalculThermique(Protocol):
+    """Grandeurs physiques que lit le calcul thermique : module et puissance du système."""
+
+    @property
+    def noct_degc(self) -> float: ...
+
+    @property
+    def coeff_temp_pourcent_par_degc(self) -> float: ...  # gamma_Pmax, négatif
+
+    @property
+    def puissance_stc_wc(self) -> float: ...
 
 
 class MesureJourThermique(TypedDict):
@@ -113,7 +123,7 @@ def _temperature_cellule_noct(
 
 def _productible_jour(
     mesure: MesureJourThermique,
-    parametres: ParametresProductibleCorrectionThermique,
+    parametres: ParametresCalculThermique,
 ) -> float:
     """Productible journalier (kWh) avec correction thermique, borné à 0.
 
@@ -145,7 +155,7 @@ def _productible_jour(
 
 def calculer_productible_correction_thermique(
     mesures: Sequence[MesureJourThermique],
-    parametres: ParametresProductibleCorrectionThermique,
+    parametres: ParametresCalculThermique,
 ) -> list[ResultatJournalier]:
     """Productible PV journalier (kWh) avec correction thermique NOCT (Ross 1980).
 
@@ -168,7 +178,7 @@ def calculer_productible_correction_thermique(
 
 def calculer_productible_correction_thermique_horaire(
     mesures: Sequence[MesureHeureThermique],
-    parametres: ParametresProductibleCorrectionThermique,
+    parametres: ParametresCalculThermique,
 ) -> list[ResultatJournalier]:
     """Productible journalier (kWh) corrigé en température, par intégration horaire.
 

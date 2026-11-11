@@ -24,8 +24,8 @@ from kuma_data_core.api.v1.schemas.horaire import (
     PlageTemporelle,
     ReponseDisponibilite,
     ReponseHoraire,
-    ResultatHoraire,
 )
+from kuma_data_core.services.horaire import ResultatHoraire
 
 pytestmark = pytest.mark.unit
 

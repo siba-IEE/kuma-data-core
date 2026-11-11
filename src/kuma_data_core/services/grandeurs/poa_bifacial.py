@@ -26,21 +26,18 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Literal, TypedDict
+from typing import Literal, Protocol, TypedDict
 
 import pandas as pd  # type: ignore[import-untyped]
 import pvlib  # type: ignore[import-untyped]
 from pvlib.bifacial import infinite_sheds  # type: ignore[import-untyped]
 
-from kuma_data_core.api.v1.schemas.grandeurs import (
-    ParametresBifacial,
-    ResultatJournalier,
-)
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
 
 # Même approche journalière que le POA mono-plan : géométrie du midi solaire
 # appliquée aux totaux du jour.
 from kuma_data_core.services.grandeurs.poa_parametrable import _midi_solaire_utc
+from kuma_data_core.services.grandeurs.types import ResultatJournalier
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables."""
@@ -51,6 +48,28 @@ UNITE_POA_BIFACIAL: str = "kWh/m²/jour"
 
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
 """Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
+
+
+class ParametresCalculBifacial(Protocol):
+    """Grandeurs physiques que lit le calcul bifacial : plan, rangées et bifacialité."""
+
+    @property
+    def inclinaison_deg(self) -> float: ...  # 0 = horizontal, 90 = vertical
+
+    @property
+    def orientation_deg(self) -> float: ...  # azimut : 0 = nord, 90 = est, 180 = sud
+
+    @property
+    def gcr(self) -> float: ...  # largeur du capteur / pas entre rangées
+
+    @property
+    def hauteur_m(self) -> float: ...  # centre de la rangée au-dessus du sol
+
+    @property
+    def pitch_m(self) -> float: ...  # pas entre rangées, même unité que la hauteur
+
+    @property
+    def bifacialite(self) -> float: ...  # rendement face arrière / face avant
 
 
 class MesureJourBifacial(TypedDict):
@@ -94,7 +113,7 @@ def _poa_global_infinite_sheds(
     albedo: pd.Series,
     latitude_deg: float,
     longitude_deg: float,
-    parametres: ParametresBifacial,
+    parametres: ParametresCalculBifacial,
 ) -> pd.Series:
     """Applique infinite-sheds et renvoie la série ``poa_global``.
 
@@ -124,7 +143,7 @@ def calculer_poa_bifacial(
     mesures: Sequence[MesureJourBifacial],
     latitude_deg: float,
     longitude_deg: float,
-    parametres: ParametresBifacial,
+    parametres: ParametresCalculBifacial,
 ) -> list[ResultatJournalier]:
     """POA bifacial journalier (kWh/m²/jour), infinite-sheds au midi solaire.
 
@@ -159,7 +178,7 @@ def calculer_poa_bifacial_horaire(
     mesures: Sequence[MesureHeureBifacial],
     latitude_deg: float,
     longitude_deg: float,
-    parametres: ParametresBifacial,
+    parametres: ParametresCalculBifacial,
 ) -> list[ResultatJournalier]:
     """POA bifacial journalier (kWh/m²/jour) par intégration horaire.
 

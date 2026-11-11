@@ -31,11 +31,6 @@ from typing import Literal, TypedDict
 
 from pydantic import BaseModel
 
-from kuma_data_core.api.v1.schemas.grandeurs import (
-    MesureJourPR,
-    MesureMoisPR,
-    ModeCorrectionPR,
-)
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance, propager_niveau_confiance
 from kuma_data_core.services.grandeurs.productible_correction_thermique import (
     TEMPERATURE_STC_DEGC,
@@ -45,6 +40,7 @@ from kuma_data_core.services.grandeurs.soiling_hsu import (
     MesureEntreeSoiling,
     calculer_taux_salissure_proxy,
 )
+from kuma_data_core.services.grandeurs.types import MesureJourPR, MesureMoisPR, ModeCorrectionPR
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Plafond de confiance : modèle thermique, proxy de salissure et PR fourni par l'utilisateur."""

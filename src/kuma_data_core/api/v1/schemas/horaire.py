@@ -7,10 +7,12 @@ validation (``passe_plat_non_valide``).
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
+
+from kuma_data_core.services.horaire import ResultatHoraire
 
 GRANDEURS_AUTORISEES: tuple[str, ...] = (
     "ghi",
@@ -66,30 +68,6 @@ class PlageTemporelle(BaseModel):
 
     debut: date
     fin: date
-
-
-class ResultatHoraire(BaseModel):
-    """Un point horaire (24 par jour, fuseau UTC).
-
-    ``statut_editorial`` distingue les deux régimes de service :
-
-    - ``valide_auto`` : donnée horaire **stockée et validée** par le
-      contrôle qualité algorithmique Kuma (confiance B).
-    - ``passe_plat_non_valide`` : donnée relayée à la volée (passe-plat),
-      non validée éditorialement - servie en repli là où aucune donnée
-      validée ne couvre la plage demandée.
-    """
-
-    instant: datetime
-    valeur: float | None = Field(
-        default=None,
-        description=(
-            "Valeur numerique ou null si donnee manquante (sentinelle "
-            "amont ou indice physique non defini selon la grandeur)."
-        ),
-    )
-    unite: str
-    statut_editorial: Literal["valide_auto", "passe_plat_non_valide"] = "passe_plat_non_valide"
 
 
 class ReponseHoraire(BaseModel):

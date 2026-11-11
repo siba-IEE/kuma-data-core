@@ -23,9 +23,8 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
     ParametresProductibleCorrectionThermique,
     ParametresProductiblePRFourni,
     ReponseGrandeurF2,
-    ResultatJournalier,
-    ResultatMensuel,
 )
+from kuma_data_core.services.grandeurs.types import ResultatJournalier, ResultatMensuel
 
 pytestmark = pytest.mark.unit
 

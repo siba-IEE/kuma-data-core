@@ -13,6 +13,15 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field, model_validator
 
+from kuma_data_core.services.grandeurs.types import (
+    MesureJourPR,
+    MesureMoisPR,
+    MesureSoilingJour,
+    ModeCorrectionPR,
+    ResultatJournalier,
+    ResultatMensuel,
+)
+
 
 class ParametresCommunsF2(BaseModel):
     """Paramètres communs aux grandeurs F2 paramétrables.
@@ -364,47 +373,11 @@ class ReponseGhiExceedance(BaseModel):
     )
 
 
-class ResultatJournalier(BaseModel):
-    """Élément de réponse F2 à granularité journalière."""
-
-    granularite: Literal["journalier"] = "journalier"
-    instant: date
-    valeur: float
-    unite: str
-    niveau_confiance: Literal["A", "B", "C"]
-
-
-class ResultatMensuel(BaseModel):
-    """Élément de réponse F2 à granularité mensuelle (instant format YYYY-MM)."""
-
-    granularite: Literal["mensuel"] = "mensuel"
-    instant: str = Field(
-        pattern=r"^\d{4}-(0[1-9]|1[0-2])$",
-        description="Mois calendaire au format YYYY-MM.",
-    )
-    valeur: float
-    unite: str
-    niveau_confiance: Literal["A", "B", "C"]
-
-
 ResultatGrandeurF2 = Annotated[
     ResultatJournalier | ResultatMensuel,
     Field(discriminator="granularite"),
 ]
 """Résultat journalier ou mensuel, distingué par le champ ``granularite``."""
-
-
-class MesureSoilingJour(BaseModel):
-    """Perte de salissure d'un jour (proxy HSU, % de transmission perdue)."""
-
-    instant: date
-    perte_pct: float = Field(
-        ...,
-        ge=0.0,
-        le=100.0,
-        description="Perte de transmission = (1 - ratio HSU) x 100, bornee [0, 100].",
-    )
-    niveau_confiance: Literal["A", "B", "C"] = "B"
 
 
 class ReponseTauxSalissureProxy(BaseModel):
@@ -440,10 +413,6 @@ class ReponseTauxSalissureProxy(BaseModel):
     )
 
 
-ModeCorrectionPR = Literal["aucune", "temperature", "salissure", "temperature_salissure"]
-"""Modes de correction du PR réaliste (superposition thermique et/ou salissure)."""
-
-
 class ParametresPRRealiste(BaseModel):
     """Paramètres de la route ``pr_realiste`` ; la série GHI source est dans le chemin.
 
@@ -476,22 +445,6 @@ class ParametresPRRealiste(BaseModel):
             "correction inclut la température (422 sinon)."
         ),
     )
-
-
-class MesureJourPR(BaseModel):
-    """PR réaliste d'un jour (ratio sans dimension)."""
-
-    instant: date
-    pr_realiste: float
-    niveau_confiance: Literal["A", "B", "C"] = "B"
-
-
-class MesureMoisPR(BaseModel):
-    """PR réaliste moyen d'un mois (la courbe mensuelle = la 'PR saisonnière')."""
-
-    instant: str = Field(pattern=r"^\d{4}-(0[1-9]|1[0-2])$", description="Mois (YYYY-MM).")
-    pr_realiste: float
-    niveau_confiance: Literal["A", "B", "C"] = "B"
 
 
 class ReponsePRRealiste(BaseModel):

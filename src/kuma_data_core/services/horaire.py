@@ -7,9 +7,36 @@ Clés ``YYYYMMDDHH`` en ``datetime`` UTC naïf, sentinelle ``-999.0`` en
 from __future__ import annotations
 
 from datetime import date, datetime
+from typing import Literal
 
-from kuma_data_core.api.v1.schemas.horaire import ResultatHoraire
+from pydantic import BaseModel, Field
+
 from kuma_data_core.external.nasa_power import SENTINELLE_VALEUR_MANQUANTE
+
+
+class ResultatHoraire(BaseModel):
+    """Un point horaire (24 par jour, fuseau UTC).
+
+    ``statut_editorial`` distingue les deux régimes de service :
+
+    - ``valide_auto`` : donnée horaire **stockée et validée** par le
+      contrôle qualité algorithmique Kuma (confiance B).
+    - ``passe_plat_non_valide`` : donnée relayée à la volée (passe-plat),
+      non validée éditorialement - servie en repli là où aucune donnée
+      validée ne couvre la plage demandée.
+    """
+
+    instant: datetime
+    valeur: float | None = Field(
+        default=None,
+        description=(
+            "Valeur numerique ou null si donnee manquante (sentinelle "
+            "amont ou indice physique non defini selon la grandeur)."
+        ),
+    )
+    unite: str
+    statut_editorial: Literal["valide_auto", "passe_plat_non_valide"] = "passe_plat_non_valide"
+
 
 _MAPPING_GRANDEUR: dict[str, tuple[str, str]] = {
     "ghi": ("ALLSKY_SFC_SW_DWN", "Wh/m²"),

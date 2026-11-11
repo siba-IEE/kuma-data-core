@@ -29,8 +29,8 @@ import pandas as pd  # type: ignore[import-untyped]
 from pvlib import soiling  # type: ignore[import-untyped]
 from pydantic import BaseModel
 
-from kuma_data_core.api.v1.schemas.grandeurs import MesureSoilingJour
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+from kuma_data_core.services.grandeurs.types import MesureSoilingJour
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Plafond de confiance : modèle HSU, proxy de la salissure (pas une mesure)."""

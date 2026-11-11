@@ -51,8 +51,6 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
     ReponseIncertitudeInterSourceCollection,
     ReponsePRRealiste,
     ReponseTauxSalissureProxy,
-    ResultatJournalier,
-    ResultatMensuel,
 )
 from kuma_data_core.db.session import obtenir_session
 from kuma_data_core.editorial.niveaux_confiance import (
@@ -147,6 +145,7 @@ from kuma_data_core.services.grandeurs.soiling_hsu import (
 from kuma_data_core.services.grandeurs.soiling_hsu import (
     PLAFOND_CONFIANCE as PLAFOND_SALISSURE,
 )
+from kuma_data_core.services.grandeurs.types import ResultatJournalier, ResultatMensuel
 
 routeur = APIRouter(prefix="/grandeurs", tags=["grandeurs-F2"])
 

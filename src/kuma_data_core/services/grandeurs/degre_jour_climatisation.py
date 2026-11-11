@@ -38,13 +38,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Literal, TypedDict
+from typing import Literal, Protocol, TypedDict
 
-from kuma_data_core.api.v1.schemas.grandeurs import (
-    ParametresDegreJourClimatisation,
-    ResultatMensuel,
-)
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+from kuma_data_core.services.grandeurs.types import ResultatMensuel
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables."""
@@ -59,6 +56,13 @@ HEURES_PAR_JOUR: float = 24.0
 
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
 """Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
+
+
+class ParametresCalculDJC(Protocol):
+    """Grandeur physique que lit le calcul des degrés-jours : la température de base T_b."""
+
+    @property
+    def base_temperature_degc(self) -> float: ...
 
 
 class MesureJourTemperature(TypedDict):
@@ -103,7 +107,7 @@ def _agreger_djc_par_mois(
 
 def calculer_degre_jour_climatisation(
     mesures: Sequence[MesureJourTemperature],
-    parametres: ParametresDegreJourClimatisation,
+    parametres: ParametresCalculDJC,
 ) -> list[ResultatMensuel]:
     """DJC mensuels par la méthode de la moyenne journalière, en °C·j.
 
@@ -143,12 +147,12 @@ def _agreger_djc_horaire_par_mois(
 
 def calculer_degre_jour_climatisation_horaire(
     mesures: Sequence[MesureHeureTemperature],
-    parametres: ParametresDegreJourClimatisation,
+    parametres: ParametresCalculDJC,
 ) -> list[ResultatMensuel]:
     """DJC mensuels par intégration horaire, en °C·j.
 
-    ``parametres.methode`` n'est pas lu ici : l'appelant choisit la fonction et
-    fournit les heures à retenir. Le niveau de confiance ``'B'`` des résultats
+    La méthode n'est pas un paramètre du calcul : l'appelant choisit la fonction
+    et fournit les heures à retenir. Le niveau de confiance ``'B'`` des résultats
     est provisoire : la route le remplace.
     """
     djc_par_mois = _agreger_djc_horaire_par_mois(

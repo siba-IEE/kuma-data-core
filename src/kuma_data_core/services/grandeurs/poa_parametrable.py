@@ -41,16 +41,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import UTC, date, datetime, timedelta
-from typing import Literal, TypedDict
+from typing import Literal, Protocol, TypedDict
 
 import pandas as pd  # type: ignore[import-untyped]
 import pvlib  # type: ignore[import-untyped]
 
-from kuma_data_core.api.v1.schemas.grandeurs import (
-    ParametresPOA,
-    ResultatJournalier,
-)
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+from kuma_data_core.services.grandeurs.types import ResultatJournalier
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables."""
@@ -67,6 +64,19 @@ MODELE_PEREZ: Literal["perez"] = "perez"
 
 MODELE_ISOTROPE: Literal["isotropic"] = "isotropic"
 """Identifiant pvlib du modèle isotrope Liu-Jordan 1963."""
+
+
+class ParametresCalculPOA(Protocol):
+    """Grandeurs physiques que lit le calcul du POA : plan des modules et albédo du sol."""
+
+    @property
+    def inclinaison_deg(self) -> float: ...  # 0 = horizontal, 90 = vertical
+
+    @property
+    def orientation_deg(self) -> float: ...  # azimut : 0 = nord, 90 = est, 180 = sud
+
+    @property
+    def albedo_sol(self) -> float: ...  # sans dimension
 
 
 class MesureJourPOA(TypedDict):
@@ -103,7 +113,7 @@ def _calculer_poa_jour(
     mesure: MesureJourPOA,
     latitude_deg: float,
     longitude_deg: float,
-    parametres: ParametresPOA,
+    parametres: ParametresCalculPOA,
 ) -> float:
     """POA d'un jour, dans l'unité du GHI d'entrée.
 
@@ -159,7 +169,7 @@ def calculer_poa_parametrable(
     mesures: Sequence[MesureJourPOA],
     latitude_deg: float,
     longitude_deg: float,
-    parametres: ParametresPOA,
+    parametres: ParametresCalculPOA,
 ) -> list[ResultatJournalier]:
     """POA journalier (kWh/m²/jour) d'une série journalière.
 
@@ -190,7 +200,7 @@ def calculer_poa_parametrable_horaire(
     mesures: Sequence[MesureHeurePOA],
     latitude_deg: float,
     longitude_deg: float,
-    parametres: ParametresPOA,
+    parametres: ParametresCalculPOA,
 ) -> list[ResultatJournalier]:
     """POA journalier (kWh/m²/jour) par intégration horaire (Perez 1990).
 

@@ -76,7 +76,16 @@ def deposer(
                 statut_http=status.HTTP_403_FORBIDDEN,
             )
         _, cle_api = trouve
-        depot = contributions.deposer(session, cle_api, str(etude_uid), demande, maintenant)
+        depot = contributions.deposer(
+            session,
+            cle_api,
+            str(etude_uid),
+            maintenant,
+            module=demande.module,
+            format_fiche=demande.format,
+            version_logiciel=demande.fiche.logiciel.version,
+            fiche=demande.fiche.model_dump(mode="json"),
+        )
 
     response.status_code = status.HTTP_201_CREATED if depot.creee else status.HTTP_200_OK
     return ReponseContribution(

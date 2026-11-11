@@ -43,13 +43,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Literal, TypedDict
+from typing import Literal, Protocol, TypedDict
 
-from kuma_data_core.api.v1.schemas.grandeurs import (
-    ParametresProductiblePRFourni,
-    ResultatJournalier,
-    ResultatMensuel,
-)
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
 
 # Import d'une fonction privée d'un autre module : le PR_T (Dierauf 2013)
@@ -58,6 +53,7 @@ from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
 from kuma_data_core.services.grandeurs.productible_correction_thermique import (
     _temperature_cellule_noct,
 )
+from kuma_data_core.services.grandeurs.types import ResultatJournalier, ResultatMensuel
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Plafond de confiance : modèle de calcul et paramètres déclarés par l'appelant,
@@ -71,6 +67,26 @@ NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
 
 TEMPERATURE_STC_DEGC: float = 25.0
 """Température STC de référence (°C)."""
+
+
+class ParametresCalculPRFourni(Protocol):
+    """Grandeurs physiques et mode de correction que lit le calcul avec PR fourni."""
+
+    @property
+    def pr_fourni(self) -> float: ...  # sans dimension
+
+    @property
+    def correction(self) -> Literal["aucune", "temperature"]: ...
+
+    @property
+    def puissance_stc_wc(self) -> float: ...
+
+    # Les deux suivants ne sont lus qu'avec correction='temperature'.
+    @property
+    def noct_degc(self) -> float | None: ...
+
+    @property
+    def coeff_temp_pourcent_par_degc(self) -> float | None: ...  # gamma_Pmax, négatif
 
 
 class MesureJourPRFourni(TypedDict):
@@ -122,7 +138,7 @@ def _productible_brut_jour(
 
 def _productible_pr_t_jour(
     mesure: MesureJourPRFourni,
-    parametres: ParametresProductiblePRFourni,
+    parametres: ParametresCalculPRFourni,
 ) -> float:
     """Productible journalier (kWh) avec PR_T corrigé de la température (Dierauf 2013).
 
@@ -157,7 +173,7 @@ def _productible_pr_t_jour(
 
 def calculer_productible_pr_fourni(
     mesures: Sequence[MesureJourPRFourni],
-    parametres: ParametresProductiblePRFourni,
+    parametres: ParametresCalculPRFourni,
 ) -> list[ResultatJournalier]:
     """Productible journalier (kWh) avec PR fourni, brut ou corrigé de la température.
 
@@ -189,7 +205,7 @@ def calculer_productible_pr_fourni(
 
 def calculer_productible_pr_fourni_mensuel(
     mesures: Sequence[MesureMoisPRFourni],
-    parametres: ParametresProductiblePRFourni,
+    parametres: ParametresCalculPRFourni,
 ) -> list[ResultatMensuel]:
     """Productible quotidien moyen du mois (kWh par jour) sur une série climatologique.
 
@@ -227,7 +243,7 @@ def calculer_productible_pr_fourni_mensuel(
 
 def calculer_productible_pr_fourni_horaire(
     mesures: Sequence[MesureHeurePRFourni],
-    parametres: ParametresProductiblePRFourni,
+    parametres: ParametresCalculPRFourni,
 ) -> list[ResultatJournalier]:
     """Productible journalier (kWh) avec PR fourni, par intégration horaire.
 

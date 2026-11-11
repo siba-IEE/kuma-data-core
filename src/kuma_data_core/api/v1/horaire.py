@@ -36,7 +36,6 @@ from kuma_data_core.api.v1.schemas.horaire import (
     PlageTemporelle,
     ReponseDisponibilite,
     ReponseHoraire,
-    ResultatHoraire,
 )
 from kuma_data_core.core.config import get_settings
 from kuma_data_core.db.session import obtenir_session
@@ -48,6 +47,7 @@ from kuma_data_core.exceptions import (
 )
 from kuma_data_core.external.nasa_power import fetch_hourly
 from kuma_data_core.services.horaire import (
+    ResultatHoraire,
     code_parametre_amont,
     convertir_valeurs_amont_en_resultats,
     filtrer_resultats_par_plage,

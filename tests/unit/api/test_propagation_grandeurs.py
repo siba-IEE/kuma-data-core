@@ -11,8 +11,8 @@ from datetime import date
 import pytest
 
 from kuma_data_core.api.v1.grandeurs import _propager
-from kuma_data_core.api.v1.schemas.grandeurs import ResultatJournalier, ResultatMensuel
 from kuma_data_core.editorial.niveaux_confiance import NiveauxEntrees
+from kuma_data_core.services.grandeurs.types import ResultatJournalier, ResultatMensuel
 
 pytestmark = pytest.mark.unit
 

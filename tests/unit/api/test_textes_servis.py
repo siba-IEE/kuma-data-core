@@ -16,9 +16,9 @@ import pytest
 
 from kuma_data_core.api.main import app
 from kuma_data_core.api.v1 import grandeurs as routes_grandeurs
-from kuma_data_core.api.v1.schemas.grandeurs import ModeCorrectionPR
 from kuma_data_core.services.grandeurs import pr_realiste, soiling_hsu
 from kuma_data_core.services.grandeurs.ghi_exceedance import PAIRES_COLOCALISEES_D29
+from kuma_data_core.services.grandeurs.types import ModeCorrectionPR
 from tests.jargon import A_ADMETTRE, A_DETECTER, correspondances
 
 pytestmark = pytest.mark.unit
