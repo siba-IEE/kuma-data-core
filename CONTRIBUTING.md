@@ -64,6 +64,10 @@ mergée est immuable ; toute correction passe par une nouvelle migration.
   statut éditorial. La confiance A est réservée aux données validées au
   sol.
 - Pas de mise à jour destructive : versionnement temporel.
+- Le paquet est découpé en couches (`api`, `services`, `lecture`, `db`…) et
+  chaque couche n'importe que celles qui lui sont permises ; les routes ne
+  contiennent pas de SQL. Voir
+  [ADR-0009](docs/decisions/0009-couches-et-sens-des-dependances.md).
 
 ## Style
 

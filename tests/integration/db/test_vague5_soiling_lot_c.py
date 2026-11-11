@@ -2,9 +2,9 @@
 
 La grandeur ``taux_salissure_proxy`` (F1 ``calculee_volee``) ne stocke aucune serie
 ni mesure ; on verifie son referentiel + le **resolveur de pluie bi-source dedie**
-(``_chercher_serie_pluie_nasa``) qui epingle ``nasa_power`` (la pluie est une source
-differente des PM ``cams_eac4``, le helper standard ``_chercher_serie_compagne`` la
-raterait car il filtre sur ``source_id``).
+(``chercher_serie_precipitation_nasa_power``) qui epingle ``nasa_power`` (la pluie est
+une source differente des PM ``cams_eac4``, le helper standard
+``chercher_serie_compagne`` la raterait car il filtre sur ``source_id``).
 """
 
 from __future__ import annotations
@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from kuma_data_core.api.v1.grandeurs import _chercher_serie_pluie_nasa
+from kuma_data_core.lecture.series import chercher_serie_precipitation_nasa_power
 
 pytestmark = pytest.mark.integration
 
@@ -50,7 +50,7 @@ def test_resolveur_pluie_bisource_epingle_nasa_power(db_session: Session) -> Non
     # Fenetre de la serie PM EAC4 (2021-2025) : depuis le backfill journalier
     # profondeur (migration 107), Conakry porte aussi une pluie 1981-2020 ;
     # le resolveur retient celle qui recouvre la fenetre demandee.
-    serie_id = _chercher_serie_pluie_nasa(
+    serie_id = chercher_serie_precipitation_nasa_power(
         db_session, int(conakry_id), date(2021, 1, 1), date(2025, 8, 31)
     )
     assert serie_id is not None
@@ -74,6 +74,8 @@ def test_resolveur_pluie_none_si_absente(db_session: Session) -> None:
     declenche le 400 ``INCOMPATIBILITE_SOURCE_GRANDEUR`` cote endpoint."""
     gin_id = db_session.execute(text("SELECT id FROM localites WHERE code = 'gin'")).scalar_one()
     assert (
-        _chercher_serie_pluie_nasa(db_session, int(gin_id), date(2021, 1, 1), date(2025, 8, 31))
+        chercher_serie_precipitation_nasa_power(
+            db_session, int(gin_id), date(2021, 1, 1), date(2025, 8, 31)
+        )
         is None
     )

@@ -249,6 +249,18 @@ def test_ti67_detail_serie_sarah3_mensuel(client: TestClient, headers_auth: dict
         assert "mois" in m
 
 
+def test_detail_serie_mensuelle_anterieure_a_1991(
+    client: TestClient, headers_auth: dict[str, str]
+) -> None:
+    """Une série mensuelle qui remonte avant 1991 se lit : la base admet les mois depuis 1981."""
+    response = client.get(
+        "/v1/series/gin_kankan_t2m_nasa_power_mensuel_1981_2025?limit=12",
+        headers=headers_auth,
+    )
+    assert response.status_code == 200
+    assert {m["annee"] for m in response.json()["mesures"]} == {1981}
+
+
 def test_ti68_detail_format_csv(client: TestClient, headers_auth: dict[str, str]) -> None:
     """GET /v1/series/{code}?format=csv -> 200 text/csv."""
     response = client.get(

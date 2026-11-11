@@ -1,7 +1,7 @@
 """Tests d'integration PR realiste : grandeur + resolveur PM cross-source.
 
 La grandeur ``pr_realiste`` (F1 ``calculee_volee``) ne stocke rien ; on verifie son
-referentiel + le **resolveur PM cross-source dedie** (``_chercher_serie_pm_cams``)
+referentiel + le **resolveur PM cross-source dedie** (``chercher_serie_pm_cams_eac4``)
 qui epingle ``cams_eac4`` (les PM sont une source differente du GHI source
 ``nasa_power`` ; symetrique du resolveur pluie, sens inverse).
 """
@@ -12,7 +12,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-from kuma_data_core.api.v1.grandeurs import _chercher_serie_pm_cams
+from kuma_data_core.lecture.series import chercher_serie_pm_cams_eac4
 
 pytestmark = pytest.mark.integration
 
@@ -44,7 +44,7 @@ def test_resolveur_pm_cross_source_epingle_cams_eac4(db_session: Session, grande
     conakry_id = db_session.execute(
         text("SELECT id FROM localites WHERE code = 'gin_conakry_kaloum'")
     ).scalar_one()
-    serie_id = _chercher_serie_pm_cams(db_session, int(conakry_id), grandeur)
+    serie_id = chercher_serie_pm_cams_eac4(db_session, int(conakry_id), grandeur)
     assert serie_id is not None
     row = db_session.execute(
         text(
@@ -64,4 +64,4 @@ def test_resolveur_pm_cross_source_epingle_cams_eac4(db_session: Session, grande
 def test_resolveur_pm_none_si_absente(db_session: Session) -> None:
     """Localite sans serie PM (pays Guinee) -> None ; branche du 400 endpoint."""
     gin_id = db_session.execute(text("SELECT id FROM localites WHERE code = 'gin'")).scalar_one()
-    assert _chercher_serie_pm_cams(db_session, int(gin_id), "pm2_5") is None
+    assert chercher_serie_pm_cams_eac4(db_session, int(gin_id), "pm2_5") is None

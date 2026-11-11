@@ -15,7 +15,6 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
@@ -23,6 +22,7 @@ from kuma_data_core.api.dependencies import CleApiValidee
 from kuma_data_core.api.erreurs import ExceptionKuma
 from kuma_data_core.core.config import get_settings
 from kuma_data_core.db.session import obtenir_session
+from kuma_data_core.lecture.edition import lire_identifiant_edition, sonder_base
 
 routeur = APIRouter(prefix="/health", tags=["sante"])
 
@@ -71,15 +71,7 @@ def _edition_courante_silencieuse() -> str | None:
         from kuma_data_core.db.session import get_engine
 
         with get_engine().connect() as connexion:
-            presente = connexion.execute(
-                text("SELECT to_regclass('public.edition_metadonnees')")
-            ).scalar()
-            if presente is None:
-                return None
-            edition_id = connexion.execute(
-                text("SELECT edition_id FROM edition_metadonnees LIMIT 1")
-            ).scalar()
-            return str(edition_id) if edition_id is not None else None
+            return lire_identifiant_edition(connexion)
     except Exception:
         return None
 
@@ -125,7 +117,7 @@ def sante_detailee(
     composants: list[StatutComposant] = []
 
     try:
-        session.execute(text("SELECT 1"))
+        sonder_base(session)
         composants.append(StatutComposant(nom="postgresql", statut="operationnel"))
     except Exception as exc:
         composants.append(StatutComposant(nom="postgresql", statut="indisponible"))

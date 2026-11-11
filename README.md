@@ -148,6 +148,7 @@ unitaires et d'intégration, contrôle de cohérence Alembic).
 |---|---|
 | `src/kuma_data_core/db/` | Modèles SQLAlchemy, sessions, seeds de référentiels |
 | `src/kuma_data_core/api/` | Application FastAPI (auth Bearer) |
+| `src/kuma_data_core/lecture/` | SQL de lecture servi aux routes de l'API |
 | `src/kuma_data_core/services/grandeurs/` | Modules de calcul par grandeur |
 | `src/kuma_data_core/ingestion/` | Ingestion des sources externes |
 | `src/kuma_data_core/editorial/` | Statuts éditoriaux, confiance A/B/C, versionnement |

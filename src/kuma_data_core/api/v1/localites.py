@@ -18,7 +18,6 @@ import math
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
-from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
@@ -34,6 +33,12 @@ from kuma_data_core.api.v1.schemas.localites import (
     ReponseResolution,
 )
 from kuma_data_core.db.session import obtenir_session
+from kuma_data_core.lecture.localites import (
+    Localite,
+    lire_localite,
+    lire_page_localites,
+    lister_candidates_resolution,
+)
 
 routeur = APIRouter(prefix="/localites", tags=["localites"])
 
@@ -42,14 +47,26 @@ _LIMIT_DEFAUT_LISTING: int = 100
 _LIMIT_MAX_LISTING: int = 1000
 
 
-def _to_float_optional(valeur: object) -> float | None:
-    """``Decimal | None`` -> ``float | None``, JSON n'ayant pas de type décimal.
-
-    Un float64 garde les 8 décimales des colonnes ``latitude`` et ``longitude``.
-    """
-    if valeur is None:
-        return None
-    return float(valeur)  # type: ignore[arg-type]
+def _vers_localite_listee(localite: Localite) -> LocaliteListee:
+    """Schéma de réponse d'une localité lue, le même pour la liste et pour le détail."""
+    return LocaliteListee(
+        id=localite.id,
+        code=localite.code,
+        nom=localite.nom,
+        type_localite=localite.type_localite,
+        parent_id=localite.parent_id,
+        parent_code=localite.parent_code,
+        pays_iso3=localite.pays_iso3,
+        latitude=localite.latitude,
+        longitude=localite.longitude,
+        altitude_metres=localite.altitude_metres,
+        population_estimee=localite.population_estimee,
+        annee_population=localite.annee_population,
+        fuseau_horaire=localite.fuseau_horaire,
+        created_at=localite.created_at,
+        updated_at=localite.updated_at,
+        actif=localite.actif,
+    )
 
 
 _RAYON_TERRE_KM = 6371.0
@@ -108,90 +125,21 @@ def lister_localites(
     ``actif`` vaut TRUE par défaut : passer ``actif=false`` pour voir les
     localités désactivées.
     """
-    clauses: list[str] = []
-    params: dict[str, object] = {"limit": limit, "offset": offset}
-
-    if pays_iso3 is not None:
-        clauses.append("L.pays_iso3 = :pays_iso3")
-        params["pays_iso3"] = pays_iso3
-    if type_localite is not None:
-        clauses.append("L.type_localite = :type_localite")
-        params["type_localite"] = type_localite
-    if parent_code is not None:
-        clauses.append("P.code = :parent_code")
-        params["parent_code"] = parent_code
-    if actif is not None:
-        clauses.append("L.actif = :actif")
-        params["actif"] = actif
-
-    where_sql = ("WHERE " + " AND ".join(clauses)) if clauses else ""
-
-    total = session.execute(
-        text(
-            f"""
-            SELECT COUNT(*) AS n
-            FROM localites L
-            LEFT JOIN localites P ON L.parent_id = P.id
-            {where_sql}
-            """
-        ),
-        {k: v for k, v in params.items() if k not in ("limit", "offset")},
-    ).scalar_one()
-
-    rows = session.execute(
-        text(
-            f"""
-            SELECT
-                L.id,
-                L.code,
-                L.nom,
-                L.type_localite,
-                L.parent_id,
-                P.code AS parent_code,
-                L.pays_iso3,
-                L.latitude,
-                L.longitude,
-                L.altitude_metres,
-                L.population_estimee,
-                L.annee_population,
-                L.fuseau_horaire,
-                L.cree_le AS created_at,
-                L.modifie_le AS updated_at,
-                L.actif
-            FROM localites L
-            LEFT JOIN localites P ON L.parent_id = P.id
-            {where_sql}
-            ORDER BY L.code
-            LIMIT :limit OFFSET :offset
-            """
-        ),
-        params,
-    ).all()
-
-    items = [
-        LocaliteListee(
-            id=int(r.id),
-            code=r.code,
-            nom=r.nom,
-            type_localite=r.type_localite,
-            parent_id=int(r.parent_id) if r.parent_id is not None else None,
-            parent_code=r.parent_code,
-            pays_iso3=r.pays_iso3,
-            latitude=_to_float_optional(r.latitude),
-            longitude=_to_float_optional(r.longitude),
-            altitude_metres=int(r.altitude_metres) if r.altitude_metres is not None else None,
-            population_estimee=(
-                int(r.population_estimee) if r.population_estimee is not None else None
-            ),
-            annee_population=int(r.annee_population) if r.annee_population is not None else None,
-            fuseau_horaire=r.fuseau_horaire,
-            created_at=r.created_at,
-            updated_at=r.updated_at,
-            actif=r.actif,
-        )
-        for r in rows
-    ]
-    return LocaliteListeePaginee(items=items, total=int(total), limit=limit, offset=offset)
+    total, localites = lire_page_localites(
+        session,
+        pays_iso3=pays_iso3,
+        type_localite=type_localite,
+        parent_code=parent_code,
+        actif=actif,
+        limit=limit,
+        offset=offset,
+    )
+    return LocaliteListeePaginee(
+        items=[_vers_localite_listee(localite) for localite in localites],
+        total=total,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # Déclarée avant ``/{code}`` : FastAPI teste les routes dans l'ordre de
@@ -228,26 +176,8 @@ def resoudre_point(
     et la plus proche est renvoyée avec sa distance. Lève 404
     ``RESSOURCE_INTROUVABLE`` si aucune localité ne porte de série de ce type.
     """
-    rows = session.execute(
-        text(
-            """
-            SELECT l.code, l.nom, l.latitude, l.longitude,
-                   MIN(sm.code) AS serie_code
-            FROM localites l
-            JOIN series_metadonnees sm ON sm.localite_id = l.id
-            WHERE l.actif = TRUE
-              AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL
-              AND sm.actif = TRUE
-              AND sm.granularite = 'mensuel'
-              AND sm.grandeur_code = :grandeur
-              AND sm.periode_debut = '1991-01-01'
-              AND sm.periode_fin = '2020-12-31'
-            GROUP BY l.code, l.nom, l.latitude, l.longitude
-            """
-        ),
-        {"grandeur": grandeur},
-    ).all()
-    if not rows:
+    candidates = lister_candidates_resolution(session, grandeur)
+    if not candidates:
         raise ExceptionKuma(
             code=CodeErreur.RESSOURCE_INTROUVABLE,
             message="Aucun point d'ingestion de climatologie pour cette grandeur.",
@@ -257,10 +187,6 @@ def resoudre_point(
     cellule_lat = math.floor(lat)
     cellule_lon = math.floor(lon)
 
-    candidates = [
-        (str(r.code), str(r.nom), float(r.latitude), float(r.longitude), str(r.serie_code))
-        for r in rows
-    ]
     meilleure: tuple[float, int] | None = None
     meilleure_meme_cellule: tuple[float, int] | None = None
     for indice, (_code, _nom, r_lat, r_lon, _serie) in enumerate(candidates):
@@ -273,7 +199,7 @@ def resoudre_point(
         ):
             meilleure_meme_cellule = (distance, indice)
 
-    assert meilleure is not None  # rows non vide, vérifié plus haut
+    assert meilleure is not None  # candidates non vide, vérifié plus haut
     meme_cellule = meilleure_meme_cellule is not None
     distance_km, indice_retenu = (
         meilleure_meme_cellule if meilleure_meme_cellule is not None else meilleure
@@ -321,58 +247,11 @@ def detailler_localite(
 
     Lève 404 ``RESSOURCE_LOCALITE_INCONNUE`` si le code est inconnu.
     """
-    row = session.execute(
-        text(
-            """
-            SELECT
-                L.id,
-                L.code,
-                L.nom,
-                L.type_localite,
-                L.parent_id,
-                P.code AS parent_code,
-                L.pays_iso3,
-                L.latitude,
-                L.longitude,
-                L.altitude_metres,
-                L.population_estimee,
-                L.annee_population,
-                L.fuseau_horaire,
-                L.cree_le AS created_at,
-                L.modifie_le AS updated_at,
-                L.actif
-            FROM localites L
-            LEFT JOIN localites P ON L.parent_id = P.id
-            WHERE L.code = :code
-            """
-        ),
-        {"code": code},
-    ).first()
-
-    if row is None:
+    localite = lire_localite(session, code)
+    if localite is None:
         raise ExceptionKuma(
             code=CodeErreur.RESSOURCE_LOCALITE_INCONNUE,
             message=f"Localite {code!r} introuvable.",
             statut_http=status.HTTP_404_NOT_FOUND,
         )
-
-    return LocaliteDetail(
-        id=int(row.id),
-        code=row.code,
-        nom=row.nom,
-        type_localite=row.type_localite,
-        parent_id=int(row.parent_id) if row.parent_id is not None else None,
-        parent_code=row.parent_code,
-        pays_iso3=row.pays_iso3,
-        latitude=_to_float_optional(row.latitude),
-        longitude=_to_float_optional(row.longitude),
-        altitude_metres=int(row.altitude_metres) if row.altitude_metres is not None else None,
-        population_estimee=(
-            int(row.population_estimee) if row.population_estimee is not None else None
-        ),
-        annee_population=(int(row.annee_population) if row.annee_population is not None else None),
-        fuseau_horaire=row.fuseau_horaire,
-        created_at=row.created_at,
-        updated_at=row.updated_at,
-        actif=row.actif,
-    )
+    return _vers_localite_listee(localite)

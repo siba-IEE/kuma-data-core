@@ -24,12 +24,12 @@ import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
-from kuma_data_core.api.v1.schemas.contributions import TypeDemande
 from kuma_data_core.db.meta import CleApi, ContributionEtude
 from kuma_data_core.services.cles import hacher_cle
 
@@ -58,15 +58,21 @@ def deposer(
     session: Session,
     cle_api: CleApi,
     etude_uid: str,
-    demande: TypeDemande,
     maintenant: datetime,
+    *,
+    module: str,
+    format_fiche: str,
+    version_logiciel: str,
+    fiche: dict[str, Any],
 ) -> Depot:
-    """Crée la fiche de l'étude, ou remplace celle que la même clé avait déposée."""
-    fiche = demande.fiche.model_dump(mode="json")
+    """Crée la fiche de l'étude, ou remplace celle que la même clé avait déposée.
+
+    ``fiche`` est le document JSON déjà validé, tel qu'il sera stocké.
+    """
     valeurs = {
-        "module": demande.module,
-        "format_fiche": demande.format,
-        "version_logiciel": demande.fiche.logiciel.version,
+        "module": module,
+        "format_fiche": format_fiche,
+        "version_logiciel": version_logiciel,
         "fiche": fiche,
     }
     requete = (

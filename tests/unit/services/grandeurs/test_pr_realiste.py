@@ -13,7 +13,6 @@ from datetime import date, timedelta
 
 import pytest
 
-from kuma_data_core.api.v1.schemas.grandeurs import MesureJourPR
 from kuma_data_core.services.grandeurs.pr_realiste import (
     MesureJourPRRealiste,
     agreger_pr_mensuel,
@@ -23,6 +22,7 @@ from kuma_data_core.services.grandeurs.soiling_hsu import (
     MesureEntreeSoiling,
     calculer_taux_salissure_proxy,
 )
+from kuma_data_core.services.grandeurs.types import MesureJourPR
 
 pytestmark = pytest.mark.unit
 

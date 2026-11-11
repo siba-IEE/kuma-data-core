@@ -80,7 +80,7 @@ def test_3b_serie_unique_par_grandeur(db_session: Session) -> None:
     """Serie unique pleine profondeur : pas de variante segmentee par fenetre.
 
     Garantit la forme exigee par le lever passe-plat
-    (``_chercher_serie_horaire_stockee`` : LIMIT 1 + couverture
+    (``chercher_serie_horaire_stockee`` : LIMIT 1 + couverture
     mono-serie). Aucune serie horaire Kindia ``_2001_2020`` /
     ``_2021_2023`` ne doit coexister avec la serie pleine profondeur.
     """

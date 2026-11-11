@@ -26,6 +26,10 @@ le projet suit le versionnement sémantique.
 
 ### Corrigé
 
+- `/v1/series/{code_serie}` répondait `500` pour une série mensuelle remontant
+  avant 1991 : le schéma de réponse exigeait `annee >= 1991` alors que la base
+  admet les mois depuis 1981.
+
 - Une requête incohérente sur `/v1/grandeurs` ou l'horaire (période
   inversée, paramètre requis par un autre) reçoit `422` et non plus `500`.
 - Le choix d'une série parmi plusieurs candidates est ordonné : deux
@@ -35,6 +39,13 @@ le projet suit le versionnement sémantique.
 
 ### Modifié
 
+- Couches du moteur et sens des dépendances (ADR-0009), sans changement des
+  réponses de l'API : les calculs n'importent plus les schémas de l'API, le
+  SQL de lecture quitte les routes pour le paquet `lecture`, `/v1/grandeurs`
+  est découpé en un module par famille de routes, et chaque règle de
+  sélection des lignes a une seule définition nommée. Un test vérifie ces
+  règles, ainsi que l'absence d'import du moteur dans les nouvelles
+  migrations.
 - Textes servis par l'API réécrits pour un lecteur extérieur : descriptions
   de routes et de champs, messages d'erreur et mises en garde du champ
   `limite` ne portent plus de code interne et disent le fait à la place

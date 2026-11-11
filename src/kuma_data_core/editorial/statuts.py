@@ -27,6 +27,10 @@ STATUTS_EDITORIAUX_AUTORISES: frozenset[str] = frozenset(
 """Miroir des contraintes SQL ``ck_<table>_statut_valide`` de ces tables."""
 
 
+STATUTS_VALIDES: tuple[str, ...] = ("valide_auto", "valide_humain", "publie")
+"""Statuts d'une donnée validée, par le contrôle qualité automatique ou par un éditeur."""
+
+
 TRANSITIONS_AUTORISEES: frozenset[tuple[str, str]] = frozenset(
     {
         ("brut", "valide_auto"),

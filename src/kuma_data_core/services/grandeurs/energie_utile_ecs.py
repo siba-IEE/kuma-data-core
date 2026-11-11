@@ -43,13 +43,10 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from datetime import date, datetime
-from typing import Literal, TypedDict
+from typing import Literal, Protocol, TypedDict
 
-from kuma_data_core.api.v1.schemas.grandeurs import (
-    ParametresEnergieUtileECS,
-    ResultatJournalier,
-)
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
+from kuma_data_core.services.grandeurs.types import ResultatJournalier
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
 """Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables."""
@@ -60,6 +57,22 @@ UNITE_ENERGIE_UTILE: str = "kWh/m²"
 
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
 """Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
+
+
+class ParametresCalculECS(Protocol):
+    """Grandeurs physiques que lit le calcul ECS : capteur et température d'entrée du fluide."""
+
+    @property
+    def rendement_optique_eta0(self) -> float: ...  # sans dimension
+
+    @property
+    def pertes_lineaires_a1(self) -> float: ...  # W/(m²·K)
+
+    @property
+    def pertes_quadratiques_a2(self) -> float: ...  # W/(m²·K²)
+
+    @property
+    def temperature_fluide_entree_degc(self) -> float: ...
 
 
 class MesureJourECS(TypedDict):
@@ -106,7 +119,7 @@ def _rendement_instantane_hwb(
 
 def _energie_utile_jour(
     mesure: MesureJourECS,
-    parametres: ParametresEnergieUtileECS,
+    parametres: ParametresCalculECS,
 ) -> float:
     """Énergie utile journalière par m² de capteur (kWh/m²).
 
@@ -132,7 +145,7 @@ def _energie_utile_jour(
 
 def calculer_energie_utile_ecs(
     mesures: Sequence[MesureJourECS],
-    parametres: ParametresEnergieUtileECS,
+    parametres: ParametresCalculECS,
 ) -> list[ResultatJournalier]:
     """Énergie utile journalière au bord du capteur, en kWh/m² (Hottel-Whillier-Bliss).
 
@@ -155,7 +168,7 @@ def calculer_energie_utile_ecs(
 
 def calculer_energie_utile_ecs_horaire(
     mesures: Sequence[MesureHeureECS],
-    parametres: ParametresEnergieUtileECS,
+    parametres: ParametresCalculECS,
 ) -> list[ResultatJournalier]:
     """Énergie utile journalière par intégration horaire (Hottel-Whillier-Bliss).
 

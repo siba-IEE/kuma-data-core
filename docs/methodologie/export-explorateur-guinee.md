@@ -51,7 +51,7 @@ Le script :
 3. Liste les 6 villes pilotes et, pour chacune, les séries actives hors
    F2 paramétrables (cf. § 3.2 sur le périmètre exact).
 4. Résout la table-cible de chaque série via
-   `kuma_data_core.api.services.serie_lecture.resolve_table_from_series_metadata`
+   `kuma_data_core.lecture.tables.resolve_table_from_series_metadata`
    (`mesures_ressource`, `mesures_ressource_mensuelles` ou
    `grandeurs_metier` via la vue `v_grandeurs_metier_courantes`).
 5. Lit les mesures courantes (`valide_au IS NULL` + statut non

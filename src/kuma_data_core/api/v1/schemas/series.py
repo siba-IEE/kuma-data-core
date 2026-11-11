@@ -31,7 +31,9 @@ class MesureMensuelle(BaseModel):
     """Mesure mensuelle d'une série."""
 
     type: Literal["mensuel"] = "mensuel"
-    annee: int = Field(ge=1991, le=2099)
+    # Mêmes bornes que la contrainte ck_mesures_ressource_mensuelles_annee_valide :
+    # une borne plus étroite ici ferait répondre 500 sur une ligne que la base admet.
+    annee: int = Field(ge=1981, le=2099)
     mois: int = Field(ge=1, le=12)
     valeur: float
     niveau_confiance_derive: str = Field(min_length=1, max_length=1)
