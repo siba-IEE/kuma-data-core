@@ -6,6 +6,8 @@ from __future__ import annotations
 
 import math
 
+import pytest
+
 from kuma_data_core.services.grandeurs.productible_specifique_pr_std_thermique import (
     NB_MOIS,
     MesureJourGhiTamb,
@@ -15,6 +17,8 @@ from kuma_data_core.services.grandeurs.productible_specifique_pr_std_thermique i
 PR_STD = 0.78975
 NOCT = 45.0
 COEFF_TEMP = -0.4  # % / °C
+
+pytestmark = pytest.mark.unit
 
 
 NB_JOURS_MOIS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]

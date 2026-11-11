@@ -27,10 +27,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Installer uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -53,10 +53,10 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Installer uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -83,10 +83,10 @@ jobs:
       POSTGRES_PASSWORD: factice_unitaire_jamais_utilise
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Installer uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -97,8 +97,25 @@ jobs:
       - name: Synchroniser les dépendances
         run: uv sync --group dev --frozen
 
-      - name: Exécuter les tests unitaires
-        run: uv run pytest tests/unit -m unit -v
+      - name: Exécuter les tests unitaires (couverture mesurée)
+        run: uv run pytest tests/unit -m unit -v --cov --cov-fail-under=60
+
+  audit-dependances:
+    name: Audit des dépendances (pip-audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - name: Installer uv
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
+
+      - name: Exporter les dépendances d'exécution verrouillées
+        run: uv export --no-dev --frozen --no-emit-project -o requirements-audit.txt
+
+      - name: Chercher les vulnérabilités connues
+        run: uvx pip-audit -r requirements-audit.txt --disable-pip
 
   tests-integration:
     name: Tests d'intégration
@@ -163,10 +180,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Installer uv
-        uses: astral-sh/setup-uv@v4
+        uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"

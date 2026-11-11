@@ -85,3 +85,10 @@ def test_base_de_service_injoignable_fail_closed_401(
         verifier_cle_api(authorization="Bearer kuma_cle_inconnue_xxxxxxxx")
     assert info.value.code is CodeErreur.AUTH_CLE_INVALIDE
     assert info.value.statut_http == 401
+
+
+@pytest.mark.unit
+def test_authentification_bearer_non_ascii_refuse_sans_erreur_interne() -> None:
+    with pytest.raises(ExceptionKuma) as info:
+        verifier_cle_api(authorization="Bearer clé_éèà")
+    assert info.value.code is CodeErreur.AUTH_CLE_INVALIDE

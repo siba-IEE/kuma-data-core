@@ -109,7 +109,18 @@ async def handler_validation_requete(request: Request, exc: Exception) -> JSONRe
     ``model_validator``. Sans ce handler, la réponse sortirait au format
     FastAPI par défaut (``{"detail": [...]}``), hors contrat Kuma.
     """
-    details = jsonable_encoder(exc.errors()) if isinstance(exc, RequestValidationError) else None
+    # ``input`` et ``ctx`` sont retirés : renvoyer l'entrée fautive doublerait le
+    # coût d'un corps volumineux et peut refléter des données non maîtrisées.
+    details = (
+        jsonable_encoder(
+            [
+                {cle: erreur[cle] for cle in ("type", "loc", "msg") if cle in erreur}
+                for erreur in exc.errors()
+            ]
+        )
+        if isinstance(exc, RequestValidationError)
+        else None
+    )
     erreur = ErreurKuma(
         erreur=DetailErreur(
             code=CodeErreur.VALIDATION_VALEUR_INVALIDE,

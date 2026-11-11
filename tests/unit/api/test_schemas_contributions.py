@@ -481,3 +481,11 @@ def test_pv_champ_sous_un_autre_module_refuse() -> None:
     brut["module"], brut["format"] = "pv-autonome", "pv-autonome@1"
     with pytest.raises(ValidationError):
         valider(brut)
+
+
+@pytest.mark.parametrize("valeur", [float("nan"), float("inf"), float("-inf")])
+def test_nombre_non_fini_refuse(valeur: float) -> None:
+    brut = fiche_exemple()
+    brut["fiche"]["resultats"]["economies_annuelles"] = valeur
+    with pytest.raises(ValidationError):
+        valider(brut)

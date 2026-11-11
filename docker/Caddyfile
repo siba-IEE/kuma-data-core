@@ -32,6 +32,12 @@
 		-Server
 	}
 
+	# Aucune requête légitime n'approche cette taille : au-delà, 413 sans
+	# solliciter l'API.
+	request_body {
+		max_size 1MB
+	}
+
 	reverse_proxy kuma-api-prod:8000
 
 	log {

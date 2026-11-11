@@ -152,29 +152,16 @@ def test_ti98_data_grandeur_invalide(client: TestClient, headers_auth: dict[str,
 def test_ti99_data_plage_excessive_366_plus(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """plage > 366 jours -> ValidationError leve cote serveur.
-
-    Comportement observe : FastAPI ne mappe pas systematiquement le
-    ValidationError leve par un ``model_validator(mode="after")``
-    Pydantic v2 dans ``Annotated[T, Depends()]`` vers un 422 standard.
-    L'exception remonte comme ``ValidationError`` non geree, ce qui
-    provoque un re-raise cote ``TestClient`` (option par defaut
-    ``raise_server_exceptions=True``).
-
-    Le test verifie que la requete est rejetee (exception levee
-    contenant le message « plage maximale 366 jours »). Affinement
-    possible ulterieur via un exception handler FastAPI dedie qui
-    mapperait ``pydantic.ValidationError`` -> 422
-    ``VALIDATION_VALEUR_INVALIDE`` enveloppee.
-    """
-    from pydantic import ValidationError
-
-    with pytest.raises(ValidationError, match="366 jours"):
-        client.get(
-            f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
-            params={"periode_debut": "2023-01-01", "periode_fin": "2024-12-31"},
-            headers=headers_auth,
-        )
+    """plage > 366 jours -> 422 VALIDATION_VALEUR_INVALIDE."""
+    r = client.get(
+        f"/v1/horaire/{_LOCALITE_TEST}/{_GRANDEUR_TEST}",
+        params={"periode_debut": "2023-01-01", "periode_fin": "2024-12-31"},
+        headers=headers_auth,
+    )
+    assert r.status_code == 422
+    corps = r.json()["erreur"]
+    assert corps["code"] == "VALIDATION_VALEUR_INVALIDE"
+    assert "366 jours" in corps["details"]["erreurs"][0]["msg"]
 
 
 def test_ti100_data_plage_hors_disponibilite(

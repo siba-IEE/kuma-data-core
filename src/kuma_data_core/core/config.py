@@ -19,11 +19,18 @@ from typing import Literal
 
 from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from sqlalchemy.engine import URL
 
 # Racine du dépôt : trois niveaux au-dessus de ce fichier
 # (src/kuma_data_core/core/config.py -> racine).
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _ENV_FILE = _REPO_ROOT / ".env"
+
+LONGUEUR_MIN_CLE_PROD = 32
+
+
+def _secret_faible(valeur: str) -> bool:
+    return len(valeur) < LONGUEUR_MIN_CLE_PROD or valeur.lower().startswith("changeme")
 
 
 class Settings(BaseSettings):
@@ -42,7 +49,7 @@ class Settings(BaseSettings):
 
     # === PostgreSQL ===
     postgres_user: str = Field(default="kuma_admin")
-    postgres_password: str = Field(...)
+    postgres_password: SecretStr = Field(...)
     postgres_db: str = Field(default="kuma_data_core")
     postgres_host: str = Field(default="127.0.0.1")
     postgres_port: int = Field(default=5432)
@@ -57,6 +64,20 @@ class Settings(BaseSettings):
     api_version: str = Field(default="0.1.0")
     api_environnement: Literal["dev", "integration", "prod"] = Field(default="dev")
     api_docs_actives: bool = Field(default=True)
+    # Origines navigateur admises (CORS), propres à chaque déploiement :
+    # l'application de bureau (Vite en dev, bundle Tauri signé en production)
+    # et la console web. Variable d'environnement : liste JSON.
+    cors_origines: list[str] = Field(
+        default=[
+            "http://localhost:1420",
+            "http://127.0.0.1:1420",
+            "tauri://localhost",
+            "https://tauri.localhost",
+            "http://tauri.localhost",
+            "https://kumascience.com",
+            "https://www.kumascience.com",
+        ]
+    )
     # Clés API valides (stockage en variables d'environnement).
     # Migration vers une table ``cles_api`` prévue ultérieurement.
     api_cle_solar_bridge: SecretStr | None = Field(default=None)
@@ -106,6 +127,10 @@ class Settings(BaseSettings):
     # self-service via Redis (D3/WP7). Profil serveur public uniquement ;
     # les clés d'environnement (admin, Bridge) ne sont jamais limitées.
     rate_limiting_actif: bool = Field(default=False)
+    # Plafond de requêtes par minute et par adresse (IPv6 : par /64),
+    # appliqué avant l'authentification quand ``rate_limiting_actif``.
+    # Les clés d'environnement en sont exemptées.
+    debit_ip_par_minute: int = Field(default=300, ge=1)
     # ``derriere_proxy_confiance`` : quand vrai, l'adresse cliente pour la
     # limite d'émission par IP est lue depuis ``X-Forwarded-For`` posé par
     # le reverse proxy (Caddy, WP8). À laisser FAUX si l'API est exposée
@@ -134,10 +159,7 @@ class Settings(BaseSettings):
         base de référence (``postgres_db``, locale) quand elle est définie.
         """
         base = self.edition_db if self.edition_db is not None else self.postgres_db
-        return (
-            f"postgresql+psycopg://{self.postgres_user}:{self.postgres_password}"
-            f"@{self.postgres_host}:{self.postgres_port}/{base}"
-        )
+        return self._dsn(self.postgres_user, self.postgres_password, base)
 
     @property
     def database_url_meta(self) -> str | None:
@@ -153,11 +175,18 @@ class Settings(BaseSettings):
             return None
         utilisateur = self.meta_user if self.meta_user is not None else self.postgres_user
         secret = self.meta_password if self.meta_password is not None else self.postgres_password
-        mot_de_passe = secret.get_secret_value() if isinstance(secret, SecretStr) else secret
-        return (
-            f"postgresql+psycopg://{utilisateur}:{mot_de_passe}"
-            f"@{self.postgres_host}:{self.postgres_port}/{self.meta_db}"
-        )
+        return self._dsn(utilisateur, secret, self.meta_db)
+
+    def _dsn(self, utilisateur: str, mot_de_passe: SecretStr, base: str) -> str:
+        # URL.create encode les caractères réservés (@, /, :) du mot de passe.
+        return URL.create(
+            "postgresql+psycopg",
+            username=utilisateur,
+            password=mot_de_passe.get_secret_value(),
+            host=self.postgres_host,
+            port=self.postgres_port,
+            database=base,
+        ).render_as_string(hide_password=False)
 
     @model_validator(mode="after")
     def valider_coherence_environnement(self) -> Settings:
@@ -169,6 +198,8 @@ class Settings(BaseSettings):
         ``Settings`` - l'application ne démarre pas.
         """
         if self.api_environnement == "prod":
+            if "*" in self.cors_origines:
+                raise ValueError("cors_origines ne peut pas contenir '*' en production")
             if self.api_docs_actives:
                 raise ValueError("api_docs_actives ne peut pas être True en production")
             if self.log_format != "json":
@@ -177,6 +208,11 @@ class Settings(BaseSettings):
             # `is None` mais rendrait un Bearer vide administrateur.
             if self.api_cle_admin is None or not self.api_cle_admin.get_secret_value():
                 raise ValueError("api_cle_admin obligatoire et non vide en production")
+            if _secret_faible(self.api_cle_admin.get_secret_value()):
+                raise ValueError(
+                    "api_cle_admin trop faible pour la production : au moins "
+                    f"{LONGUEUR_MIN_CLE_PROD} caractères, pas de valeur d'exemple"
+                )
         return self
 
 
