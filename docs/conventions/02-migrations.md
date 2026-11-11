@@ -106,6 +106,22 @@ sa création, les colonnes `valide_du` et `valide_au`, et ne pas
 permettre l'`UPDATE` direct sur les colonnes versionnées hors
 `valide_au`.
 
+## Autonomie des migrations
+
+À partir de la révision 122, une migration n'importe aucun module de
+`kuma_data_core`. Elle ne dépend que d'Alembic, de SQLAlchemy et, si elle
+porte des données, d'un fichier compagnon commité dans `migrations/donnees/`,
+lu par chemin relatif à la migration.
+
+Une migration qui appelle une fonction du moteur ne refait pas la même chose
+quand cette fonction change : la base reconstruite diverge alors de la base
+existante sans qu'aucun fichier de migration ait bougé. Les migrations
+antérieures à 122 sont dans ce cas pour une partie d'entre elles ; les
+fonctions qu'elles importent ne doivent donc changer ni de signature ni de
+résultat.
+
+Un test (`tests/unit/test_architecture.py`) refuse l'import.
+
 ## Tests de migration
 
 L'intégration continue exécute
