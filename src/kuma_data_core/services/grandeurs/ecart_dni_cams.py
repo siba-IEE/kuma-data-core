@@ -1,23 +1,15 @@
-"""Calcul de la grandeur d'écart inter-source ``ecart_relatif_dni_cams``.
+"""Grandeur ``ecart_relatif_dni_cams`` : écart inter-source sur le DNI.
 
-Écart relatif **du DNI** entre NASA POWER (primaire) et CAMS Radiation (référence
-d'écart, DNI aérosol-corrigé), **iso-période 2004-2020**, **par (année, mois)**.
+Écart relatif mensuel entre le DNI de NASA POWER et celui de CAMS Radiation
+(corrigé des aérosols), sur les mois communs aux deux séries :
 
-Orientation arbitrée : ``(nasa - cams) / cams x 100`` - NASA primaire au
-numérateur, CAMS (référentiel d'écart) au dénominateur, miroir fidèle de l'écart
-inter-source référentiel. Réutilise **tel quel** le helper pur
-``_calcul_ecart_relatif(valeur_nasa, valeur_cams)``.
+    ecart = (nasa - cams) / cams x 100
 
-Pattern fonctions pures + orchestrateur I/O : ce module **importe** les 3
-helpers de :mod:`referentiels` (``_calcul_ecart_relatif``, ``_lire_mensuel``,
-``_bulk_insert_grandeurs_metier``) **sans toucher** l'orchestrateur figé
-``calculer_et_inserer_referentiels`` ni ses constantes.
-
-Le **signe** de l'écart est un **résultat empirique** (observé -26 % en
-moyenne, NASA lit moins de DNI que CAMS), documenté dans le
-``commentaire_editorial`` des séries - pas un choix de design. Confiance
-dérivée ``B`` (signal indirect par construction). Calcul **déterministe depuis
-la base, aucun réseau**.
+CAMS, référence de l'écart, est au dénominateur, comme SARAH-3 dans
+``ecart_relatif_referentiel`` dont ce module reprend les fonctions. Le signe
+est un résultat empirique (environ -26 % en moyenne : NASA lit moins de DNI
+que CAMS), pas un choix de conception. Niveau de confiance B : signal
+indirect, combinaison de deux sources.
 """
 
 from __future__ import annotations
@@ -33,14 +25,9 @@ from kuma_data_core.services.grandeurs.referentiels import (
     _lire_mensuel,
 )
 
-# === Constantes module =====================================================
-
 GRANDEUR_ECART_DNI_CAMS: str = "ecart_relatif_dni_cams"
 NIVEAU_CONFIANCE_DERIVE: str = "B"
 VERSION_FORMULE: int = 1
-
-
-# === Types ================================================================
 
 
 class ContexteVilleEcartDniCams(TypedDict):
@@ -58,31 +45,18 @@ class ResultatEcartDniCams(TypedDict):
     nb_insere: int
 
 
-# === Orchestrateur I/O ====================================================
-
-
 def calculer_et_inserer_ecart_dni_cams(
     *,
     session: Session,
     contextes_villes: Sequence[ContexteVilleEcartDniCams],
 ) -> ResultatEcartDniCams:
-    """Calcule et insère l'écart relatif DNI CAMS dans ``grandeurs_metier``.
+    """Calcule et insère l'écart relatif DNI NASA/CAMS dans ``grandeurs_metier``.
 
-    Pour chaque ville : lit les séries DNI NASA et CAMS depuis
-    ``mesures_ressource_mensuelles`` (helper ``_lire_mensuel``), itère
-    l'**intersection** des (année, mois) communs (exclut 2004-01 absent côté
-    CAMS, et tout mois manquant), applique ``(nasa - cams) / cams x 100`` et
-    insère une ligne ``grandeurs_metier`` par mois commun
-    (``periode_type='mensuel'``, ``annee_debut = annee_fin = annee``).
-
-    Args:
-        session : session SQLAlchemy active (add+flush, l'appelant commit).
-        contextes_villes : séquence par localité avec
-            ``localite_id``, ``code_serie_nasa``, ``code_serie_cams``,
-            ``series_metadonnees_id`` (série calculée pré-insérée).
-
-    Returns:
-        :class:`ResultatEcartDniCams` - ``nb_insere`` (1 218 attendu).
+    Pour chaque localité, une ligne mensuelle par (année, mois) présent dans
+    les deux séries de ``mesures_ressource_mensuelles`` ;
+    ``series_metadonnees_id`` désigne la série calculée cible, qui doit déjà
+    exister. Lève ``ValueError`` si une valeur CAMS est nulle. Fait un
+    ``flush`` sans ``commit``.
     """
     nb_insere = 0
 

@@ -1,27 +1,23 @@
-"""Calcul à la volée du POA bifacial (grandeur F2).
+"""Grandeur F2 : POA bifacial d'un champ de rangées.
 
-POA global **bifacial** d'un champ de rangées, modèle **infinite-sheds**
-(view-factor row-aware, ``pvlib.bifacial.infinite_sheds``). Distinct du
-``poa_parametrable`` mono-plan : modélise la **géométrie de rangées** (gcr,
-hauteur, pitch) et la **face arrière** captant le rayonnement réfléchi par le
-sol (albedo). La grandeur expose ``poa_global`` = la sortie bifaciale du modèle
-(face avant + gain arrière, **bifacialité appliquée en interne par pvlib** ;
-vérifié : ``bifaciality=0`` -> ``poa_global == poa_front``).
+Modèle infinite-sheds (``pvlib.bifacial.infinite_sheds``) [1, 2] : à la
+différence du ``poa_parametrable`` mono-plan, il tient compte de la géométrie
+des rangées (gcr, hauteur, pitch) et de la face arrière, qui capte le
+rayonnement réfléchi par le sol (albedo). La grandeur expose ``poa_global``,
+face avant plus gain arrière ; pvlib applique la bifacialité
+(``bifaciality=0`` donne ``poa_global == poa_front``).
 
-Modèle de diffus ciel : isotrope (défaut infinite-sheds ; moins anisotrope que
-le Perez du POA mono-plan). Niveau de confiance au plus B (plafond), par la règle
-de propagation P que la route applique (ADR-0008).
+Diffus du ciel isotrope (défaut d'infinite-sheds), moins anisotrope que le
+Perez du POA mono-plan. Niveau de confiance au plus B, par la règle de
+propagation que la route applique (ADR-0008).
 
-Pattern fonctions publiques pures (``pvlib`` / ``pandas``, aucune dépendance
-SQL). Le biais de moyennage est acté pour la méthode journalière
-(infinite-sheds au midi solaire appliqué aux totaux du jour) et **levé** par la
-méthode horaire.
+La méthode journalière applique la géométrie du midi solaire aux totaux du
+jour, ce qui biaise le résultat ; la méthode horaire lève ce biais.
 
 Références :
 
 [1] Mikofski M., Darawali R., Hamer M., Neubert A., Newmiller J. 2019.
-    "Bifacial Performance Modeling in Large Arrays." 46th IEEE PVSC. (Modèle
-    infinite-sheds, implémenté dans ``pvlib.bifacial.infinite_sheds``.)
+    "Bifacial Performance Modeling in Large Arrays." 46th IEEE PVSC.
 [2] Marion B. et al. 2017. "A Practical Irradiance Model for Bifacial PV
     Modules." 44th IEEE PVSC. DOI : 10.1109/PVSC.2017.8366263.
 """
@@ -42,25 +38,19 @@ from kuma_data_core.api.v1.schemas.grandeurs import (
 )
 from kuma_data_core.editorial.niveaux_confiance import NiveauConfiance
 
-# Réutilise le helper midi solaire du POA mono-plan : même approche journalière
-# (géométrie du midi appliquée aux totaux du jour, biais de moyennage acté). Import
-# privé cross-module assumé (pattern déjà utilisé : productible_pr_fourni importe
-# _temperature_cellule_noct). Aucune duplication de formule.
+# Même approche journalière que le POA mono-plan : géométrie du midi solaire
+# appliquée aux totaux du jour.
 from kuma_data_core.services.grandeurs.poa_parametrable import _midi_solaire_utc
 
 PLAFOND_CONFIANCE: NiveauConfiance = "B"
-"""Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables (L-TR-2)."""
+"""Plafond de confiance : modèle de calcul et paramètres déclarés, invérifiables."""
 
-# === Constantes module ====================================================
 
 UNITE_POA_BIFACIAL: str = "kWh/m²/jour"
 """Unité de sortie (POA global bifacial journalier)."""
 
 NIVEAU_CONFIANCE_DERIVE_F2_V1: Literal["B"] = "B"
 """Niveau provisoire du calcul pur, remplacé par la route (règle de propagation P)."""
-
-
-# === TypedDict d'entree ===================================================
 
 
 class MesureJourBifacial(TypedDict):
@@ -76,8 +66,8 @@ class MesureJourBifacial(TypedDict):
 class MesureHeureBifacial(TypedDict):
     """Mesure horaire consommée par le POA bifacial en intégration horaire.
 
-    GHI/DNI/DHI horaires (W/m²) ; ``albedo`` est l'albedo **du jour** (broadcast
-    intra-journée : l'albedo n'existe qu'en journalier).
+    GHI, DNI et DHI horaires en W/m² ; ``albedo`` est celui du jour, répété
+    sur chaque heure (l'albedo n'existe qu'en journalier).
     """
 
     instant_mesure: datetime
@@ -87,21 +77,13 @@ class MesureHeureBifacial(TypedDict):
     albedo: float
 
 
-# === Repli albedo (pur, testable) =========================================
-
-
 def albedo_du_jour(albedo_par_jour: dict[date, float], jour: date, albedo_repli: float) -> float:
-    """Albedo d'un jour : valeur réelle de la série ``albedo_surface`` si présente,
-    sinon **repli** sur ``albedo_repli`` (``params.albedo_sol``).
+    """Albedo du jour dans la série ``albedo_surface``, sinon ``albedo_repli``.
 
-    Capture la règle de repli : quand la série compagne ``albedo_surface``
-    est absente (ou ne couvre pas le jour), le calcul bifacial utilise l'albedo
-    utilisateur par défaut plutôt que d'échouer.
+    Quand la série ne couvre pas le jour, le calcul bifacial utilise l'albedo
+    fourni par l'utilisateur plutôt que d'échouer.
     """
     return albedo_par_jour.get(jour, albedo_repli)
-
-
-# === Fonction privee pure (cœur infinite-sheds) ===========================
 
 
 def _poa_global_infinite_sheds(
@@ -114,11 +96,11 @@ def _poa_global_infinite_sheds(
     longitude_deg: float,
     parametres: ParametresBifacial,
 ) -> pd.Series:
-    """Applique infinite-sheds vectorisé -> Series ``poa_global``.
+    """Applique infinite-sheds et renvoie la série ``poa_global``.
 
-    Sortie dans la **même unité** que les irradiances d'entrée (le modèle est
-    linéaire en irradiance) : kWh/m²/jour pour des entrées journalières au midi
-    solaire, W/m² pour des entrées horaires.
+    Le modèle étant linéaire en irradiance, la sortie a l'unité des entrées :
+    kWh/m²/jour pour des totaux journaliers au midi solaire, W/m² pour des
+    entrées horaires.
     """
     solpos = pvlib.solarposition.get_solarposition(index, latitude_deg, longitude_deg)
     resultat = infinite_sheds.get_irradiance(
@@ -138,22 +120,16 @@ def _poa_global_infinite_sheds(
     return resultat["poa_global"]
 
 
-# === Fonctions publiques ==================================================
-
-
 def calculer_poa_bifacial(
     mesures: Sequence[MesureJourBifacial],
     latitude_deg: float,
     longitude_deg: float,
     parametres: ParametresBifacial,
 ) -> list[ResultatJournalier]:
-    """POA bifacial journalier (infinite-sheds au midi solaire).
+    """POA bifacial journalier (kWh/m²/jour), infinite-sheds au midi solaire.
 
-    Applique infinite-sheds à la géométrie du **midi solaire** sur les totaux
-    journaliers (modèle linéaire -> sortie kWh/m²/jour). Biais de moyennage
-    acté (cf. ``poa_parametrable``) ; levé par la méthode horaire.
-
-    Pure, idempotente. Niveau de confiance provisoire ``'B'``, remplacé par la route (règle P).
+    Le niveau de confiance ``'B'`` des résultats est provisoire : la route le
+    remplace.
     """
     if not mesures:
         return []
@@ -185,13 +161,11 @@ def calculer_poa_bifacial_horaire(
     longitude_deg: float,
     parametres: ParametresBifacial,
 ) -> list[ResultatJournalier]:
-    """POA bifacial par **intégration horaire** (infinite-sheds par heure, somme/jour).
+    """POA bifacial journalier (kWh/m²/jour) par intégration horaire.
 
-    Applique infinite-sheds heure par heure (géométrie solaire réelle) puis somme
-    sur la journée calendaire (UTC). Lève le biais de moyennage.
-    L'``albedo`` est fourni **par jour** (broadcast intra-journée).
-
-    Pure, idempotente. Niveau de confiance provisoire ``'B'``, remplacé par la route (règle P).
+    Infinite-sheds est appliqué heure par heure, puis sommé par jour (date de
+    ``instant_mesure``). Le niveau de confiance ``'B'`` des résultats est
+    provisoire : la route le remplace.
     """
     if not mesures:
         return []
@@ -204,8 +178,8 @@ def calculer_poa_bifacial_horaire(
     poa = _poa_global_infinite_sheds(
         index, ghi, dni, dhi, albedo, latitude_deg, longitude_deg, parametres
     )
-    # W/m² horaires (≈ Wh/m² par heure ; nuit/horizon clampé à 0) sommés par jour
-    # -> Wh/m²/jour ; /1000 -> kWh/m²/jour.
+    # W/m² pendant 1 h = Wh/m² ; nuit et horizon ramenés à 0 ; somme par jour
+    # puis /1000 -> kWh/m²/jour.
     poa_horaire = poa.clip(lower=0).fillna(0.0)
     poa_par_jour = poa_horaire.groupby(poa_horaire.index.date).sum() / 1000.0
 

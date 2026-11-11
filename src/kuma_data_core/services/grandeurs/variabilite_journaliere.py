@@ -1,22 +1,14 @@
-"""Calcul `variabilite_journaliere` (coefficient de variation annuel du GHI)
-- couche service.
+"""Grandeur F1 stockée ``variabilite_journaliere`` : coefficient de variation
+annuel du GHI journalier.
 
-Module orchestrant le calcul de la grandeur Kuma F1 stockée
-`variabilite_journaliere` à partir de la série GHI courante. Périodicité
-**annuelle uniquement** (CoV statistiquement non robuste sur 28-31 jours).
+    CoV(année) = σ(GHI_jour) / μ(GHI_jour), sans dimension.
 
-Définition :
+Ordre de grandeur : 0,2 pour un climat très stable (équatorial humide), 0,5
+pour un climat très variable. Annuel uniquement : le coefficient de variation
+n'est pas robuste sur 28 à 31 jours.
 
-```
-CoV(annee) := sigma(GHI_jour sur annee) / μ(GHI_jour sur annee)
-```
-
-Coefficient de variation sans dimension. CoV 0.2 pour climat très
-stable (équatorial humide), CoV 0.5 pour climat très variable
-(transition saisons).
-
-Politique de complétude stricte 100% jours civils v1 sur la série GHI
-amont (héritée de HEP).
+Complétude stricte : seules les années dont tous les jours civils ont une
+mesure GHI sont retenues.
 """
 
 from __future__ import annotations
@@ -68,16 +60,10 @@ class _AgregationResultat(TypedDict):
 
 
 def _calculer_coefficient_variation(valeurs: Sequence[float]) -> float:
-    """Coefficient de variation `sigma / μ` (échantillon, ddof=0).
+    """Coefficient de variation ``σ / μ``, écart-type de population (ddof=0).
 
-    Args:
-        valeurs : séquence non vide de valeurs (typiquement GHI journalier).
-
-    Returns:
-        CoV sans dimension. 0.0 si toutes les valeurs sont identiques.
-
-    Raises:
-        ValueError : séquence vide ou moyenne <= 0 (CoV non défini).
+    Lève ``ValueError`` si la séquence est vide ou si la moyenne est négative
+    ou nulle.
     """
     n = len(valeurs)
     if n == 0:
@@ -94,17 +80,10 @@ def _calculer_coefficient_variation(valeurs: Sequence[float]) -> float:
 def _agreger_variabilite_journaliere(
     mesures_ghi: Sequence[tuple[date, float]],
 ) -> _AgregationResultat:
-    """Agrège GHI journalier en CoV annuel.
+    """Agrège le GHI journalier (kWh/m²/j) en coefficient de variation annuel.
 
-    Fonction pure (aucune I/O). Politique de complétude stricte 100%
-    jours civils v1.
-
-    Args:
-        mesures_ghi : séquence de (date, GHI en kWh/m²/j).
-
-    Returns:
-        :class:`_AgregationResultat` avec 1 ligne annuelle par année
-        complète. Pas de mensuel (CoV non robuste sur 28-31 jours).
+    Une ligne par année complète en jours civils ; les années incomplètes ou
+    de moyenne négative ou nulle sont écartées.
     """
     par_annee: dict[int, list[float]] = defaultdict(list)
     for d, v in mesures_ghi:
@@ -147,25 +126,17 @@ def calculer_et_inserer_variabilite_journaliere(
     code_serie_ghi_amont: str,
     version_formule: int = 1,
 ) -> CalculVariabiliteResultat:
-    """Calcule variabilite_journaliere annuelle et insère dans grandeurs_metier.
+    """Calcule la variabilité annuelle et l'insère dans ``grandeurs_metier``.
 
-    Lit GHI journalier, calcule le CoV annuel, et bulk-insère 1 ligne
-    annuelle par année complète. Pas de ligne mensuelle (CoV non robuste
-    sur 28-31 jours).
+    Lit les mesures GHI courantes et insère une ligne par année complète. Fait
+    un ``flush`` sans ``commit``.
 
-    Args:
-        session : session SQLAlchemy active.
-        code_serie_variabilite : code naturel de la série cible.
-        code_serie_ghi_amont : code naturel de la série GHI amont.
-        version_formule : version de formule en cours (défaut 1).
-
-    Returns:
-        :class:`CalculVariabiliteResultat`.
-
-    Raises:
-        RuntimeError : voir docstrings symétriques du module fraction_diffuse.
+    Lève ``RuntimeError`` si une série est introuvable ou n'a pas le
+    ``grandeur_code`` attendu, si la série cible n'a pas
+    ``methode_collecte='calcul_derive'``, si les deux séries n'ont pas la même
+    localité, ou si ``version_formule`` diffère de
+    ``grandeurs_referentiel.version_formule_actuelle``.
     """
-    # 1. Vérifier alignement version_formule
     version_actuelle = session.execute(
         text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
         {"code": GRANDEUR_CODE_VARIABILITE},
@@ -180,7 +151,6 @@ def calculer_et_inserer_variabilite_journaliere(
             f"version_formule_actuelle pour {GRANDEUR_CODE_VARIABILITE!r}={int(version_actuelle)}."
         )
 
-    # 2. Série cible
     serie_cible = session.execute(
         text(
             """
@@ -208,7 +178,6 @@ def calculer_et_inserer_variabilite_journaliere(
             f"{serie_cible.methode_collecte!r}, attendu {METHODE_COLLECTE_VARIABILITE!r}."
         )
 
-    # 3. Série GHI amont
     serie_ghi = session.execute(
         text(
             "SELECT id AS serie_id, localite_id, grandeur_code "
@@ -224,7 +193,6 @@ def calculer_et_inserer_variabilite_journaliere(
             f"{serie_ghi.grandeur_code!r}, attendu {GRANDEUR_CODE_GHI!r}."
         )
 
-    # 4. Cohérence localite
     localite_cible = int(serie_cible.localite_id)
     if int(serie_ghi.localite_id) != localite_cible:
         raise RuntimeError(
@@ -233,7 +201,6 @@ def calculer_et_inserer_variabilite_journaliere(
             f"{code_serie_ghi_amont!r} localite_id={int(serie_ghi.localite_id)}."
         )
 
-    # 5. Lecture mesures GHI
     rows_ghi = session.execute(
         text(
             """
@@ -248,15 +215,13 @@ def calculer_et_inserer_variabilite_journaliere(
     ).all()
     mesures_ghi: list[tuple[date, float]] = [(r.instant_mesure, float(r.valeur)) for r in rows_ghi]
 
-    # Niveaux effectifs des entrées, pour la règle de propagation P
+    # Niveaux effectifs des entrées, pour la propagation du niveau de confiance.
     niveaux = NiveauxEntrees()
     for r in rows_ghi:
         niveaux.ajouter(r.instant_mesure, r.niveau)
 
-    # 6. Agrégation pure
     agregation = _agreger_variabilite_journaliere(mesures_ghi)
 
-    # 7. Bulk INSERT
     if agregation["lignes_annuelles"]:
         params: list[dict[str, Any]] = [
             {

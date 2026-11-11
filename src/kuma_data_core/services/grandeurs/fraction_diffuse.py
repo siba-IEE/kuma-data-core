@@ -1,31 +1,13 @@
-"""Calcul `fraction_diffuse` (ratio DHI/GHI) - couche service.
+"""Grandeur F1 stockée ``fraction_diffuse`` (ratio DHI/GHI).
 
-Module orchestrant le calcul de la grandeur Kuma F1 stockée
-`fraction_diffuse` à partir de deux séries amont (DHI et GHI courantes
-NASA POWER) et l'insertion dans `grandeurs_metier`.
+Calculée à partir des séries journalières DHI et GHI d'une même localité et
+insérée dans ``grandeurs_metier`` :
 
-Définition :
+    fraction_diffuse(période) = Σ DHI(t) / Σ GHI(t), t parcourant les jours
+    de l'année ou du mois.
 
-```
-fraction_diffuse(annee)       := sum DHI(t) / sum GHI(t) sur t ∈ jours(annee)
-fraction_diffuse(annee, mois) := sum DHI(t) / sum GHI(t) sur t ∈ jours(annee, mois)
-```
-
-Politique de complétude stricte 100% jours civils v1 : aucune ligne
-créée pour une (annee) ou (annee, mois) qui n'a pas exactement le
-nombre de jours civils attendus **sur les deux séries amont
-simultanément** (intersection DHI ∩ GHI).
-
-Architecture (fonctions pures + orchestrateur I/O) :
-
-- `_agreger_fraction_diffuse` (fonction privée pure) : agrège deux
-  séquences de mesures journalières en fraction_diffuse annuelle +
-  mensuelle. Testable unitairement.
-- `calculer_et_inserer_fraction_diffuse` (fonction publique) : orchestre
-  la lecture SQL des deux séries amont (DHI et GHI), l'appel à
-  l'agrégation pure, et l'INSERT bulk dans `grandeurs_metier`.
-
-Pattern bulk INSERT SQL brut (cohérent migration 018 et module HEP).
+Complétude stricte : une période n'est retenue que si tous ses jours civils
+sont présents à la fois dans DHI et dans GHI.
 """
 
 from __future__ import annotations
@@ -49,10 +31,10 @@ PLAFOND_CONFIANCE: NiveauConfiance = "A"
 """Plafond de confiance : ratio exact DHI / GHI, sans modèle ni hypothèse."""
 
 GRANDEUR_CODE_FRACTION_DIFFUSE: str = "fraction_diffuse"
-"""Code naturel de la grandeur dans `grandeurs_referentiel`."""
+"""Code de la grandeur dans ``grandeurs_referentiel``."""
 
 METHODE_COLLECTE_FRACTION_DIFFUSE: str = "calcul_derive"
-"""Méthode attendue sur la série cible (calcul_derive → grandeurs_metier)."""
+"""``methode_collecte`` exigée de la série cible."""
 
 GRANDEUR_CODE_DHI: str = "dhi"
 GRANDEUR_CODE_GHI: str = "ghi"
@@ -89,24 +71,11 @@ def _agreger_fraction_diffuse(
     mesures_dhi: Sequence[tuple[date, float]],
     mesures_ghi: Sequence[tuple[date, float]],
 ) -> _AgregationResultat:
-    """Agrège DHI et GHI journaliers en fraction_diffuse annuelle + mensuelle.
+    """Agrège DHI et GHI journaliers (kWh/m²/j) en fraction diffuse annuelle et mensuelle.
 
-    Fonction pure (aucune I/O). Politique de complétude stricte 100%
-    jours civils v1 : la condition est évaluée sur l'**intersection**
-    des dates présentes dans DHI et GHI.
-
-    Args:
-        mesures_dhi : séquence de (date, valeur DHI en kWh/m²/j).
-        mesures_ghi : séquence de (date, valeur GHI en kWh/m²/j).
-
-    Returns:
-        :class:`_AgregationResultat` avec lignes annuelles et mensuelles
-        satisfaisant la politique, plus listing des skips.
-
-    Notes:
-        Si `sum(GHI)` = 0 sur une période (cas pathologique non
-        observable physiquement), la période est skipped (division par
-        zéro évitée).
+    Seules les périodes complètes en jours civils sur les dates communes aux
+    deux séries sont retenues. Une période dont la somme de GHI est nulle ou
+    négative est écartée comme incomplète (pas de division par zéro).
     """
     dhi_par_date: dict[date, float] = dict(mesures_dhi)
     ghi_par_date: dict[date, float] = dict(mesures_ghi)
@@ -181,32 +150,17 @@ def calculer_et_inserer_fraction_diffuse(
     code_serie_ghi_amont: str,
     version_formule: int = 1,
 ) -> CalculFractionDiffuseResultat:
-    """Calcule fraction_diffuse annuelle + mensuelle et insère dans grandeurs_metier.
+    """Calcule la fraction diffuse annuelle et mensuelle et l'insère dans ``grandeurs_metier``.
 
-    Lit les mesures courantes DHI et GHI de la même localité, agrège par
-    année et mois selon politique de complétude 100% jours civils, et
-    bulk-insère le ratio `sum(DHI) / sum(GHI)` dans `grandeurs_metier`.
+    Lit les mesures courantes DHI et GHI et n'insère que les périodes
+    complètes. Fait un ``flush`` sans ``commit``.
 
-    Args:
-        session : session SQLAlchemy active. La fonction add+flush mais
-            ne commit pas.
-        code_serie_fraction_diffuse : code naturel de la série cible
-            (ex. `gin_conakry_kaloum_fraction_diffuse_kuma_calculs_2021_2025`).
-            Doit exister avec methode_collecte='calcul_derive' et
-            grandeur_code='fraction_diffuse'.
-        code_serie_dhi_amont : code naturel de la série DHI amont.
-        code_serie_ghi_amont : code naturel de la série GHI amont.
-        version_formule : version de formule en cours (défaut 1).
-
-    Returns:
-        :class:`CalculFractionDiffuseResultat`.
-
-    Raises:
-        RuntimeError : série amont/cible introuvable, grandeur_code ou
-            methode_collecte non conformes, incohérence de localité
-            entre les trois séries, ou désalignement version_formule.
+    Lève ``RuntimeError`` si une série est introuvable ou n'a pas le
+    ``grandeur_code`` attendu, si la série cible n'a pas
+    ``methode_collecte='calcul_derive'``, si les trois séries n'ont pas la même
+    localité, ou si ``version_formule`` diffère de
+    ``grandeurs_referentiel.version_formule_actuelle``.
     """
-    # 1. Vérifier alignement version_formule
     version_actuelle = session.execute(
         text("SELECT version_formule_actuelle FROM grandeurs_referentiel WHERE code = :code"),
         {"code": GRANDEUR_CODE_FRACTION_DIFFUSE},
@@ -222,7 +176,6 @@ def calculer_et_inserer_fraction_diffuse(
             f"{int(version_actuelle)}."
         )
 
-    # 2. Récupérer le contexte de la série cible (fraction_diffuse)
     serie_cible = session.execute(
         text(
             """
@@ -257,7 +210,6 @@ def calculer_et_inserer_fraction_diffuse(
             f"{METHODE_COLLECTE_FRACTION_DIFFUSE!r}."
         )
 
-    # 3. Récupérer les deux séries amont (DHI et GHI)
     serie_dhi = session.execute(
         text(
             """
@@ -292,7 +244,6 @@ def calculer_et_inserer_fraction_diffuse(
             f"{serie_ghi.grandeur_code!r}, attendu {GRANDEUR_CODE_GHI!r}."
         )
 
-    # 4. Vérifier cohérence localite entre les 3 séries
     localite_cible = int(serie_cible.localite_id)
     if int(serie_dhi.localite_id) != localite_cible:
         raise RuntimeError(
@@ -307,7 +258,6 @@ def calculer_et_inserer_fraction_diffuse(
             f"{code_serie_ghi_amont!r} localite_id={int(serie_ghi.localite_id)}."
         )
 
-    # 5. Lire les mesures DHI et GHI courantes
     rows_dhi = session.execute(
         text(
             """
@@ -339,15 +289,13 @@ def calculer_et_inserer_fraction_diffuse(
     mesures_dhi: list[tuple[date, float]] = [(r.instant_mesure, float(r.valeur)) for r in rows_dhi]
     mesures_ghi: list[tuple[date, float]] = [(r.instant_mesure, float(r.valeur)) for r in rows_ghi]
 
-    # Niveaux effectifs des entrées, pour la règle de propagation P
+    # Niveaux effectifs des entrées, pour la propagation du niveau de confiance.
     niveaux = NiveauxEntrees()
     for r in (*rows_dhi, *rows_ghi):
         niveaux.ajouter(r.instant_mesure, r.niveau)
 
-    # 6. Agrégation pure
     agregation = _agreger_fraction_diffuse(mesures_dhi, mesures_ghi)
 
-    # 7. Bulk INSERT (annuelles + mensuelles)
     toutes_lignes: list[_LigneAgregeeFractionDiffuse] = list(agregation["lignes_annuelles"]) + list(
         agregation["lignes_mensuelles"]
     )
