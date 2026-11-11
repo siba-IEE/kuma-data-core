@@ -48,7 +48,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
-from kuma_data_core.api.dependencies import CleApiValidee
+from kuma_data_core.api.dependencies import CleApiValidee, parametres_requete
 from kuma_data_core.api.erreurs import ExceptionKuma
 from kuma_data_core.api.v1.schemas.horaire import (
     DATE_DEBUT_DISPONIBILITE,
@@ -282,7 +282,7 @@ def _repondre_horaire(params: ParametresHoraire, resultats: list[ResultatHoraire
     summary="Donnees horaires passe-plat sur une fenetre temporelle",
 )
 def grandeur_horaire(
-    params: Annotated[ParametresHoraire, Depends()],
+    params: Annotated[ParametresHoraire, Depends(parametres_requete(ParametresHoraire))],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:

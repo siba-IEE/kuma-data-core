@@ -26,10 +26,17 @@ le projet suit le versionnement sémantique.
 
 ### Corrigé
 
+- Une requête incohérente sur `/v1/grandeurs` ou l'horaire (période
+  inversée, paramètre requis par un autre) reçoit `422` et non plus `500`.
 - Le choix d'une série parmi plusieurs candidates est ordonné : deux
   requêtes identiques lisent la même série.
 - Le fuseau des sessions PostgreSQL est fixé à UTC : les regroupements par
   jour ne dépendent plus du réglage du serveur.
+
+### Modifié
+
+- Les origines CORS se règlent par déploiement (`CORS_ORIGINES`, liste
+  JSON) ; la valeur par défaut est inchangée, `*` est refusé en production.
 
 ### Ajouté
 

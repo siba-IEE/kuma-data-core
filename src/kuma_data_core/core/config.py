@@ -64,6 +64,20 @@ class Settings(BaseSettings):
     api_version: str = Field(default="0.1.0")
     api_environnement: Literal["dev", "integration", "prod"] = Field(default="dev")
     api_docs_actives: bool = Field(default=True)
+    # Origines navigateur admises (CORS), propres à chaque déploiement :
+    # l'application de bureau (Vite en dev, bundle Tauri signé en production)
+    # et la console web. Variable d'environnement : liste JSON.
+    cors_origines: list[str] = Field(
+        default=[
+            "http://localhost:1420",
+            "http://127.0.0.1:1420",
+            "tauri://localhost",
+            "https://tauri.localhost",
+            "http://tauri.localhost",
+            "https://kumascience.com",
+            "https://www.kumascience.com",
+        ]
+    )
     # Clés API valides (stockage en variables d'environnement).
     # Migration vers une table ``cles_api`` prévue ultérieurement.
     api_cle_solar_bridge: SecretStr | None = Field(default=None)
@@ -184,6 +198,8 @@ class Settings(BaseSettings):
         ``Settings`` - l'application ne démarre pas.
         """
         if self.api_environnement == "prod":
+            if "*" in self.cors_origines:
+                raise ValueError("cors_origines ne peut pas contenir '*' en production")
             if self.api_docs_actives:
                 raise ValueError("api_docs_actives ne peut pas être True en production")
             if self.log_format != "json":

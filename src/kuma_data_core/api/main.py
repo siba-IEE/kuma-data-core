@@ -73,24 +73,11 @@ def creer_application() -> FastAPI:
         openapi_url=openapi_url,
         lifespan=lifespan,
     )
-    # Middleware CORS - autorise les consommateurs Bridge à appeler l'API.
-    # En dev local, Solar Bridge (Vite + Tauri) tourne sur localhost:1420.
-    # En production, l'origine sera le bundle Tauri signé (tauri://localhost
-    # sur Windows/Linux, https://tauri.localhost sur macOS).
-    # La console API de kumascience.com (/api/console/) envoie aussi ses
-    # requêtes depuis le navigateur, avec la clé de l'utilisateur : POST
-    # pour l'émission de clé (POST /v1/cles), GET pour tout le reste.
+    # La console web envoie ses requêtes depuis le navigateur avec la clé de
+    # l'utilisateur : POST pour l'émission de clé, GET pour tout le reste.
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "http://localhost:1420",
-            "http://127.0.0.1:1420",
-            "tauri://localhost",
-            "https://tauri.localhost",
-            "http://tauri.localhost",
-            "https://kumascience.com",
-            "https://www.kumascience.com",
-        ],
+        allow_origins=settings.cors_origines,
         # Auth par jeton Bearer, aucun cookie de session : les credentials
         # cross-origin sont inutiles. On retire l'en-tete Allow-Credentials
         # orphelin (finding F-06 pentest).

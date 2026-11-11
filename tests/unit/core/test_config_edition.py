@@ -125,3 +125,20 @@ def test_meta_url_utilise_les_identifiants_dedies_quand_fournis() -> None:
     # Le couple lecture seule ne fuit pas dans le DSN de la base de service.
     assert "kuma_api_ro" not in url
     assert "mdp_ro" not in url
+
+
+def test_prod_refuse_cors_ouvert_a_tous() -> None:
+    with pytest.raises(ValidationError, match="cors_origines"):
+        Settings(
+            postgres_password="mdp",
+            api_environnement="prod",
+            api_docs_actives=False,
+            log_format="json",
+            api_cle_admin=_CLE_ADMIN_FORTE,
+            cors_origines=["*"],
+        )
+
+
+def test_cors_origines_lues_de_l_environnement(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("CORS_ORIGINES", '["https://exemple.org"]')
+    assert Settings(postgres_password="mdp").cors_origines == ["https://exemple.org"]

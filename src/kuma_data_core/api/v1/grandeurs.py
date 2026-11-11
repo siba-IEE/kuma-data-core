@@ -43,7 +43,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
-from kuma_data_core.api.dependencies import CleApiValidee
+from kuma_data_core.api.dependencies import CleApiValidee, parametres_requete
 from kuma_data_core.api.erreurs import ExceptionKuma
 from kuma_data_core.api.services.serie_lecture import (
     TableMesures,
@@ -540,7 +540,7 @@ def _construire_reponse(
     summary="POA paramétrable (modèle Perez 1990 + Liu-Jordan fallback)",
 )
 def grandeur_poa_parametrable(
-    params: Annotated[ParametresPOA, Depends()],
+    params: Annotated[ParametresPOA, Depends(parametres_requete(ParametresPOA))],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
@@ -710,7 +710,7 @@ def _resoudre_serie_albedo_journalier(
     summary="POA bifacial (modèle infinite-sheds row-aware)",
 )
 def grandeur_poa_bifacial(
-    params: Annotated[ParametresBifacial, Depends()],
+    params: Annotated[ParametresBifacial, Depends(parametres_requete(ParametresBifacial))],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
@@ -888,7 +888,10 @@ def _lire_t2m_compagne(
     summary="Productible avec correction thermique (NOCT simple, Ross 1980)",
 )
 def grandeur_productible_correction_thermique(
-    params: Annotated[ParametresProductibleCorrectionThermique, Depends()],
+    params: Annotated[
+        ParametresProductibleCorrectionThermique,
+        Depends(parametres_requete(ParametresProductibleCorrectionThermique)),
+    ],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
@@ -1015,7 +1018,9 @@ def grandeur_productible_correction_thermique(
     summary="Productible avec PR fourni (brut Marion 2005 + PR_T Dierauf 2013)",
 )
 def grandeur_productible_pr_fourni(
-    params: Annotated[ParametresProductiblePRFourni, Depends()],
+    params: Annotated[
+        ParametresProductiblePRFourni, Depends(parametres_requete(ParametresProductiblePRFourni))
+    ],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
@@ -1259,7 +1264,9 @@ def grandeur_productible_pr_fourni(
     summary="Énergie utile ECS bord-capteur (Hottel-Whillier-Bliss)",
 )
 def grandeur_energie_utile_ecs(
-    params: Annotated[ParametresEnergieUtileECS, Depends()],
+    params: Annotated[
+        ParametresEnergieUtileECS, Depends(parametres_requete(ParametresEnergieUtileECS))
+    ],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
@@ -1390,7 +1397,10 @@ def grandeur_energie_utile_ecs(
     summary="Degrés-jours de climatisation (moyenne journalière ou intégration horaire)",
 )
 def grandeur_degre_jour_climatisation(
-    params: Annotated[ParametresDegreJourClimatisation, Depends()],
+    params: Annotated[
+        ParametresDegreJourClimatisation,
+        Depends(parametres_requete(ParametresDegreJourClimatisation)),
+    ],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> Response:
@@ -1810,7 +1820,7 @@ def _chercher_serie_pm_cams(session: Session, localite_id: int, grandeur_code: s
 )
 def grandeur_pr_realiste(
     code_serie_source: str,
-    params: Annotated[ParametresPRRealiste, Depends()],
+    params: Annotated[ParametresPRRealiste, Depends(parametres_requete(ParametresPRRealiste))],
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
 ) -> ReponsePRRealiste:
