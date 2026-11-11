@@ -64,19 +64,30 @@ def test_ecart_dni_recent_34_climato_intact(db_session: Session) -> None:
 
 
 def test_62_series_calculees_creees(db_session: Session) -> None:
-    """62 series calculees creees par 091 (28 GHI communes + 34 DNI recent)."""
-    n = db_session.execute(
-        text(
-            """
-            SELECT COUNT(*) FROM series_metadonnees sm
-            JOIN sources s ON s.id = sm.source_id
-            WHERE s.code = 'kuma_calculs'
-              AND sm.code LIKE '%_kuma_calculs_2021_2023'
-              AND sm.libelle LIKE '%(atlas Temps 1)'
-            """
+    """62 séries d'écart 2021-2023 hors des six premières séries GHI (28 GHI, 34 DNI).
+
+    Les séries sont reconnues par leur grandeur et leur période : leur libellé
+    ne porte plus de mention distinctive.
+    """
+    par_grandeur = dict(
+        db_session.execute(
+            text(
+                """
+                SELECT sm.grandeur_code, COUNT(*) FROM series_metadonnees sm
+                JOIN sources s ON s.id = sm.source_id
+                WHERE s.code = 'kuma_calculs'
+                  AND sm.grandeur_code IN ('ecart_relatif_referentiel', 'ecart_relatif_dni_cams')
+                  AND sm.periode_debut = DATE '2021-01-01'
+                  AND sm.periode_fin = DATE '2023-12-31'
+                GROUP BY sm.grandeur_code
+                """
+            )
         )
-    ).scalar_one()
-    assert n == 62
+        .tuples()
+        .all()
+    )
+    # 34 séries GHI dont 6 antérieures (une par localité d'origine) : 28 + 34 = 62.
+    assert par_grandeur == {"ecart_relatif_referentiel": 34, "ecart_relatif_dni_cams": 34}
 
 
 def test_confiance_b_jamais_a(db_session: Session) -> None:
