@@ -1,7 +1,7 @@
 """Lecture de l'atlas d'incertitude inter-source : écarts entre sources et dégénérescence de pixel.
 
-Ces grandeurs calculées sont lues dans ``grandeurs_metier``, pas dans la vue
-``v_grandeurs_metier_courantes``.
+Ces grandeurs calculées sont lues par la vue des valeurs en vigueur, comme
+toute valeur de ``grandeurs_metier`` servie.
 """
 
 from __future__ import annotations
@@ -11,8 +11,7 @@ from typing import NamedTuple
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
-# Version en vigueur de chaque valeur (alias ``gm``), tous statuts et toutes versions de formule.
-_VALEURS_COURANTES = "gm.valide_au IS NULL"
+from kuma_data_core.editorial.selection import VUE_GRANDEURS_EN_VIGUEUR
 
 
 class DegenerescencePixel(NamedTuple):
@@ -50,11 +49,10 @@ def lire_ecarts_mensuels(
             f"""
             SELECT gm.valeur, gm.niveau_confiance_derive AS derive,
                    gm.niveau_confiance_override AS override
-            FROM grandeurs_metier gm
+            FROM {VUE_GRANDEURS_EN_VIGUEUR} gm
             JOIN localites l ON l.id = gm.localite_id
             WHERE l.code = :loc AND gm.grandeur_code = :g
               AND gm.annee_debut BETWEEN :a1 AND :a2
-              AND {_VALEURS_COURANTES}
             ORDER BY gm.annee_debut, gm.mois
             """
         ),
@@ -77,13 +75,12 @@ def lire_degenerescence_pixel(session: Session, code_localite: str) -> Degeneres
             SELECT gm.valeur, gm.commentaire_editorial AS note,
                    gm.niveau_confiance_derive AS derive,
                    gm.niveau_confiance_override AS override
-            FROM grandeurs_metier gm
+            FROM {VUE_GRANDEURS_EN_VIGUEUR} gm
             JOIN localites l ON l.id = gm.localite_id
             JOIN series_metadonnees sm ON sm.id = gm.series_metadonnees_id
             JOIN sources s ON s.id = sm.source_id
             WHERE l.code = :loc AND gm.grandeur_code = 'degenerescence_pixel'
               AND s.code = 'nasa_power' AND sm.grandeur_code = 'ghi'
-              AND {_VALEURS_COURANTES}
             """
         ),
         {"loc": code_localite},
@@ -107,10 +104,10 @@ def lister_points_atlas(session: Session, annee_debut: int) -> list[PointAtlas]:
         text(
             f"""
             SELECT DISTINCT l.id, l.code
-            FROM grandeurs_metier gm
+            FROM {VUE_GRANDEURS_EN_VIGUEUR} gm
             JOIN localites l ON l.id = gm.localite_id
             WHERE gm.grandeur_code IN ('ecart_relatif_referentiel', 'ecart_relatif_dni_cams')
-              AND gm.annee_debut >= :a1 AND {_VALEURS_COURANTES}
+              AND gm.annee_debut >= :a1
             ORDER BY l.code
             """
         ),

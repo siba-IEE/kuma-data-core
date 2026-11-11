@@ -76,5 +76,25 @@ sa place.
 
 Aucune mise à jour destructive. Une valeur corrigée ou ré-ingérée ne remplace
 pas l'ancienne en place : une nouvelle ligne est créée, l'ancienne est bornée
-par `valide_au`, et les lectures ne renvoient que la version courante. L'histoire
-reste vérifiable.
+par `valide_au`, et les lectures ne renvoient que la version en vigueur.
+L'histoire reste vérifiable.
+
+## Lignes servies
+
+Une lecture ne sert pas toute ligne présente en base. Deux règles, définies une
+seule fois dans `kuma_data_core.editorial.selection` :
+
+| Règle | Lignes retenues | S'applique à |
+|---|---|---|
+| En vigueur | `valide_au` nul, statut autre que `deprecie` | mesures journalières et mensuelles ; valeurs de grandeur calculée, lues par la vue `v_grandeurs_metier_courantes`, qui exige en plus la version de formule actuelle |
+| En vigueur et validée | `valide_au` nul, statut `valide_auto`, `valide_humain` ou `publie` | mesures horaires |
+
+La différence tient au contrôle qualité automatique. Seul l'horaire y passe :
+une ligne horaire restée `brut` n'a pas passé ce contrôle, elle n'est pas
+servie. Ailleurs, `brut` est le statut ordinaire d'une valeur importée ou
+calculée, et elle est servie. Une ligne `deprecie` ne l'est jamais.
+
+Un lecteur (lecture de l'API, capsule, script d'export) appelle ces règles ;
+il ne les récrit pas. Un test d'architecture le vérifie et nomme les
+exceptions avec leur raison : les calculs de grandeurs stockées, que des
+migrations rejouent, gardent la première règle écrite dans leur SQL.

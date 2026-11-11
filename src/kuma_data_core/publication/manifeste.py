@@ -9,8 +9,8 @@ L'assainissement s'applique en local, sur la base d'édition intermédiaire,
 avant ``pg_dump`` : le serveur ne reçoit jamais rien à nettoyer.
 
 Aucune ligne n'est filtrée par statut au dump : l'historique versionné fait
-partie de la donnée publiée, et c'est l'API qui ne sert que le courant
-(``statut <> 'deprecie'``).
+partie de la donnée publiée, et c'est l'API qui choisit les lignes qu'elle
+sert, par les règles de ``editorial.selection``.
 """
 
 from __future__ import annotations

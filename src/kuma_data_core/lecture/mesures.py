@@ -1,7 +1,7 @@
 """Lecture des mesures journalières, mensuelles et horaires, et des valeurs de grandeur calculée.
 
-Trois règles décident des lignes qu'une lecture retient. Chacune est définie
-une seule fois, ci-dessous, et chaque lecteur nomme celle qu'il applique.
+Chaque lecteur nomme la règle de sélection qu'il applique ; les règles sont
+définies dans ``editorial.selection``.
 """
 
 from __future__ import annotations
@@ -14,19 +14,12 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.editorial.niveaux_confiance import NiveauxEntrees
-from kuma_data_core.editorial.statuts import STATUTS_VALIDES
-
-# Version en vigueur de chaque mesure, quel que soit son statut éditorial.
-_LIGNES_COURANTES = "valide_au IS NULL"
-
-# Version en vigueur de statut validé : une ligne ``brut`` ou ``deprecie`` est écartée.
-_LIGNES_COURANTES_VALIDEES = (
-    "statut IN (" + ", ".join(f"'{statut}'" for statut in STATUTS_VALIDES) + ")"
-    f" AND {_LIGNES_COURANTES}"
+from kuma_data_core.editorial.selection import (
+    VUE_GRANDEURS_EN_VIGUEUR,
+    StatutValide,
+    lignes_en_vigueur,
+    lignes_en_vigueur_validees,
 )
-
-# Vue des valeurs en vigueur, de la version de formule actuelle, hors statut ``deprecie``.
-_GRANDEURS_METIER_COURANTES = "v_grandeurs_metier_courantes"
 
 
 class LigneJournaliere(NamedTuple):
@@ -68,10 +61,11 @@ class LigneGrandeurMetier(NamedTuple):
 
 
 class PointHoraire(NamedTuple):
-    """Valeur horaire à son instant, tel qu'enregistré (avec fuseau)."""
+    """Valeur horaire à son instant, tel qu'enregistré (avec fuseau), et statut de sa ligne."""
 
     instant_mesure: datetime
     valeur: float
+    statut: StatutValide
 
 
 def lire_page_journaliere(
@@ -81,9 +75,9 @@ def lire_page_journaliere(
     limit: int,
     offset: int,
 ) -> list[LigneJournaliere]:
-    """Page des mesures journalières courantes de la série, bornes incluses, triée par date."""
+    """Page des mesures journalières en vigueur de la série, bornes incluses, triée par date."""
     from_d, to_d = bornes
-    clauses = ["mr.serie_id = :serie_id", _LIGNES_COURANTES]
+    clauses = ["mr.serie_id = :serie_id", lignes_en_vigueur("mr")]
     params: dict[str, object] = {"serie_id": serie_id, "limit": limit, "offset": offset}
     if from_d is not None:
         clauses.append("mr.instant_mesure >= :from_d")
@@ -129,12 +123,12 @@ def lire_page_mensuelle(
     limit: int,
     offset: int,
 ) -> list[LigneMensuelle]:
-    """Page des mesures mensuelles courantes de la série, triée par mois.
+    """Page des mesures mensuelles en vigueur de la série, triée par mois.
 
     Seuls l'année et le mois des bornes comptent ; mois bornes inclus.
     """
     from_d, to_d = bornes
-    clauses = ["m.serie_id = :serie_id", _LIGNES_COURANTES]
+    clauses = ["m.serie_id = :serie_id", lignes_en_vigueur("m")]
     params: dict[str, object] = {"serie_id": serie_id, "limit": limit, "offset": offset}
     if from_d is not None:
         clauses.append("(m.annee, m.mois) >= (:from_y, :from_m)")
@@ -183,7 +177,7 @@ def lire_page_grandeurs_metier(
     limit: int,
     offset: int,
 ) -> list[LigneGrandeurMetier]:
-    """Page des valeurs de grandeur calculée de la série, lues dans la vue des valeurs courantes.
+    """Page des valeurs de grandeur calculée de la série, lues dans la vue des valeurs en vigueur.
 
     Seuls l'année et le mois des bornes comptent ; une valeur sans mois vaut
     janvier pour la borne basse et décembre pour la borne haute.
@@ -208,7 +202,7 @@ def lire_page_grandeurs_metier(
                 v.version_formule, v.valeur,
                 v.niveau_confiance_derive, v.niveau_confiance_override,
                 v.niveau_effectif, v.statut
-            FROM {_GRANDEURS_METIER_COURANTES} v
+            FROM {VUE_GRANDEURS_EN_VIGUEUR} v
             WHERE {" AND ".join(clauses)}
             ORDER BY v.annee_debut, v.mois NULLS FIRST
             LIMIT :limit OFFSET :offset
@@ -241,7 +235,7 @@ def lire_valeurs_journalieres(
     *,
     niveaux: NiveauxEntrees,
 ) -> dict[date, float]:
-    """Valeurs journalières courantes d'une série sur la fenêtre, indexées par date.
+    """Valeurs journalières en vigueur d'une série sur la fenêtre, indexées par date.
 
     Range le niveau de confiance effectif de chaque valeur lue dans ``niveaux``.
     """
@@ -252,7 +246,7 @@ def lire_valeurs_journalieres(
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource
             WHERE serie_id = :serie_id
-              AND {_LIGNES_COURANTES}
+              AND {lignes_en_vigueur()}
               AND instant_mesure >= :debut
               AND instant_mesure <= :fin
             ORDER BY instant_mesure
@@ -274,7 +268,7 @@ def lire_valeurs_horaires(
     fuseau: str,
     niveaux: NiveauxEntrees,
 ) -> dict[datetime, float]:
-    """Valeurs horaires validées et courantes d'une série, indexées par instant local.
+    """Valeurs horaires en vigueur et validées d'une série, indexées par instant local.
 
     Les lignes rejetées par le contrôle qualité (statut ``brut``) sont exclues.
     ``fuseau`` est le nom IANA du fuseau de la localité de la série : la fenêtre
@@ -289,7 +283,7 @@ def lire_valeurs_horaires(
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource_horaires
             WHERE serie_id = :serie_id
-              AND {_LIGNES_COURANTES_VALIDEES}
+              AND {lignes_en_vigueur_validees()}
               AND instant_mesure >= :borne_debut
               AND instant_mesure < :borne_fin
               AND (instant_mesure AT TIME ZONE :fuseau)::date >= :debut
@@ -320,7 +314,7 @@ def lire_valeurs_horaires(
 def lire_points_horaires(
     session: Session, serie_id: int, periode_debut: date, periode_fin: date
 ) -> list[PointHoraire]:
-    """Points horaires validés et courants d'une série sur la fenêtre, triés par instant.
+    """Points horaires en vigueur et validés d'une série sur la fenêtre, triés par instant.
 
     Les lignes rejetées par le contrôle qualité (statut ``brut``) sont exclues.
     La fenêtre porte sur la date UTC.
@@ -328,10 +322,10 @@ def lire_points_horaires(
     rows = session.execute(
         text(
             f"""
-            SELECT instant_mesure, valeur
+            SELECT instant_mesure, valeur, statut
             FROM mesures_ressource_horaires
             WHERE serie_id = :serie_id
-              AND {_LIGNES_COURANTES_VALIDEES}
+              AND {lignes_en_vigueur_validees()}
               AND (instant_mesure AT TIME ZONE 'UTC')::date >= :debut
               AND (instant_mesure AT TIME ZONE 'UTC')::date <= :fin
             ORDER BY instant_mesure
@@ -339,7 +333,10 @@ def lire_points_horaires(
         ),
         {"serie_id": serie_id, "debut": periode_debut, "fin": periode_fin},
     ).all()
-    return [PointHoraire(instant_mesure=r.instant_mesure, valeur=float(r.valeur)) for r in rows]
+    return [
+        PointHoraire(instant_mesure=r.instant_mesure, valeur=float(r.valeur), statut=r.statut)
+        for r in rows
+    ]
 
 
 def lire_valeurs_mensuelles(
@@ -350,7 +347,7 @@ def lire_valeurs_mensuelles(
     *,
     niveaux: NiveauxEntrees,
 ) -> dict[tuple[int, int], float]:
-    """Valeurs mensuelles courantes d'une série, indexées par ``(annee, mois)``, bornes incluses.
+    """Valeurs mensuelles en vigueur d'une série, indexées par ``(annee, mois)``, bornes incluses.
 
     Range le niveau effectif de chaque valeur lue sous son mois dans ``niveaux``.
     """
@@ -361,7 +358,7 @@ def lire_valeurs_mensuelles(
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource_mensuelles
             WHERE serie_id = :serie_id
-              AND {_LIGNES_COURANTES}
+              AND {lignes_en_vigueur()}
               AND (annee, mois) >= (:from_y, :from_m)
               AND (annee, mois) <= (:to_y, :to_m)
             ORDER BY annee, mois
@@ -383,7 +380,7 @@ def lire_valeurs_mensuelles(
 def lire_serie_mensuelle_entiere(
     session: Session, serie_id: int, *, niveaux: NiveauxEntrees
 ) -> list[tuple[int, int, float]]:
-    """Mesures mensuelles courantes d'une série, en tuples ``(annee, mois, valeur)`` triés.
+    """Mesures mensuelles en vigueur d'une série, en tuples ``(annee, mois, valeur)`` triés.
 
     Tout est chargé d'un coup (360 lignes pour une série 1991-2020 complète).
     Range le niveau effectif de chaque valeur lue dans ``niveaux``.
@@ -394,7 +391,7 @@ def lire_serie_mensuelle_entiere(
             SELECT annee, mois, valeur,
                    coalesce(niveau_confiance_override, niveau_confiance_derive) AS niveau
             FROM mesures_ressource_mensuelles
-            WHERE serie_id = :serie_id AND {_LIGNES_COURANTES}
+            WHERE serie_id = :serie_id AND {lignes_en_vigueur()}
             ORDER BY annee, mois
             """
         ),
@@ -409,7 +406,7 @@ def lister_localites_de_meme_serie_mensuelle(session: Session, serie_id: int) ->
     """Codes, triés, des autres localités dont une série mensuelle égale cette série.
 
     Sont comparées les séries actives de même source, même grandeur et même
-    ``periode_debut``. Deux séries sont égales quand leurs valeurs courantes,
+    ``periode_debut``. Deux séries sont égales quand leurs valeurs en vigueur,
     ordonnées par année puis mois, sont identiques : PostgreSQL compare les
     tableaux, aucune valeur n'est rapatriée. C'est le cas de deux localités
     d'une même cellule, quand la grille de la source est plus large que leur
@@ -424,10 +421,10 @@ def lister_localites_de_meme_serie_mensuelle(session: Session, serie_id: int) ->
                 WHERE id = :serie_id
             ),
             vecteurs AS (
-                SELECT serie_id, array_agg(valeur ORDER BY annee, mois) AS valeurs
-                FROM mesures_ressource_mensuelles
-                WHERE {_LIGNES_COURANTES}
-                  AND serie_id IN (
+                SELECT m.serie_id, array_agg(m.valeur ORDER BY m.annee, m.mois) AS valeurs
+                FROM mesures_ressource_mensuelles m
+                WHERE {lignes_en_vigueur("m")}
+                  AND m.serie_id IN (
                       SELECT sm.id
                       FROM series_metadonnees sm
                       JOIN reference r
@@ -436,7 +433,7 @@ def lister_localites_de_meme_serie_mensuelle(session: Session, serie_id: int) ->
                        AND sm.periode_debut = r.periode_debut
                       WHERE sm.actif = TRUE
                   )
-                GROUP BY serie_id
+                GROUP BY m.serie_id
             )
             SELECT DISTINCT l.code
             FROM reference r

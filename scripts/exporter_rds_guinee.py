@@ -11,8 +11,8 @@ Lit la base designee par POSTGRES_DB (la base de reference profondeur).
 Selection data-driven par (source, grandeur, granularite) ; pour le mensuel
 NASA POWER, seule la serie longue est retenue (periode_fin 2025-12-31), les
 normales climatiques 1991/2001-2020 restant un produit editorial du moteur.
-L'horaire ne retient que les lignes qualifiees valide_auto (les rejets du
-controle qualite restent en base, comptes dans le manifeste du versement).
+L'horaire ne retient que les lignes validees (les rejets du controle
+qualite restent en base, comptes dans le manifeste du versement).
 
 Conventions horaires ecrites au dictionnaire du RDS : instant_utc ISO-8601
 avec decalage explicite, debut de pas, irradiances en Wh/m2 par pas horaire,
@@ -38,6 +38,7 @@ from typing import Any
 from sqlalchemy import create_engine, text
 
 from kuma_data_core.core.config import get_settings
+from kuma_data_core.editorial.selection import lignes_en_vigueur, lignes_en_vigueur_validees
 
 SORTIE = Path("out/rds-guinee")
 SORTIE_DATA = SORTIE / "data"
@@ -198,7 +199,7 @@ def exporter_mensuel(conn: Any, bloc: dict[str, Any]) -> None:
             JOIN sources s ON s.id = sm.source_id
             JOIN localites l ON l.id = sm.localite_id
             WHERE s.code = :source AND sm.grandeur_code = ANY(:grandeurs)
-              AND sm.granularite = 'mensuel' AND m.valide_au IS NULL
+              AND sm.granularite = 'mensuel' AND {lignes_en_vigueur("m")}
               {bloc["filtre_series"]}
             ORDER BY l.code, m.annee, m.mois
             """
@@ -245,7 +246,7 @@ def exporter_journalier(
             JOIN sources s ON s.id = sm.source_id
             JOIN localites l ON l.id = sm.localite_id
             WHERE s.code = :source AND sm.grandeur_code = ANY(:grandeurs)
-              AND sm.granularite = 'journalier' AND m.valide_au IS NULL
+              AND sm.granularite = 'journalier' AND {lignes_en_vigueur("m")}
               AND m.instant_mesure BETWEEN :dmin AND :dmax
               {bloc["filtre_series"]}
             ORDER BY l.code, m.instant_mesure
@@ -288,7 +289,7 @@ def exporter_journalier(
 
 
 def exporter_horaire(conn: Any) -> None:
-    """Archive zip : un CSV par localite, lignes valide_auto uniquement."""
+    """Archive zip : un CSV par localite, lignes validees uniquement."""
     localites = [
         (int(r.id), str(r.code))
         for r in conn.execute(
@@ -309,14 +310,14 @@ def exporter_horaire(conn: Any) -> None:
         for localite_id, code in localites:
             rows = conn.execution_options(yield_per=50_000).execute(
                 text(
-                    """
+                    f"""
                     SELECT m.instant_mesure AS instant, sm.grandeur_code, m.valeur
                     FROM mesures_ressource_horaires m
                     JOIN series_metadonnees sm ON sm.id = m.serie_id
                     JOIN sources s ON s.id = sm.source_id
                     WHERE s.code = 'nasa_power' AND sm.localite_id = :lid
                       AND sm.granularite = 'horaire'
-                      AND m.statut = 'valide_auto' AND m.valide_au IS NULL
+                      AND {lignes_en_vigueur_validees("m")}
                     ORDER BY m.instant_mesure
                     """
                 ),

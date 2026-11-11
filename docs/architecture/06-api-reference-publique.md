@@ -539,15 +539,19 @@ un pur passe-plat.
 Comportement :
 
 1. Si une série horaire stockée couvre la plage demandée, l'endpoint
-   renvoie les points validés (`mesures_ressource_horaires`, statut
-   `valide_auto`, confiance B). Les lignes rejetées par le contrôle
-   qualité (statut `brut`) sont exclues.
+   renvoie ses points en vigueur et validés
+   (`mesures_ressource_horaires`, statut `valide_auto`, `valide_humain`
+   ou `publie`). Les lignes rejetées par le contrôle qualité (statut
+   `brut`) sont exclues ; une série dont aucune ligne n'est validée ne
+   compte pas comme stockée.
 2. Sinon, l'API relaie la requête vers le service amont (NASA POWER),
    convertit la réponse au format Kuma et l'étiquète
    `passe_plat_non_valide`.
 
-Le champ `statut_editorial` de chaque point vaut donc `valide_auto`
-(stocké validé) ou `passe_plat_non_valide` (relais non validé).
+Le champ `statut_editorial` d'un point stocké porte le statut de sa
+ligne : `valide_auto` (contrôle qualité automatique passé),
+`valide_humain` (validée par un éditeur) ou `publie`. Un point relayé
+porte `passe_plat_non_valide`.
 
 - Auth : Bearer requise
 - Paramètres path :
@@ -965,8 +969,12 @@ Voir 3.7 pour les routes, modèles physiques et paramètres.
 
 Une partie du substrat solaire existe en granularité horaire (GHI, DNI,
 DHI, T2M et compagnes selon la localité), stockée dans
-`mesures_ressource_horaires` avec passage par contrôle qualité (statut
-`valide_auto`, confiance B). Ces séries alimentent l'endpoint horaire
+`mesures_ressource_horaires` et soumise au contrôle qualité automatique :
+une ligne qui le passe prend le statut `valide_auto`, une ligne rejetée
+reste `brut` et n'est pas servie. La confiance suit la méthode de
+collecte de la série : B pour une série modélisée par satellite (NASA
+POWER), A pour une mesure directe au sol (GHI et DNI de la station ESMAP
+WAPP de Kankan). Ces séries alimentent l'endpoint horaire
 (3.8) et le mode `integration_horaire` des routes F2. La couverture
 horaire par localité se découvre via `/v1/series` (filtre sur la
 granularité).
@@ -1057,7 +1065,7 @@ Chaque mesure et chaque ligne de `grandeurs_metier` porte un statut parmi
 Les transitions sont encadrées par la couche service Python ; l'API les
 expose en lecture. La vue `v_grandeurs_metier_courantes` filtre
 nativement les lignes `deprecie` et les versions de formule non
-actuelles.
+actuelles. Les lignes servies selon leur statut sont décrites en 6.3.
 
 ### 5.4 Convention de nommage des codes de série
 
@@ -1099,7 +1107,7 @@ Règles :
 |---|---|
 | `mesures_ressource` (journalier) | Grandeurs brutes journalières (GHI/DNI/DHI/T2M/RH2M/Kt, précipitation, PM, vent, albédo) |
 | `mesures_ressource_mensuelles` | GHI mensuel SARAH-3, GHI mensuel climatologie 1991-2020, DNI mensuel CAMS, ERA5-Land mensuel |
-| `mesures_ressource_horaires` | Horaire stocké validé par contrôle qualité (statut `valide_auto`, confiance B) |
+| `mesures_ressource_horaires` | Horaire stocké, soumis au contrôle qualité automatique (statut `valide_auto` s'il le passe, `brut` sinon ; confiance B pour le satellite, A pour la mesure au sol) |
 | `grandeurs_metier` | Grandeurs F1 calculées Kuma (HEP, fraction diffuse, humidex, etc.) et écarts référentiels matérialisés |
 | Calculé à la volée | Routes F1 (`ghi_exceedance`, `taux_salissure_proxy`, `pr_realiste`, `incertitude_inter_source`) et F2 paramétrables |
 | Passe-plat à la volée | Horaire non couvert par le stocké (relais amont) |
@@ -1128,10 +1136,22 @@ vue `v_grandeurs_metier_courantes` expose la version en vigueur.
 
 ### 6.3 Ce que l'API expose en lecture
 
-En v1, les endpoints `/v1/series/{code}` filtrent automatiquement sur
-`valide_au IS NULL` (lignes courantes) et `statut <> 'deprecie'`. Le
-ciblage explicite d'une version antérieure n'est pas exposé publiquement
-v1 (l'historique reste en base pour audit interne).
+Deux règles décident des lignes servies, selon la table lue :
+
+- mesures journalières et mensuelles, valeurs de grandeur calculée
+  (`/v1/series/{code}`, grandeurs calculées à partir de ces mesures,
+  fiches d'incertitude inter-source) : version en vigueur
+  (`valide_au IS NULL`) et `statut <> 'deprecie'`. Pour les valeurs de
+  grandeur, la vue `v_grandeurs_metier_courantes` exige en plus la
+  version de formule actuelle ;
+- mesures horaires (`/v1/horaire`, intégration horaire des grandeurs
+  paramétrables, séquence horaire de la capsule) : version en vigueur et
+  statut validé (`valide_auto`, `valide_humain` ou `publie`). Seul
+  l'horaire passe par le contrôle qualité automatique : une ligne
+  horaire restée `brut` n'a pas passé ce contrôle.
+
+Le ciblage explicite d'une version antérieure n'est pas exposé
+publiquement v1 (l'historique reste en base pour audit interne).
 
 ### 6.4 Audit
 

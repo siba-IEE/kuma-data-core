@@ -30,7 +30,8 @@ Chaque valeur porte, en plus de sa source et de sa méthode :
 - un **statut éditorial** (de `brut` à `publie`) ;
 - une **validité temporelle** : rien n'est écrasé en place. Une nouvelle valeur
   supplante l'ancienne par versionnement (`valide_du`, `valide_au`) ; les
-  lectures ne renvoient que la version courante.
+  lectures ne renvoient que la version en vigueur, selon les règles des
+  [lignes servies](confiance-et-statuts.md#lignes-servies).
 
 Le détail est dans [confiance et statuts](confiance-et-statuts.md).
 

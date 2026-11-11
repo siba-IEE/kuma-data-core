@@ -26,6 +26,21 @@ le projet suit le versionnement sémantique.
 
 ### Corrigé
 
+- Une valeur dépréciée (statut `deprecie`) n'est plus servie par les lectures
+  journalières et mensuelles (`/v1/series/{code_serie}`, grandeurs calculées
+  qui lisent ces mesures, recherche des localités de même série mensuelle) ni
+  par l'atlas d'incertitude inter-source, qui écarte aussi une valeur calculée
+  par une version de formule remplacée. La base ne porte aujourd'hui aucune
+  valeur dépréciée : aucune réponse ne change.
+- La capsule sert l'horaire validé par un éditeur (`valide_humain`, `publie`),
+  et plus seulement celui que le contrôle qualité automatique a validé.
+- `/v1/horaire` ne tient plus pour stockée une série dont aucune ligne n'est
+  validée : la demande suit le repli ordinaire (relais à la source amont,
+  refus sur une édition figée) au lieu de recevoir une réponse vide.
+- `/v1/horaire` rend chaque point stocké avec le statut de sa ligne
+  (`statut_editorial` : `valide_auto`, `valide_humain` ou `publie`), et non
+  plus `valide_auto` pour tous. Les lignes servies aujourd'hui sont toutes
+  `valide_auto` : aucune réponse ne change.
 - `/v1/grandeurs/ghi_exceedance` : la mise en garde de cellule partagée du
   champ `limite` ne connaissait que Kindia et Mamou. Les localités de même
   cellule sont reconnues à l'identité de leur série GHI mensuelle : la mise
@@ -45,6 +60,13 @@ le projet suit le versionnement sémantique.
 
 ### Modifié
 
+- Les lecteurs de mesures et de valeurs de grandeur partagent deux règles de
+  sélection, définies une seule fois (`editorial/selection.py`) : version en
+  vigueur et non dépréciée pour le journalier, le mensuel et les valeurs de
+  grandeur ; version en vigueur et validée pour l'horaire, seul soumis au
+  contrôle qualité automatique. Les lectures de l'API, la capsule et les
+  scripts d'export les appliquent ; un test refuse qu'une règle soit récrite
+  ailleurs, hors exceptions motivées.
 - Le pays est une donnée lue dans la base, et non plus une constante du
   moteur ; un test de bout en bout sur un pays fictif le vérifie
   (`tests/integration/api/test_pays_fictif.py`). Pour la Guinée, les points

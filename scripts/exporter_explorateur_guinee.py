@@ -16,9 +16,8 @@ Périmètre :
   calculs à la volée, ne sont pas des séries fixes.
 
 Toutes les requêtes lisent directement la base PostgreSQL via la session
-SQLAlchemy du projet (pas l'API). Les filtres appliqués miment ceux du
-routeur ``/v1/series`` : ``actif=true``, ``valide_au IS NULL``,
-``statut <> 'deprecie'``.
+SQLAlchemy du projet (pas l'API). Les filtres appliqués sont ceux du routeur
+``/v1/series`` : séries actives, lignes en vigueur (``editorial.selection``).
 
 Lancement :
 
@@ -44,6 +43,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from kuma_data_core.db.session import get_session_factory
+from kuma_data_core.editorial.selection import VUE_GRANDEURS_EN_VIGUEUR, lignes_en_vigueur
 from kuma_data_core.lecture.tables import (
     TableMesures,
     resolve_table_from_series_metadata,
@@ -212,10 +212,10 @@ def _charger_series_villes(session: Session) -> list[dict[str, Any]]:
 
 
 def _lire_mesures_journalier(session: Session, serie_id: int) -> list[dict[str, Any]]:
-    """Lit toutes les mesures journalières courantes d'une série."""
+    """Lit toutes les mesures journalières en vigueur d'une série."""
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT
                 instant_mesure,
                 valeur,
@@ -223,8 +223,7 @@ def _lire_mesures_journalier(session: Session, serie_id: int) -> list[dict[str, 
                 statut
             FROM mesures_ressource
             WHERE serie_id = :serie_id
-              AND valide_au IS NULL
-              AND statut <> 'deprecie'
+              AND {lignes_en_vigueur()}
             ORDER BY instant_mesure
             """
         ),
@@ -242,10 +241,10 @@ def _lire_mesures_journalier(session: Session, serie_id: int) -> list[dict[str, 
 
 
 def _lire_mesures_mensuel(session: Session, serie_id: int) -> list[dict[str, Any]]:
-    """Lit toutes les mesures mensuelles courantes d'une série."""
+    """Lit toutes les mesures mensuelles en vigueur d'une série."""
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT
                 annee,
                 mois,
@@ -254,8 +253,7 @@ def _lire_mesures_mensuel(session: Session, serie_id: int) -> list[dict[str, Any
                 statut
             FROM mesures_ressource_mensuelles
             WHERE serie_id = :serie_id
-              AND valide_au IS NULL
-              AND statut <> 'deprecie'
+              AND {lignes_en_vigueur()}
             ORDER BY annee, mois
             """
         ),
@@ -274,15 +272,15 @@ def _lire_mesures_mensuel(session: Session, serie_id: int) -> list[dict[str, Any
 
 
 def _lire_mesures_grandeurs_metier(session: Session, serie_id: int) -> list[dict[str, Any]]:
-    """Lit les valeurs courantes via la vue v_grandeurs_metier_courantes.
+    """Lit les valeurs en vigueur via la vue v_grandeurs_metier_courantes.
 
-    La vue applique nativement ``valide_au IS NULL`` + version courante +
-    ``statut <> 'deprecie'``. On expose le triplet (periode_type, annee_debut,
+    La vue ne rend que les lignes en vigueur, de la version de formule
+    actuelle. On expose le triplet (periode_type, annee_debut,
     annee_fin, mois) pour différencier annuel/mensuel/statique côté CSV.
     """
     rows = session.execute(
         text(
-            """
+            f"""
             SELECT
                 periode_type,
                 annee_debut,
@@ -292,7 +290,7 @@ def _lire_mesures_grandeurs_metier(session: Session, serie_id: int) -> list[dict
                 valeur,
                 niveau_effectif,
                 statut
-            FROM v_grandeurs_metier_courantes
+            FROM {VUE_GRANDEURS_EN_VIGUEUR}
             WHERE series_metadonnees_id = :serie_id
             ORDER BY annee_debut, mois NULLS FIRST
             """
