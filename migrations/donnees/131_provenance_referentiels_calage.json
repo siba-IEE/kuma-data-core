@@ -1,0 +1,23 @@
+[
+  {
+    "code": "gin_kankan_ghi_calage_saisonnier",
+    "saison": "harmattan",
+    "version": "v1",
+    "ancien": "Biais satellite moins sol mesure au pixel co-localise de la station ESMAP/WAPP de Kankan (serie sol gin_kankan_ghi_esmap_wapp_2021_2023, confiance A, 17 520 h, recouvrement 2021-10 a 2023-10). Note docs/methodologie/calage-ghi-kankan-terrain-lite.md, script reproductible scripts/analyse_calage_ghi_kankan.py, biais saisonniers du recalcul mensuel de l'etude Tokounou (2026-07-17).",
+    "nouveau": "Biais satellite moins sol mesuré au pixel co-localisé de la station ESMAP/WAPP de Kankan (série sol gin_kankan_ghi_esmap_wapp_2021_2023, confiance A, 17 520 h, recouvrement 2021-10 à 2023-10 ; satellite : NASA POWER). Méthode : note https://github.com/siba-IEE/kuma-data-core/blob/main/docs/methodologie/calage-ghi-kankan-terrain-lite.md et script reproductible https://github.com/siba-IEE/kuma-data-core/blob/main/scripts/analyse_calage_ghi_kankan.py ; les biais saisonniers enregistrés sont ceux du recalcul mensuel de l'étude de Tokounou (2026-07-17)."
+  },
+  {
+    "code": "gin_kankan_ghi_calage_saisonnier",
+    "saison": "mousson",
+    "version": "v1",
+    "ancien": "Biais satellite moins sol mesure au pixel co-localise de la station ESMAP/WAPP de Kankan (serie sol gin_kankan_ghi_esmap_wapp_2021_2023, confiance A, 17 520 h, recouvrement 2021-10 a 2023-10). Note docs/methodologie/calage-ghi-kankan-terrain-lite.md, script reproductible scripts/analyse_calage_ghi_kankan.py, biais saisonniers du recalcul mensuel de l'etude Tokounou (2026-07-17).",
+    "nouveau": "Biais satellite moins sol mesuré au pixel co-localisé de la station ESMAP/WAPP de Kankan (série sol gin_kankan_ghi_esmap_wapp_2021_2023, confiance A, 17 520 h, recouvrement 2021-10 à 2023-10 ; satellite : NASA POWER). Méthode : note https://github.com/siba-IEE/kuma-data-core/blob/main/docs/methodologie/calage-ghi-kankan-terrain-lite.md et script reproductible https://github.com/siba-IEE/kuma-data-core/blob/main/scripts/analyse_calage_ghi_kankan.py ; les biais saisonniers enregistrés sont ceux du recalcul mensuel de l'étude de Tokounou (2026-07-17)."
+  },
+  {
+    "code": "gin_kankan_ghi_calage_saisonnier",
+    "saison": "intersaison",
+    "version": "v1",
+    "ancien": "Biais satellite moins sol mesure au pixel co-localise de la station ESMAP/WAPP de Kankan (serie sol gin_kankan_ghi_esmap_wapp_2021_2023, confiance A, 17 520 h, recouvrement 2021-10 a 2023-10). Note docs/methodologie/calage-ghi-kankan-terrain-lite.md, script reproductible scripts/analyse_calage_ghi_kankan.py, biais saisonniers du recalcul mensuel de l'etude Tokounou (2026-07-17).",
+    "nouveau": "Biais satellite moins sol mesuré au pixel co-localisé de la station ESMAP/WAPP de Kankan (série sol gin_kankan_ghi_esmap_wapp_2021_2023, confiance A, 17 520 h, recouvrement 2021-10 à 2023-10 ; satellite : NASA POWER). Méthode : note https://github.com/siba-IEE/kuma-data-core/blob/main/docs/methodologie/calage-ghi-kankan-terrain-lite.md et script reproductible https://github.com/siba-IEE/kuma-data-core/blob/main/scripts/analyse_calage_ghi_kankan.py ; les biais saisonniers enregistrés sont ceux du recalcul mensuel de l'étude de Tokounou (2026-07-17)."
+  }
+]
