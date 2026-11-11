@@ -84,10 +84,7 @@ def identite_reseau(adresse_ip: str) -> str:
     return str(adresse)
 
 
-def limiter_debit_par_ip(
-    request: Request,
-    authorization: Annotated[str | None, Header()] = None,
-) -> None:
+def limiter_debit_par_ip(request: Request) -> None:
     """Plafonne le débit par adresse avant toute authentification.
 
     Protège la base d'un flot de requêtes anonymes ou à Bearer aléatoire.
@@ -96,6 +93,9 @@ def limiter_debit_par_ip(
     settings = get_settings()
     if not settings.rate_limiting_actif:
         return
+    # Lu sur la requête, pas via ``Header()`` : la dépendance couvre aussi les
+    # routes publiques, dont le contrat OpenAPI ne doit pas gagner ce paramètre.
+    authorization = request.headers.get("authorization")
     if authorization is not None and authorization.startswith("Bearer "):
         cle = authorization.removeprefix("Bearer ").strip()
         if cle and any(_cles_egales(cle, valide) for valide in _cles_valides()):

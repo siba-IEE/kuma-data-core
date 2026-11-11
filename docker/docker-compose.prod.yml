@@ -66,6 +66,12 @@ services:
       dockerfile: docker/Dockerfile
     container_name: kuma-api-prod
     restart: unless-stopped
+    # L'API écoute sur un port non privilégié en utilisateur non-root :
+    # elle n'a besoin d'aucune capacité noyau.
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
     environment:
       # Édition servie en lecture seule (rôle kuma_api_ro).
       POSTGRES_USER: kuma_api_ro

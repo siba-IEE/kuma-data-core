@@ -10,12 +10,15 @@ from __future__ import annotations
 
 from datetime import date
 
+import pytest
 from scripts.generer_psp_pr_std_thermique_34_unites import (
     ALIAS_CODE_PACK_VERS_KDC,
     CODES_UNITES_PACK,
     _codes_kdc_pour_unite,
     apparier_ghi_t2m,
 )
+
+pytestmark = pytest.mark.unit
 
 
 def test_liste_34_unites_pack() -> None:

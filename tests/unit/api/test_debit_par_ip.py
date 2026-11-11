@@ -27,8 +27,9 @@ class FauxRedis:
         pass
 
 
-def _requete(ip: str) -> SimpleNamespace:
-    return SimpleNamespace(client=SimpleNamespace(host=ip), headers={})
+def _requete(ip: str, bearer: str | None = None) -> SimpleNamespace:
+    entetes = {"authorization": f"Bearer {bearer}"} if bearer is not None else {}
+    return SimpleNamespace(client=SimpleNamespace(host=ip), headers=entetes)
 
 
 @pytest.fixture
@@ -57,26 +58,23 @@ def test_identite_reseau(adresse: str, attendu: str) -> None:
 
 def test_refus_au_dela_du_plafond(faux_redis: FauxRedis) -> None:
     requete = _requete("203.0.113.7")
-    limiter_debit_par_ip(requete, authorization=None)  # type: ignore[arg-type]
-    limiter_debit_par_ip(requete, authorization="Bearer inconnue")  # type: ignore[arg-type]
+    limiter_debit_par_ip(requete)  # type: ignore[arg-type]
+    limiter_debit_par_ip(_requete("203.0.113.7", bearer="inconnue"))  # type: ignore[arg-type]
     with pytest.raises(ExceptionKuma) as info:
-        limiter_debit_par_ip(requete, authorization=None)  # type: ignore[arg-type]
+        limiter_debit_par_ip(requete)  # type: ignore[arg-type]
     assert info.value.code is CodeErreur.DEBIT_DEPASSE
     assert info.value.statut_http == 429
 
 
 def test_adresses_ipv6_du_meme_reseau_partagent_le_compteur(faux_redis: FauxRedis) -> None:
-    limiter_debit_par_ip(_requete("2001:db8:1:2::1"), authorization=None)  # type: ignore[arg-type]
-    limiter_debit_par_ip(_requete("2001:db8:1:2::2"), authorization=None)  # type: ignore[arg-type]
+    limiter_debit_par_ip(_requete("2001:db8:1:2::1"))  # type: ignore[arg-type]
+    limiter_debit_par_ip(_requete("2001:db8:1:2::2"))  # type: ignore[arg-type]
     assert list(faux_redis.valeurs.values()) == [2]
 
 
 def test_cle_d_environnement_exemptee(faux_redis: FauxRedis, cle_solar_valide: str) -> None:
     for _ in range(5):
-        limiter_debit_par_ip(
-            _requete("203.0.113.7"),  # type: ignore[arg-type]
-            authorization=f"Bearer {cle_solar_valide}",
-        )
+        limiter_debit_par_ip(_requete("203.0.113.7", bearer=cle_solar_valide))  # type: ignore[arg-type]
     assert faux_redis.valeurs == {}
 
 
@@ -85,5 +83,5 @@ def test_inactif_hors_profil_serveur(
 ) -> None:
     monkeypatch.setattr(get_settings(), "rate_limiting_actif", False)
     for _ in range(5):
-        limiter_debit_par_ip(_requete("203.0.113.7"), authorization=None)  # type: ignore[arg-type]
+        limiter_debit_par_ip(_requete("203.0.113.7"))  # type: ignore[arg-type]
     assert faux_redis.valeurs == {}
