@@ -35,6 +35,18 @@ le projet suit le versionnement sémantique.
 
 ### Modifié
 
+- Textes servis par l'API réécrits pour un lecteur extérieur : descriptions
+  de routes et de champs, messages d'erreur et mises en garde du champ
+  `limite` ne portent plus de code interne et disent le fait à la place
+  (cellule partagée par deux localités, biais de moyennage du calcul
+  journalier, absence de calage sur des mesures au sol). Un test balaie le
+  document OpenAPI et ces textes.
+- Le message 404 de `/v1/grandeurs/ghi_exceedance` ne parle plus de « 6
+  villes pilotes » : la série existe pour toutes les localités d'ingestion.
+- Descriptions corrigées d'après le code : `/v1/horaire` sert d'abord la
+  série stockée avant de relayer la source amont ; `ghi_exceedance` répond
+  `RESSOURCE_LOCALITE_INCONNUE`.
+
 - Les origines CORS se règlent par déploiement (`CORS_ORIGINES`, liste
   JSON) ; la valeur par défaut est inchangée, `*` est refusé en production.
 
