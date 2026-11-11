@@ -51,7 +51,13 @@ routeur = APIRouter(prefix="/etudes", tags=["etudes"])
         "fenetrent la profondeur servie."
     ),
     responses={
-        404: {"description": "Le point ne se resout sur aucune localite du referentiel."},
+        404: {
+            "description": (
+                "Point hors de la zone couverte (aucun point d'ingestion de "
+                "climatologie dans sa cellule de grille ni dans une cellule "
+                "voisine), ou localité retenue sans les séries nécessaires."
+            )
+        },
         503: {"description": "Mode en ligne demande mais kuma-calage indisponible."},
     },
 )

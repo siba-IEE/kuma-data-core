@@ -8,6 +8,8 @@ from typing import Any, NamedTuple
 from sqlalchemy import Row, text
 from sqlalchemy.orm import Session
 
+from kuma_data_core.editorial.selection import lignes_en_vigueur_validees
+
 
 class SerieCatalogue(NamedTuple):
     """Série du catalogue, avec sa localité, sa grandeur et sa source.
@@ -79,7 +81,7 @@ class SerieIdentifiee(NamedTuple):
 
 
 class SerieHoraireStockee(NamedTuple):
-    """Série horaire qui porte des mesures, avec la période qu'elle déclare."""
+    """Série horaire qui porte des mesures validées, avec la période qu'elle déclare."""
 
     serie_id: int
     periode_debut: date
@@ -455,15 +457,16 @@ def chercher_serie_horaire_stockee(
 ) -> SerieHoraireStockee | None:
     """Série horaire stockée de la localité et de la grandeur, ou ``None``.
 
-    Seules comptent les séries actives qui portent des mesures : une série sans
-    aucune ligne dans ``mesures_ressource_horaires`` couvrirait la fenêtre
-    demandée et ferait répondre 200 sans résultat. ``ORDER BY sm.id`` rend le
-    choix déterministe si plusieurs séries conviennent. La jointure sur
-    ``localites.code`` évite de dépendre du nom de la série.
+    Seules comptent les séries actives qui portent au moins une mesure en
+    vigueur et validée : une série vide, ou dont aucune ligne n'a passé le
+    contrôle qualité, couvrirait la fenêtre demandée et ferait répondre 200
+    sans résultat. ``ORDER BY sm.id`` rend le choix déterministe si plusieurs
+    séries conviennent. La jointure sur ``localites.code`` évite de dépendre
+    du nom de la série.
     """
     row = session.execute(
         text(
-            """
+            f"""
             SELECT sm.id, sm.periode_debut, sm.periode_fin
             FROM series_metadonnees sm
             JOIN localites l ON l.id = sm.localite_id
@@ -473,7 +476,7 @@ def chercher_serie_horaire_stockee(
               AND sm.actif = TRUE
               AND EXISTS (
                   SELECT 1 FROM mesures_ressource_horaires m
-                  WHERE m.serie_id = sm.id
+                  WHERE m.serie_id = sm.id AND {lignes_en_vigueur_validees("m")}
               )
             ORDER BY sm.id
             LIMIT 1

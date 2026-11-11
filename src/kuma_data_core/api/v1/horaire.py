@@ -142,7 +142,7 @@ def _lire_horaire_validee(
     periode_debut: date,
     periode_fin: date,
 ) -> list[ResultatHoraire]:
-    """Points horaires validés d'une série sur la plage.
+    """Points horaires validés d'une série sur la plage, chacun avec le statut de sa ligne.
 
     Instant rendu en UTC sans fuseau, comme le passe-plat.
     """
@@ -153,7 +153,7 @@ def _lire_horaire_validee(
             instant=point.instant_mesure.astimezone(UTC).replace(tzinfo=None),
             valeur=point.valeur,
             unite=unite,
-            statut_editorial="valide_auto",
+            statut_editorial=point.statut,
         )
         for point in points
     ]
@@ -186,8 +186,10 @@ def grandeur_horaire(
     """Valeurs horaires d'une grandeur pour une localité, sur une plage de dates.
 
     Quand une série horaire stockée couvre toute la plage, la route sert ses
-    valeurs validées (``statut_editorial`` ``valide_auto``). Sinon elle relaie
-    la demande au service amont et rend les valeurs sans validation
+    valeurs validées ; ``statut_editorial`` porte le statut de chacune :
+    ``valide_auto`` (contrôle qualité automatique passé), ``valide_humain``
+    (validée par un éditeur) ou ``publie``. Sinon elle relaie la demande au
+    service amont et rend les valeurs sans validation
     (``passe_plat_non_valide``), une valeur manquante valant ``null``. Sur une
     édition publiée figée, ce relais n'existe pas.
 

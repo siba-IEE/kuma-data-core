@@ -3,8 +3,8 @@
 Implémentation concrète de ``SourceCapsule`` (le protocole de ``construire``).
 Lit trois choses au point :
 
-- la résolution (lat, lon) → la localité dont la cellule échantillonne le
-  point, et son code de climatologie (même logique que ``/v1/localites/resolution``) ;
+- la résolution (lat, lon) → la localité dont la climatologie représente le
+  point, et son code de climatologie (même règle que ``/v1/localites/resolution``) ;
 - la climatologie mensuelle : moyenne par mois calendaire sur 1991-2020 des
   mesures mensuelles de cette série (12 valeurs, kWh/m²/j = HEP) ;
 - la séquence horaire satellite : la série GHI horaire NASA de la localité,
@@ -17,31 +17,20 @@ dans ce module.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+from kuma_data_core.editorial.selection import lignes_en_vigueur, lignes_en_vigueur_validees
+from kuma_data_core.lecture.localites import lister_candidates_resolution
 from kuma_data_core.services.capsule.construire import EntreesRessource
-
-# Période de référence des climatologies mensuelles du référentiel.
-_CLIMATO_DEBUT = "1991-01-01"
-_CLIMATO_FIN = "2020-12-31"
+from kuma_data_core.services.resolution import MESSAGE_POINT_HORS_ZONE, resoudre
 
 
 class PointHorsReferentielError(ValueError):
     """Le point ne se résout sur aucune localité, ou la localité n'a pas le brut."""
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    r = 6371.0
-    p1, p2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlmb = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(dlmb / 2) ** 2
-    return 2 * r * math.asin(math.sqrt(a))
 
 
 @dataclass(frozen=True)
@@ -108,49 +97,21 @@ class SourceCore:
         )
 
     def _resoudre(self, lat: float, lon: float) -> dict[str, Any]:
-        """Résout le point vers la localité qui échantillonne sa cellule."""
-        rows = self.session.execute(
-            text(
-                """
-                SELECT l.id, l.code, l.nom, l.latitude, l.longitude,
-                       MIN(sm.code) AS serie_code
-                FROM localites l
-                JOIN series_metadonnees sm ON sm.localite_id = l.id
-                WHERE l.actif AND l.latitude IS NOT NULL AND l.longitude IS NOT NULL
-                  AND sm.actif AND sm.granularite = 'mensuel' AND sm.grandeur_code = 'ghi'
-                  AND sm.periode_debut = :debut AND sm.periode_fin = :fin
-                GROUP BY l.id, l.code, l.nom, l.latitude, l.longitude
-                """
-            ),
-            {"debut": _CLIMATO_DEBUT, "fin": _CLIMATO_FIN},
-        ).all()
-        if not rows:
+        """Résout le point vers la localité dont la climatologie GHI le représente."""
+        candidates = lister_candidates_resolution(self.session, "ghi")
+        if not candidates:
             raise PointHorsReferentielError("aucun point d'ingestion de climatologie GHI")
-
-        cellule_lat, cellule_lon = math.floor(lat), math.floor(lon)
-        meilleure: tuple[float, int] | None = None
-        meme_cellule: tuple[float, int] | None = None
-        for i, r in enumerate(rows):
-            d = _haversine_km(lat, lon, float(r.latitude), float(r.longitude))
-            if meilleure is None or d < meilleure[0]:
-                meilleure = (d, i)
-            dans_cellule = (
-                math.floor(float(r.latitude)) == cellule_lat
-                and math.floor(float(r.longitude)) == cellule_lon
-            )
-            if dans_cellule and (meme_cellule is None or d < meme_cellule[0]):
-                meme_cellule = (d, i)
-
-        assert meilleure is not None
-        distance, i = meme_cellule if meme_cellule is not None else meilleure
-        r = rows[i]
+        resolution = resoudre(lat, lon, candidates)
+        if resolution is None:
+            raise PointHorsReferentielError(MESSAGE_POINT_HORS_ZONE)
+        retenue = resolution.candidate
         return {
-            "localite_id": int(r.id),
-            "localite_code": str(r.code),
-            "nom": str(r.nom),
-            "serie_climatologie": str(r.serie_code),
-            "distance_km": round(distance, 1),
-            "meme_cellule": meme_cellule is not None,
+            "localite_id": retenue.localite_id,
+            "localite_code": retenue.code,
+            "nom": retenue.nom,
+            "serie_climatologie": retenue.serie_code,
+            "distance_km": round(resolution.distance_km, 1),
+            "meme_cellule": resolution.meme_cellule,
         }
 
     def _climatologie_hep(self, localite_id: int) -> tuple[list[float], dict[str, Any]]:
@@ -182,11 +143,11 @@ class SourceCore:
             )
         rows = self.session.execute(
             text(
-                """
+                f"""
                 SELECT m.mois, avg(m.valeur) AS hep
                 FROM mesures_ressource_mensuelles m
                 JOIN series_metadonnees sm ON sm.id = m.serie_id
-                WHERE sm.code = :code AND m.valide_au IS NULL AND m.statut <> 'deprecie'
+                WHERE sm.code = :code AND {lignes_en_vigueur("m")}
                 GROUP BY m.mois ORDER BY m.mois
                 """
             ),
@@ -221,7 +182,7 @@ class SourceCore:
         """
         row = self.session.execute(
             text(
-                """
+                f"""
                 SELECT
                     min(m.valeur) FILTER (WHERE sm.grandeur_code = 't2m_min') AS froid,
                     max(m.valeur) FILTER (WHERE sm.grandeur_code = 't2m_max') AS chaud,
@@ -234,7 +195,7 @@ class SourceCore:
                 WHERE sm.localite_id = :loc
                   AND sm.grandeur_code IN ('t2m_min', 't2m_max')
                   AND sm.granularite = 'journalier' AND sm.actif
-                  AND m.valide_au IS NULL AND m.statut <> 'deprecie'
+                  AND {lignes_en_vigueur("m")}
                 """
             ),
             {"loc": localite_id},
@@ -291,11 +252,7 @@ class SourceCore:
                 f"pas de série GHI horaire satellite pour la localité {localite_id}"
             )
 
-        clauses = [
-            "sm.code = :code",
-            "mh.statut = 'valide_auto'",
-            "mh.valide_au IS NULL",
-        ]
+        clauses = ["sm.code = :code", lignes_en_vigueur_validees("mh")]
         params: dict[str, object] = {"code": meta.code, "fuseau": meta.fuseau}
         if self.annee_min is not None:
             clauses.append("extract(year from mh.instant_mesure at time zone :fuseau) >= :amin")

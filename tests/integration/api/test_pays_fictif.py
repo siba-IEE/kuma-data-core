@@ -43,6 +43,9 @@ _LOCALITES = [
     ("zzf_kankan", "Kankan du pays fictif", "commune", "zzf_nord", 13.4, 9.6),
 ]
 _POINT_PRES_D_ALMA = {"lat": 12.31, "lon": 8.41}
+# Au sud d'Alma, sur son méridien : dans la cellule voisine, puis deux cellules plus loin.
+_POINT_DE_LA_CELLULE_VOISINE = {"lat": 11.6, "lon": 8.4}
+_POINT_A_DEUX_CELLULES = {"lat": 10.5, "lon": 8.4}
 
 _GHI_MENSUEL_ALMA = "zzf_alma_ghi_power_1991_2020"
 _GHI_MENSUEL_BARI = "zzf_bari_ghi_power_1991_2020"
@@ -431,6 +434,65 @@ def test_capsule_en_heures_locales(
     assert sequence["mois"] == list(range(1, 13))
     assert sequence["heures"] == [12] * 12
     assert sequence["ghi"] == [600.0 + 10 * mois for mois in range(1, 13)]
+
+
+@pytest.mark.parametrize(
+    ("point", "meme_cellule", "distance_km"),
+    [
+        pytest.param(_POINT_PRES_D_ALMA, True, 1.6, id="cellule d'Alma"),
+        # 0,7° de méridien.
+        pytest.param(_POINT_DE_LA_CELLULE_VOISINE, False, 77.8, id="cellule voisine, vide"),
+    ],
+)
+def test_route_et_capsule_resolvent_le_point_de_la_meme_facon(
+    client: TestClient,
+    headers_auth: dict[str, str],
+    pays_fictif: Session,
+    point: dict[str, float],
+    meme_cellule: bool,
+    distance_km: float,
+) -> None:
+    """Alma est retenue dans sa cellule comme depuis la cellule voisine, et la réponse le dit."""
+    resolution = client.get("/v1/localites/resolution", params=point, headers=headers_auth)
+    assert resolution.status_code == 200, resolution.text
+    corps = resolution.json()
+    assert corps["localite"]["code"] == "zzf_alma"
+    assert corps["serie_climatologie"] == _GHI_MENSUEL_ALMA
+    assert corps["meme_cellule"] is meme_cellule
+    assert corps["distance_km"] == distance_km
+
+    capsule = client.get("/v1/etudes/capsule", params=point, headers=headers_auth)
+    assert capsule.status_code == 200, capsule.text
+    assert fichier_kuma.lire(capsule.text)["metadonnees"]["provenance"]["resolution"] == {
+        "localite": "zzf_alma",
+        "serieReference": _GHI_MENSUEL_ALMA,
+        "distanceKm": distance_km,
+        "memeCellule": meme_cellule,
+    }
+
+
+def test_point_a_deux_cellules_du_pays_refuse_par_la_route_et_par_la_capsule(
+    client: TestClient, headers_auth: dict[str, str], pays_fictif: Session
+) -> None:
+    """La zone couverte du pays s'arrête aux cellules voisines de ses points d'ingestion."""
+    message = (
+        "Point hors de la zone couverte : aucun point d'ingestion de climatologie "
+        "dans sa cellule de grille ni dans une cellule voisine."
+    )
+    resolution = client.get(
+        "/v1/localites/resolution", params=_POINT_A_DEUX_CELLULES, headers=headers_auth
+    )
+    assert resolution.status_code == 404
+    assert resolution.json()["erreur"] == {
+        "code": "RESSOURCE_INTROUVABLE",
+        "message": message,
+        # 1,8° de méridien.
+        "details": {"localite_la_plus_proche": "zzf_alma", "distance_km": 200.2},
+    }
+
+    capsule = client.get("/v1/etudes/capsule", params=_POINT_A_DEUX_CELLULES, headers=headers_auth)
+    assert capsule.status_code == 404
+    assert capsule.json()["erreur"] == {"code": "RESSOURCE_INTROUVABLE", "message": message}
 
 
 def test_rien_ne_reste_en_base() -> None:

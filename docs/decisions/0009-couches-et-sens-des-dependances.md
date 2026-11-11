@@ -1,6 +1,6 @@
 # ADR-0009 : couches du moteur et sens des dépendances
 
-Date : 2026-11-11. Statut : accepté.
+Date : 2026-11-11. Statut : accepté. Complété par ADR-0010.
 
 ## Contexte
 
@@ -32,7 +32,7 @@ pour un autre pays.
    | `lecture` | SQL de lecture | `editorial` |
    | `publication` | manifeste de l'édition publique | rien |
    | `ingestion` | chargement des sources | `db`, `editorial`, `exceptions`, `external` |
-   | `services` | calculs et cas d'usage | `core`, `db`, `editorial`, `exceptions`, `external` |
+   | `services` | calculs et cas d'usage | `core`, `db`, `editorial`, `exceptions`, `external`, `lecture` (ADR-0010) |
    | `api` | routes, schémas, erreurs HTTP | toutes les autres |
 
    Une flèche absente est interdite. En ajouter une se décide, et se fait en
@@ -44,9 +44,8 @@ pour un autre pays.
    d'erreur et le message.
 
 3. **Chaque règle sur les lignes à retenir a une seule définition, nommée.**
-   Les lecteurs disent laquelle ils appliquent : version en vigueur
-   (`valide_au IS NULL`), version en vigueur de statut validé
-   (`STATUTS_VALIDES`), ou vue des valeurs de grandeur en vigueur.
+   Les lecteurs disent laquelle ils appliquent. Les règles elles-mêmes
+   sont fixées par ADR-0010.
 
 4. **Un calcul déclare ce qu'il lit.** Chaque calcul paramétrable nomme, dans
    un `Protocol`, les grandeurs physiques dont il a besoin ; les schémas de
@@ -62,12 +61,8 @@ Ces règles sont vérifiées par `tests/unit/test_architecture.py`.
 
 ## Hors périmètre
 
-- **Les règles de sélection ne sont pas unifiées.** Les lectures journalières
-  et mensuelles servent toute version en vigueur ; les lectures horaires ne
-  servent que le validé ; l'atlas lit `grandeurs_metier` sans passer par la
-  vue ; les calculs de grandeurs stockées écartent `deprecie` ; la capsule ne
-  lit, en horaire, que `valide_auto`. Les nommer rend le choix visible ; le
-  faire reste à décider.
+- **Les règles de sélection** n'étaient pas unifiées à cette date : elles
+  le sont par ADR-0010.
 - **Du SQL reste dans `services`** : calculs de grandeurs stockées, capsule,
   contrôle qualité horaire. Plusieurs de ces fonctions sont rejouées par des
   migrations antérieures et ne peuvent pas changer de signature.

@@ -539,15 +539,19 @@ un pur passe-plat.
 Comportement :
 
 1. Si une série horaire stockée couvre la plage demandée, l'endpoint
-   renvoie les points validés (`mesures_ressource_horaires`, statut
-   `valide_auto`, confiance B). Les lignes rejetées par le contrôle
-   qualité (statut `brut`) sont exclues.
+   renvoie ses points en vigueur et validés
+   (`mesures_ressource_horaires`, statut `valide_auto`, `valide_humain`
+   ou `publie`). Les lignes rejetées par le contrôle qualité (statut
+   `brut`) sont exclues ; une série dont aucune ligne n'est validée ne
+   compte pas comme stockée.
 2. Sinon, l'API relaie la requête vers le service amont (NASA POWER),
    convertit la réponse au format Kuma et l'étiquète
    `passe_plat_non_valide`.
 
-Le champ `statut_editorial` de chaque point vaut donc `valide_auto`
-(stocké validé) ou `passe_plat_non_valide` (relais non validé).
+Le champ `statut_editorial` d'un point stocké porte le statut de sa
+ligne : `valide_auto` (contrôle qualité automatique passé),
+`valide_humain` (validée par un éditeur) ou `publie`. Un point relayé
+porte `passe_plat_non_valide`.
 
 - Auth : Bearer requise
 - Paramètres path :
@@ -723,11 +727,37 @@ Réponse : `point`, `grandeur`, `cellule` (bornes de la cellule),
 `meme_cellule`, et `serie_climatologie` : le code de la série de
 climatologie mensuelle de la localité retenue - le Core dit quelle
 série consommer pour ce point, les clients ne le reconstruisent
-jamais par convention de nommage (généricité pays). Quand aucune candidate ne partage la cellule,
-`meme_cellule` vaut `false` et la candidate la plus proche est
-renvoyée : le consommateur affiche alors l'hypothèse de transport.
-404 `RESSOURCE_INTROUVABLE` si le référentiel ne porte aucun point
-d'ingestion pour la grandeur.
+jamais par convention de nommage (généricité pays).
+
+La règle, dans l'ordre :
+
+1. s'il existe des points d'ingestion dans la cellule du point, le plus
+   proche d'entre eux est retenu (`meme_cellule = true`) ;
+2. sinon, s'il en existe dans l'une des huit cellules voisines (par un
+   côté ou par un coin), le plus proche parmi ceux-là est retenu, avec
+   `meme_cellule = false` : le consommateur affiche alors l'hypothèse
+   de transport ;
+3. sinon le point est hors de la zone couverte : 404
+   `RESSOURCE_INTROUVABLE`, dont `details` nomme le point d'ingestion
+   le plus proche (`localite_la_plus_proche`) et sa distance
+   (`distance_km`).
+
+La limite se compte en cellules et non en kilomètres : la valeur servie
+est celle d'une cellule, et l'erreur vient du nombre de cellules
+franchies, pas de la position du point d'ingestion dans la sienne.
+Mesure sur les cellules occupées du référentiel (GHI mensuel
+1991-2020) : entre deux cellules voisines, le GHI annuel s'écarte de
+2,7 % en médiane (5,6 % au 9ᵉ décile) ; à deux cellules, de 5,6 %
+(10,6 % au 9ᵉ décile). La longitude est circulaire (la cellule de
+179° E touche celle de 180° O), la latitude ne l'est pas.
+
+La limite n'est pas une frontière : un point d'un pays voisin qui
+partage une cellule, ou une cellule voisine, avec un point d'ingestion
+est résolu. `GET /v1/etudes/capsule` applique la même règle et refuse
+un point hors de la zone couverte par le même message.
+
+404 `RESSOURCE_INTROUVABLE` aussi si le référentiel ne porte aucun
+point d'ingestion pour la grandeur.
 
 ### 3.11 ter `GET /v1/calage/{localite}/{grandeur}` : référentiel de calage satellite/sol
 
@@ -965,8 +995,12 @@ Voir 3.7 pour les routes, modèles physiques et paramètres.
 
 Une partie du substrat solaire existe en granularité horaire (GHI, DNI,
 DHI, T2M et compagnes selon la localité), stockée dans
-`mesures_ressource_horaires` avec passage par contrôle qualité (statut
-`valide_auto`, confiance B). Ces séries alimentent l'endpoint horaire
+`mesures_ressource_horaires` et soumise au contrôle qualité automatique :
+une ligne qui le passe prend le statut `valide_auto`, une ligne rejetée
+reste `brut` et n'est pas servie. La confiance suit la méthode de
+collecte de la série : B pour une série modélisée par satellite (NASA
+POWER), A pour une mesure directe au sol (GHI et DNI de la station ESMAP
+WAPP de Kankan). Ces séries alimentent l'endpoint horaire
 (3.8) et le mode `integration_horaire` des routes F2. La couverture
 horaire par localité se découvre via `/v1/series` (filtre sur la
 granularité).
@@ -1057,7 +1091,7 @@ Chaque mesure et chaque ligne de `grandeurs_metier` porte un statut parmi
 Les transitions sont encadrées par la couche service Python ; l'API les
 expose en lecture. La vue `v_grandeurs_metier_courantes` filtre
 nativement les lignes `deprecie` et les versions de formule non
-actuelles.
+actuelles. Les lignes servies selon leur statut sont décrites en 6.3.
 
 ### 5.4 Convention de nommage des codes de série
 
@@ -1099,7 +1133,7 @@ Règles :
 |---|---|
 | `mesures_ressource` (journalier) | Grandeurs brutes journalières (GHI/DNI/DHI/T2M/RH2M/Kt, précipitation, PM, vent, albédo) |
 | `mesures_ressource_mensuelles` | GHI mensuel SARAH-3, GHI mensuel climatologie 1991-2020, DNI mensuel CAMS, ERA5-Land mensuel |
-| `mesures_ressource_horaires` | Horaire stocké validé par contrôle qualité (statut `valide_auto`, confiance B) |
+| `mesures_ressource_horaires` | Horaire stocké, soumis au contrôle qualité automatique (statut `valide_auto` s'il le passe, `brut` sinon ; confiance B pour le satellite, A pour la mesure au sol) |
 | `grandeurs_metier` | Grandeurs F1 calculées Kuma (HEP, fraction diffuse, humidex, etc.) et écarts référentiels matérialisés |
 | Calculé à la volée | Routes F1 (`ghi_exceedance`, `taux_salissure_proxy`, `pr_realiste`, `incertitude_inter_source`) et F2 paramétrables |
 | Passe-plat à la volée | Horaire non couvert par le stocké (relais amont) |
@@ -1128,10 +1162,22 @@ vue `v_grandeurs_metier_courantes` expose la version en vigueur.
 
 ### 6.3 Ce que l'API expose en lecture
 
-En v1, les endpoints `/v1/series/{code}` filtrent automatiquement sur
-`valide_au IS NULL` (lignes courantes) et `statut <> 'deprecie'`. Le
-ciblage explicite d'une version antérieure n'est pas exposé publiquement
-v1 (l'historique reste en base pour audit interne).
+Deux règles décident des lignes servies, selon la table lue :
+
+- mesures journalières et mensuelles, valeurs de grandeur calculée
+  (`/v1/series/{code}`, grandeurs calculées à partir de ces mesures,
+  fiches d'incertitude inter-source) : version en vigueur
+  (`valide_au IS NULL`) et `statut <> 'deprecie'`. Pour les valeurs de
+  grandeur, la vue `v_grandeurs_metier_courantes` exige en plus la
+  version de formule actuelle ;
+- mesures horaires (`/v1/horaire`, intégration horaire des grandeurs
+  paramétrables, séquence horaire de la capsule) : version en vigueur et
+  statut validé (`valide_auto`, `valide_humain` ou `publie`). Seul
+  l'horaire passe par le contrôle qualité automatique : une ligne
+  horaire restée `brut` n'a pas passé ce contrôle.
+
+Le ciblage explicite d'une version antérieure n'est pas exposé
+publiquement v1 (l'historique reste en base pour audit interne).
 
 ### 6.4 Audit
 

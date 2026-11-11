@@ -96,9 +96,10 @@ class ReponseResolution(BaseModel):
 
     ``meme_cellule`` est vrai si la localité retenue est dans la cellule du
     point : sa climatologie est alors celle du point. Il est faux si aucune
-    localité ne partage la cellule ; la plus proche est alors renvoyée avec
-    sa distance, et l'appelant doit signaler que la climatologie est
-    transportée depuis une autre cellule.
+    localité ne partage la cellule ; la plus proche parmi celles des cellules
+    voisines est alors renvoyée, et l'appelant doit signaler que la
+    climatologie est transportée depuis une cellule voisine. ``distance_km``
+    est la distance du grand cercle entre le point et la localité retenue.
     """
 
     point: PointGeographique
@@ -110,8 +111,8 @@ class ReponseResolution(BaseModel):
     serie_climatologie: str = Field(
         description=(
             "Code de la série de climatologie mensuelle de la localité "
-            "retenue : la série qui représente la cellule du point. À lire "
-            "dans cette réponse plutôt qu'à reconstruire par convention de "
-            "nommage."
+            "retenue : celle de la cellule du point si `meme_cellule` est "
+            "vrai, celle d'une cellule voisine sinon. À lire dans cette "
+            "réponse plutôt qu'à reconstruire par convention de nommage."
         )
     )

@@ -11,19 +11,21 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
+from kuma_data_core.editorial.selection import StatutValide
 from kuma_data_core.external.nasa_power import SENTINELLE_VALEUR_MANQUANTE
 
 
 class ResultatHoraire(BaseModel):
     """Un point horaire (24 par jour, fuseau UTC).
 
-    ``statut_editorial`` distingue les deux régimes de service :
+    ``statut_editorial`` dit d'où vient la valeur :
 
-    - ``valide_auto`` : donnée horaire **stockée et validée** par le
-      contrôle qualité algorithmique Kuma (confiance B).
-    - ``passe_plat_non_valide`` : donnée relayée à la volée (passe-plat),
-      non validée éditorialement - servie en repli là où aucune donnée
-      validée ne couvre la plage demandée.
+    - ``valide_auto``, ``valide_humain`` ou ``publie`` : valeur stockée, avec
+      le statut de sa ligne (validée par le contrôle qualité automatique,
+      validée par un éditeur, ou publiée) ;
+    - ``passe_plat_non_valide`` : valeur relayée à la volée (passe-plat), non
+      validée, servie en repli là où aucune série stockée ne couvre la plage
+      demandée.
     """
 
     instant: datetime
@@ -35,7 +37,7 @@ class ResultatHoraire(BaseModel):
         ),
     )
     unite: str
-    statut_editorial: Literal["valide_auto", "passe_plat_non_valide"] = "passe_plat_non_valide"
+    statut_editorial: StatutValide | Literal["passe_plat_non_valide"] = "passe_plat_non_valide"
 
 
 _MAPPING_GRANDEUR: dict[str, tuple[str, str]] = {

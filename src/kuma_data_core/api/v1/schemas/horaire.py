@@ -1,8 +1,9 @@
 """Schémas Pydantic des routes ``/v1/horaire/{localite}/{grandeur}``.
 
 Aucun champ ne nomme la source amont. ``statut_editorial`` distingue les
-valeurs stockées et validées (``valide_auto``) des valeurs relayées sans
-validation (``passe_plat_non_valide``).
+valeurs stockées, qui portent le statut validé de leur ligne (``valide_auto``,
+``valide_humain`` ou ``publie``), des valeurs relayées sans validation
+(``passe_plat_non_valide``).
 """
 
 from __future__ import annotations

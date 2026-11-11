@@ -38,6 +38,7 @@ class Localite(NamedTuple):
 class CandidateResolution(NamedTuple):
     """Localité candidate à la résolution d'un point, avec sa série de climatologie."""
 
+    localite_id: int
     code: str
     nom: str
     latitude: float
@@ -226,12 +227,13 @@ def lire_coordonnees(session: Session, localite_id: int) -> tuple[float, float] 
 def lister_candidates_resolution(session: Session, grandeur: str) -> list[CandidateResolution]:
     """Localités actives géolocalisées qui portent une série mensuelle 1991-2020 de la grandeur.
 
-    Une ligne par localité ; si elle porte plusieurs séries, celle du plus petit code.
+    Une ligne par localité, dans l'ordre des codes ; si une localité porte plusieurs
+    séries, celle du plus petit code.
     """
     rows = session.execute(
         text(
             """
-            SELECT l.code, l.nom, l.latitude, l.longitude,
+            SELECT l.id, l.code, l.nom, l.latitude, l.longitude,
                    MIN(sm.code) AS serie_code
             FROM localites l
             JOIN series_metadonnees sm ON sm.localite_id = l.id
@@ -242,13 +244,15 @@ def lister_candidates_resolution(session: Session, grandeur: str) -> list[Candid
               AND sm.grandeur_code = :grandeur
               AND sm.periode_debut = '1991-01-01'
               AND sm.periode_fin = '2020-12-31'
-            GROUP BY l.code, l.nom, l.latitude, l.longitude
+            GROUP BY l.id, l.code, l.nom, l.latitude, l.longitude
+            ORDER BY l.code
             """
         ),
         {"grandeur": grandeur},
     ).all()
     return [
         CandidateResolution(
+            localite_id=int(r.id),
             code=str(r.code),
             nom=str(r.nom),
             latitude=float(r.latitude),

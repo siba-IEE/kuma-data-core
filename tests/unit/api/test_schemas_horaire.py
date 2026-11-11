@@ -25,6 +25,7 @@ from kuma_data_core.api.v1.schemas.horaire import (
     ReponseDisponibilite,
     ReponseHoraire,
 )
+from kuma_data_core.editorial.statuts import STATUTS_EDITORIAUX_AUTORISES, STATUTS_VALIDES
 from kuma_data_core.services.horaire import ResultatHoraire
 
 pytestmark = pytest.mark.unit
@@ -166,6 +167,27 @@ def test_t_hschema_10_resultat_avec_valeur_null() -> None:
     )
     assert r.valeur is None
     assert r.statut_editorial == "passe_plat_non_valide"
+
+
+@pytest.mark.parametrize("statut", sorted(STATUTS_EDITORIAUX_AUTORISES))
+def test_point_stocke_admet_exactement_les_statuts_valides(statut: str) -> None:
+    """Un point stocké porte le statut de sa ligne : ceux de ``STATUTS_VALIDES``, aucun autre."""
+    point = {"instant": datetime(2024, 6, 15, 12), "valeur": 1.0, "unite": "Wh/m²"}
+    if statut in STATUTS_VALIDES:
+        resultat = ResultatHoraire.model_validate({**point, "statut_editorial": statut})
+        assert resultat.statut_editorial == statut
+    else:
+        with pytest.raises(ValidationError):
+            ResultatHoraire.model_validate({**point, "statut_editorial": statut})
+
+
+def test_point_relaye_garde_son_statut_propre() -> None:
+    """Le relais porte ``passe_plat_non_valide`` ; un statut inconnu est refusé."""
+    point = {"instant": datetime(2024, 6, 15, 12), "valeur": 1.0, "unite": "Wh/m²"}
+    relaye = ResultatHoraire.model_validate({**point, "statut_editorial": "passe_plat_non_valide"})
+    assert relaye.statut_editorial == "passe_plat_non_valide"
+    with pytest.raises(ValidationError):
+        ResultatHoraire.model_validate({**point, "statut_editorial": "inconnu"})
 
 
 def test_t_hschema_11_reponse_disponibilite() -> None:
