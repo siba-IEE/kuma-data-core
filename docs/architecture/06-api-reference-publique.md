@@ -668,7 +668,8 @@ l'émission renvoie `404 CLES_EMISSION_NON_ACTIVEE`.
 - La clé est montrée **une seule fois** : le serveur n'en conserve que
   l'empreinte SHA-256. Le `prefixe` est l'identifiant public de la clé
   (support, révocation).
-- L'émission est bornée par adresse IP (3 par 24 h glissantes) :
+- L'émission est bornée par adresse IP (3 par 24 h glissantes ; en IPv6,
+  par réseau /64) :
   `429 CLES_LIMITE_EMISSION_ATTEINTE` au-delà. C'est la seule surface
   d'écriture publique du serveur.
 
@@ -678,6 +679,14 @@ compteur Redis indexé sur l'empreinte). Dépassement :
 `429 CLES_QUOTA_JOURNALIER_DEPASSE`. Le compteur est fail-open : une
 panne du cache ne rend pas les données indisponibles. Les clés
 d'environnement ne sont jamais limitées.
+
+**Plafond de débit** : sur le serveur public, toute requête sur `/v1`
+est comptée par adresse et par minute, avant l'authentification
+(300 par défaut, réglable par `DEBIT_IP_PAR_MINUTE` ; en IPv6 le
+compte se fait par réseau /64). Dépassement : `429 DEBIT_DEPASSE`.
+Même repli que le quota si le cache est en panne ; les clés
+d'environnement en sont exemptées. Un corps de requête de plus de 1 Mo
+est refusé par le reverse proxy (`413`).
 
 **Révocation** - `DELETE /v1/cles/{prefixe}`, réservé à la clé
 administrateur. Révoque (soft delete) toutes les clés actives du
@@ -862,6 +871,7 @@ Le bilan et l'export (sans les clés) se font sur le serveur, par
 | `CLES_EMISSION_NON_ACTIVEE` | 404 | self-service de clés non disponible sur ce déploiement |
 | `CLES_LIMITE_EMISSION_ATTEINTE` | 429 | limite d'émission de clés par IP atteinte |
 | `CLES_QUOTA_JOURNALIER_DEPASSE` | 429 | quota journalier de la clé self-service dépassé |
+| `DEBIT_DEPASSE` | 429 | trop de requêtes depuis cette adresse dans la minute |
 | `LICENCE_NON_ACTIVEE` | 404 | émission de bail SolClim-3 non disponible sur ce déploiement |
 | `LICENCE_ABSENTE` | 403 | aucune licence SolClim-3 active n'est attachée à la clé |
 | `CONTRIBUTIONS_NON_ACTIVEES` | 404 | réception des fiches d'études non disponible sur ce déploiement |

@@ -5,6 +5,32 @@ le projet suit le versionnement sémantique.
 
 ## Non publié
 
+### Sécurité
+
+- Plafond de débit par adresse avant l'authentification
+  (`429 DEBIT_DEPASSE`, `DEBIT_IP_PAR_MINUTE`), corps de requête limité à
+  1 Mo par le reverse proxy. En IPv6, débit et limite d'émission de clés se
+  comptent par réseau /64.
+- Une clé `Bearer` non ASCII reçoit `401` et non plus `500`.
+- Les erreurs `422` ne renvoient plus la valeur fautive, seulement son
+  emplacement, son type et le message.
+- Les fiches de contribution refusent `NaN` et les infinis.
+- En production, `API_CLE_ADMIN` doit faire au moins 32 caractères et ne
+  pas être une valeur d'exemple : le démarrage échoue sinon.
+- Le mot de passe PostgreSQL n'apparaît plus dans la représentation de la
+  configuration ; ses caractères réservés sont encodés dans la chaîne de
+  connexion.
+- Dépendances mises à jour (starlette, fastapi, anyio, certifi, idna,
+  urllib3, pydantic-settings) ; audit des vulnérabilités à chaque
+  intégration. Actions GitHub et `uv` épinglés.
+
+### Corrigé
+
+- Le choix d'une série parmi plusieurs candidates est ordonné : deux
+  requêtes identiques lisent la même série.
+- Le fuseau des sessions PostgreSQL est fixé à UTC : les regroupements par
+  jour ne dépendent plus du réglage du serveur.
+
 ### Ajouté
 
 - Confiance : règle de propagation P (ADR-0008). Une valeur calculée prend le
