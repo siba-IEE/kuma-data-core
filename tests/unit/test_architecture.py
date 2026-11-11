@@ -28,7 +28,7 @@ DEPENDANCES_ADMISES: dict[str, frozenset[str]] = {
     "lecture": frozenset({"editorial"}),
     "publication": frozenset(),
     "ingestion": frozenset({"db", "editorial", "exceptions", "external"}),
-    "services": frozenset({"core", "db", "editorial", "exceptions", "external"}),
+    "services": frozenset({"core", "db", "editorial", "exceptions", "external", "lecture"}),
     "api": frozenset({"core", "db", "editorial", "exceptions", "external", "lecture", "services"}),
 }
 

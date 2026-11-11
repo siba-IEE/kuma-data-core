@@ -60,13 +60,26 @@ le projet suit le versionnement sémantique.
 
 ### Modifié
 
+- La résolution d'un point refuse un point hors de la zone couverte.
+  `/v1/localites/resolution` retient le point d'ingestion le plus proche parmi
+  ceux de la cellule de grille du point ; à défaut, le plus proche parmi ceux
+  des huit cellules voisines (`meme_cellule = false`) ; au-delà, elle répond
+  `404 RESSOURCE_INTROUVABLE` et nomme le point d'ingestion le plus proche et
+  sa distance, là où elle rendait le plus proche quelle que soit la distance.
+  `/v1/etudes/capsule` refuse le même point par le même message. Sur le
+  territoire guinéen, aucune réponse ne change ; ailleurs, un point qui reste
+  résolu l'est vers le point d'ingestion le plus proche des cellules voisines,
+  qui n'est pas toujours le plus proche de tous.
+- Une seule implémentation de la résolution pour l'API et la capsule
+  (`services/resolution.py`), et une seule lecture des candidates, dans
+  `lecture`, que la couche `services` peut importer (ADR-0010).
 - Les lecteurs de mesures et de valeurs de grandeur partagent deux règles de
   sélection, définies une seule fois (`editorial/selection.py`) : version en
   vigueur et non dépréciée pour le journalier, le mensuel et les valeurs de
   grandeur ; version en vigueur et validée pour l'horaire, seul soumis au
   contrôle qualité automatique. Les lectures de l'API, la capsule et les
   scripts d'export les appliquent ; un test refuse qu'une règle soit récrite
-  ailleurs, hors exceptions motivées.
+  ailleurs, hors exceptions motivées (ADR-0010).
 - Le pays est une donnée lue dans la base, et non plus une constante du
   moteur ; un test de bout en bout sur un pays fictif le vérifie
   (`tests/integration/api/test_pays_fictif.py`). Pour la Guinée, les points

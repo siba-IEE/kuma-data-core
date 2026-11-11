@@ -5,6 +5,10 @@ echantillonne sa cellule de climatologie. Le cas contractuel est
 celui qui a demontre le piege du plus-proche-voisin : Tokounou
 (9,8459 N / -9,7115 O) est plus proche de Kankan (~74 km) mais dans
 la cellule echantillonnee par Kerouane (~99 km).
+
+Sans point d'ingestion dans la cellule du point, celui d'une cellule
+voisine est retenu ; au-delà, le point est hors de la zone couverte et
+refusé, par cette route comme par ``GET /v1/etudes/capsule``.
 """
 
 from __future__ import annotations
@@ -15,6 +19,10 @@ from fastapi.testclient import TestClient
 pytestmark = pytest.mark.integration
 
 _TOKOUNOU = {"lat": 9.8459, "lon": -9.7115}
+_MESSAGE_HORS_ZONE = (
+    "Point hors de la zone couverte : aucun point d'ingestion de climatologie "
+    "dans sa cellule de grille ni dans une cellule voisine."
+)
 
 
 def test_ti116_resolution_sans_auth_rejete(client: TestClient) -> None:
@@ -65,26 +73,78 @@ def test_ti118_resolution_point_dans_la_cellule_de_kankan(
     assert payload["meme_cellule"] is True
 
 
-def test_ti119_resolution_cellule_non_echantillonnee(
+def test_resolution_cellule_voisine_drapeau_faux(
     client: TestClient, headers_auth: dict[str, str]
 ) -> None:
-    """Cellule sans point d'ingestion : plus proche candidate, drapeau faux.
+    """Cellule sans point d'ingestion, voisine d'une cellule qui en porte un.
 
-    Point en mer au large de la Guinee : aucune commune du referentiel
-    ne partage sa cellule. La reponse est honnete (meme_cellule faux)
-    et porte la distance pour l'affichage de l'hypothese de transport.
+    Le point est dans la cellule (12 ; -10), vide. Siguiri, dans la cellule
+    voisine au sud, est retenue : la réponse le dit (meme_cellule faux) et
+    porte la distance, pour l'affichage de l'hypothèse de transport.
     """
     r = client.get(
         "/v1/localites/resolution",
-        params={"lat": 8.0, "lon": -16.0},
+        params={"lat": 12.47, "lon": -9.35},
         headers=headers_auth,
     )
     assert r.status_code == 200
     payload = r.json()
+    assert payload["cellule"] == {
+        "lat_min": 12.0,
+        "lat_max": 13.0,
+        "lon_min": -10.0,
+        "lon_max": -9.0,
+    }
+    assert payload["localite"]["code"] == "gin_siguiri"
     assert payload["meme_cellule"] is False
-    assert payload["distance_km"] > 100
-    assert payload["localite"]["code"].startswith("gin_")
-    assert payload["serie_climatologie"].endswith("_ghi_power_1991_2020")
+    assert payload["distance_km"] == 118.6
+    assert payload["serie_climatologie"] == "gin_siguiri_ghi_power_1991_2020"
+
+
+@pytest.mark.parametrize(
+    ("lat", "lon", "localite_la_plus_proche", "distance_km"),
+    [
+        pytest.param(8.0, -16.0, "gin_conakry_kaloum", 302.3, id="à deux cellules"),
+        pytest.param(0.0, 0.0, "gin_lola", 1282.9, id="à neuf cellules"),
+    ],
+)
+def test_ti119_resolution_point_hors_de_la_zone_couverte(
+    client: TestClient,
+    headers_auth: dict[str, str],
+    lat: float,
+    lon: float,
+    localite_la_plus_proche: str,
+    distance_km: float,
+) -> None:
+    """Ni la cellule du point ni une cellule voisine ne porte de point d'ingestion : 404.
+
+    Points en mer. Le refus nomme la localité la plus proche et sa distance.
+    """
+    r = client.get(
+        "/v1/localites/resolution",
+        params={"lat": lat, "lon": lon},
+        headers=headers_auth,
+    )
+    assert r.status_code == 404
+    assert r.json() == {
+        "erreur": {
+            "code": "RESSOURCE_INTROUVABLE",
+            "message": _MESSAGE_HORS_ZONE,
+            "details": {
+                "localite_la_plus_proche": localite_la_plus_proche,
+                "distance_km": distance_km,
+            },
+        }
+    }
+
+
+def test_capsule_point_hors_de_la_zone_couverte(
+    client: TestClient, headers_auth: dict[str, str]
+) -> None:
+    """La capsule refuse le même point, avec le même message."""
+    r = client.get("/v1/etudes/capsule", params={"lat": 0.0, "lon": 0.0}, headers=headers_auth)
+    assert r.status_code == 404
+    assert r.json() == {"erreur": {"code": "RESSOURCE_INTROUVABLE", "message": _MESSAGE_HORS_ZONE}}
 
 
 def test_ti120_resolution_parametres_hors_bornes(

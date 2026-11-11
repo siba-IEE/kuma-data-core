@@ -33,6 +33,11 @@ cohérence parent-enfant est validée côté base.
 - **Les localités d'une même cellule.** `/v1/grandeurs/ghi_exceedance` nomme
   les localités dont la série GHI mensuelle est identique à celle de la
   localité demandée. Elles sont reconnues à leurs données, pas à une liste.
+- **La zone couverte.** La zone couverte d'un pays est celle de ses points
+  d'ingestion : `/v1/localites/resolution` et la capsule ne servent un point
+  que si sa cellule de grille (1° x 1°), ou une cellule voisine, porte un
+  point d'ingestion de climatologie. Ouvrir un pays demande donc des points
+  d'ingestion qui couvrent son territoire.
 
 ## Ce qu'un nouveau pays branche
 
@@ -62,7 +67,9 @@ vérifie :
   un autre résultat ;
 - deux localités de même cellule nommées l'une à l'autre par `ghi_exceedance`,
   sans effet sur une localité guinéenne ;
-- la résolution d'un point et la capsule, en heures locales.
+- la résolution d'un point et la capsule, en heures locales ;
+- un point d'une cellule voisine résolu, et un point situé à deux cellules
+  refusé, par la route de résolution comme par la capsule.
 
 Ce test répond à
 l'[issue #6](https://github.com/siba-IEE/kuma-data-core/issues/6). Il porte sur

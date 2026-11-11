@@ -2,8 +2,8 @@
 
 - ``GET /v1/localites`` : liste paginée des localités (filtres ``pays_iso3``,
   ``type_localite``, ``parent_code``, ``actif`` ; 100 par page, 1000 au plus).
-- ``GET /v1/localites/resolution`` : localité qui représente la cellule de
-  grille d'un point (ADR-0004).
+- ``GET /v1/localites/resolution`` : localité dont la climatologie représente
+  un point, celle de sa cellule de grille ou d'une cellule voisine (ADR-0004, ADR-0010).
 - ``GET /v1/localites/{code}`` : détail d'une localité (code en slug ASCII, ou
   ``<code_pays>_<slug>`` pour une entité administrative).
 
@@ -14,7 +14,6 @@ elle-même, ce qui évite un second appel pour connaître le parent.
 
 from __future__ import annotations
 
-import math
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, status
@@ -38,6 +37,12 @@ from kuma_data_core.lecture.localites import (
     lire_localite,
     lire_page_localites,
     lister_candidates_resolution,
+)
+from kuma_data_core.services.resolution import (
+    MESSAGE_POINT_HORS_ZONE,
+    cellule,
+    plus_proche,
+    resoudre,
 )
 
 routeur = APIRouter(prefix="/localites", tags=["localites"])
@@ -67,19 +72,6 @@ def _vers_localite_listee(localite: Localite) -> LocaliteListee:
         updated_at=localite.updated_at,
         actif=localite.actif,
     )
-
-
-_RAYON_TERRE_KM = 6371.0
-
-
-def _haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Distance du grand cercle entre deux points WGS84, en km (formule de haversine)."""
-    phi1 = math.radians(lat1)
-    phi2 = math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return 2 * _RAYON_TERRE_KM * math.asin(math.sqrt(a))
 
 
 @routeur.get(
@@ -160,13 +152,24 @@ def lister_localites(
     "/resolution",
     response_model=ReponseResolution,
     status_code=status.HTTP_200_OK,
-    summary="Resolution d'un point quelconque vers la localite qui l'echantillonne",
+    summary="Résolution d'un point vers la localité dont la climatologie le représente",
     description=(
         "Pour un point (lat, lon), retourne la localité du référentiel "
-        "dont la climatologie mensuelle échantillonne la cellule de "
-        "grille contenant le point. Ce n'est pas toujours la localité "
-        "la plus proche : celle-ci peut appartenir à une autre cellule, "
-        "dont la climatologie n'est pas celle du point."
+        "dont la climatologie mensuelle représente le point. La "
+        "climatologie est donnée sur une grille de 1° x 1°, frontières "
+        "aux degrés entiers : tous les points d'une cellule ont la même "
+        "valeur. Parmi les localités qui portent cette climatologie, la "
+        "plus proche de celles de la cellule du point est retenue "
+        "(`meme_cellule = true`). Ce n'est pas toujours la localité la "
+        "plus proche du point : celle-ci peut appartenir à une autre "
+        "cellule, dont la climatologie n'est pas celle du point. Si la "
+        "cellule du point ne contient aucune de ces localités, la plus "
+        "proche de celles des huit cellules voisines est retenue, avec "
+        "`meme_cellule = false` : la climatologie est alors transportée "
+        "depuis une cellule voisine. Si aucune cellule voisine n'en "
+        "contient non plus, le point est hors de la zone couverte : la "
+        "réponse est 404 et nomme la localité la plus proche et sa "
+        "distance."
     ),
 )
 def resoudre_point(
@@ -176,14 +179,17 @@ def resoudre_point(
     lon: Annotated[float, Query(ge=-180, le=180, description="Longitude WGS84 du point.")],
     grandeur: Annotated[str, Query(pattern="^ghi$")] = "ghi",
 ) -> ReponseResolution:
-    """Résout un point vers la localité qui représente sa cellule de grille.
+    """Résout un point vers la localité dont la climatologie le représente.
 
     Candidates : les localités actives qui portent une série mensuelle active
     de la grandeur sur 1991-2020. La cellule est celle de la grille de la
-    source de climatologie, 1° x 1°, frontières aux degrés entiers. Si aucune
-    candidate n'est dans la cellule du point, ``meme_cellule`` vaut ``false``
-    et la plus proche est renvoyée avec sa distance. Lève 404
-    ``RESSOURCE_INTROUVABLE`` si aucune localité ne porte de série de ce type.
+    source de climatologie, 1° x 1°, frontières aux degrés entiers. Est
+    retenue la candidate la plus proche parmi celles de la cellule du point ;
+    à défaut, la plus proche parmi celles des huit cellules voisines, avec
+    ``meme_cellule`` à ``false``. Lève 404 ``RESSOURCE_INTROUVABLE`` si
+    aucune cellule voisine n'en contient (``details`` nomme la candidate la
+    plus proche et sa distance), ou si aucune localité ne porte de série de
+    ce type.
     """
     candidates = lister_candidates_resolution(session, grandeur)
     if not candidates:
@@ -193,28 +199,21 @@ def resoudre_point(
             statut_http=status.HTTP_404_NOT_FOUND,
         )
 
-    cellule_lat = math.floor(lat)
-    cellule_lon = math.floor(lon)
+    resolution = resoudre(lat, lon, candidates)
+    if resolution is None:
+        la_plus_proche, distance_km = plus_proche(lat, lon, candidates)
+        raise ExceptionKuma(
+            code=CodeErreur.RESSOURCE_INTROUVABLE,
+            message=MESSAGE_POINT_HORS_ZONE,
+            statut_http=status.HTTP_404_NOT_FOUND,
+            details={
+                "localite_la_plus_proche": la_plus_proche.code,
+                "distance_km": round(distance_km, 1),
+            },
+        )
 
-    meilleure: tuple[float, int] | None = None
-    meilleure_meme_cellule: tuple[float, int] | None = None
-    for indice, (_code, _nom, r_lat, r_lon, _serie) in enumerate(candidates):
-        distance = _haversine_km(lat, lon, r_lat, r_lon)
-        if meilleure is None or distance < meilleure[0]:
-            meilleure = (distance, indice)
-        dans_cellule = math.floor(r_lat) == cellule_lat and math.floor(r_lon) == cellule_lon
-        if dans_cellule and (
-            meilleure_meme_cellule is None or distance < meilleure_meme_cellule[0]
-        ):
-            meilleure_meme_cellule = (distance, indice)
-
-    assert meilleure is not None  # candidates non vide, vérifié plus haut
-    meme_cellule = meilleure_meme_cellule is not None
-    distance_km, indice_retenu = (
-        meilleure_meme_cellule if meilleure_meme_cellule is not None else meilleure
-    )
-    code, nom, retenue_lat, retenue_lon, serie_climatologie = candidates[indice_retenu]
-
+    retenue = resolution.candidate
+    cellule_lat, cellule_lon = cellule(lat, lon)
     return ReponseResolution(
         point=PointGeographique(latitude_deg=lat, longitude_deg=lon),
         grandeur=grandeur,
@@ -225,14 +224,14 @@ def resoudre_point(
             lon_max=float(cellule_lon + 1),
         ),
         localite=LocaliteResolue(
-            code=code,
-            nom=nom,
-            latitude_deg=retenue_lat,
-            longitude_deg=retenue_lon,
+            code=retenue.code,
+            nom=retenue.nom,
+            latitude_deg=retenue.latitude,
+            longitude_deg=retenue.longitude,
         ),
-        distance_km=round(distance_km, 1),
-        meme_cellule=meme_cellule,
-        serie_climatologie=serie_climatologie,
+        distance_km=round(resolution.distance_km, 1),
+        meme_cellule=resolution.meme_cellule,
+        serie_climatologie=retenue.serie_code,
     )
 
 

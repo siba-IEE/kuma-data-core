@@ -727,11 +727,37 @@ Réponse : `point`, `grandeur`, `cellule` (bornes de la cellule),
 `meme_cellule`, et `serie_climatologie` : le code de la série de
 climatologie mensuelle de la localité retenue - le Core dit quelle
 série consommer pour ce point, les clients ne le reconstruisent
-jamais par convention de nommage (généricité pays). Quand aucune candidate ne partage la cellule,
-`meme_cellule` vaut `false` et la candidate la plus proche est
-renvoyée : le consommateur affiche alors l'hypothèse de transport.
-404 `RESSOURCE_INTROUVABLE` si le référentiel ne porte aucun point
-d'ingestion pour la grandeur.
+jamais par convention de nommage (généricité pays).
+
+La règle, dans l'ordre :
+
+1. s'il existe des points d'ingestion dans la cellule du point, le plus
+   proche d'entre eux est retenu (`meme_cellule = true`) ;
+2. sinon, s'il en existe dans l'une des huit cellules voisines (par un
+   côté ou par un coin), le plus proche parmi ceux-là est retenu, avec
+   `meme_cellule = false` : le consommateur affiche alors l'hypothèse
+   de transport ;
+3. sinon le point est hors de la zone couverte : 404
+   `RESSOURCE_INTROUVABLE`, dont `details` nomme le point d'ingestion
+   le plus proche (`localite_la_plus_proche`) et sa distance
+   (`distance_km`).
+
+La limite se compte en cellules et non en kilomètres : la valeur servie
+est celle d'une cellule, et l'erreur vient du nombre de cellules
+franchies, pas de la position du point d'ingestion dans la sienne.
+Mesure sur les cellules occupées du référentiel (GHI mensuel
+1991-2020) : entre deux cellules voisines, le GHI annuel s'écarte de
+2,7 % en médiane (5,6 % au 9ᵉ décile) ; à deux cellules, de 5,6 %
+(10,6 % au 9ᵉ décile). La longitude est circulaire (la cellule de
+179° E touche celle de 180° O), la latitude ne l'est pas.
+
+La limite n'est pas une frontière : un point d'un pays voisin qui
+partage une cellule, ou une cellule voisine, avec un point d'ingestion
+est résolu. `GET /v1/etudes/capsule` applique la même règle et refuse
+un point hors de la zone couverte par le même message.
+
+404 `RESSOURCE_INTROUVABLE` aussi si le référentiel ne porte aucun
+point d'ingestion pour la grandeur.
 
 ### 3.11 ter `GET /v1/calage/{localite}/{grandeur}` : référentiel de calage satellite/sol
 
