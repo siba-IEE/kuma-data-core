@@ -46,6 +46,18 @@ le projet suit le versionnement sémantique.
 - Descriptions corrigées d'après le code : `/v1/horaire` sert d'abord la
   série stockée avant de relayer la source amont ; `ghi_exceedance` répond
   `RESSOURCE_LOCALITE_INCONNUE`.
+- Commentaires du schéma (tables, colonnes, vues, fonction de validation de
+  la hiérarchie des localités) réécrits d'après le schéma et les données :
+  ils ne renvoient plus à l'histoire du projet, citent les documents du
+  dépôt par leur URL et corrigent des faits périmés (identité d'une série,
+  valeurs de `periode_type`, exemples de codes, décompte des unités).
+- Libellés de 62 séries d'écart 2021-2023 : la mention entre parenthèses qui
+  suivait la période est retirée, le libellé suit le modèle des autres
+  séries de la même grandeur.
+- `series_metadonnees.methode_collecte_doc` et `url_documentation` : pour
+  170 séries calculées, le chemin de la fiche méthodologique relatif au
+  dépôt devient son URL publique. 28 séries de `rang_referentiel_temporel`
+  citent encore une fiche qui n'existe pas.
 
 - Les origines CORS se règlent par déploiement (`CORS_ORIGINES`, liste
   JSON) ; la valeur par défaut est inchangée, `*` est refusé en production.
