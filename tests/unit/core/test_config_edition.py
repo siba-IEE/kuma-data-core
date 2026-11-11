@@ -15,10 +15,13 @@ from __future__ import annotations
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy.engine import make_url
 
 from kuma_data_core.core.config import Settings
 
 pytestmark = pytest.mark.unit
+
+_CLE_ADMIN_FORTE = "k" * 43
 
 
 def test_defauts_edition_inchanges_en_local() -> None:
@@ -71,9 +74,31 @@ def test_prod_accepte_cle_admin_non_vide() -> None:
         api_environnement="prod",
         api_docs_actives=False,
         log_format="json",
-        api_cle_admin="cle_admin_reelle",
+        api_cle_admin=_CLE_ADMIN_FORTE,
     )
     assert s.api_environnement == "prod"
+
+
+@pytest.mark.parametrize("cle", ["courte", "changeme_cle_admin_forte_et_assez_longue_pour_passer"])
+def test_prod_refuse_cle_admin_faible(cle: str) -> None:
+    with pytest.raises(ValidationError, match="trop faible"):
+        Settings(
+            postgres_password="mdp",
+            api_environnement="prod",
+            api_docs_actives=False,
+            log_format="json",
+            api_cle_admin=cle,
+        )
+
+
+def test_mot_de_passe_absent_du_repr() -> None:
+    assert "mdp_tres_secret" not in repr(Settings(postgres_password="mdp_tres_secret"))
+
+
+def test_dsn_encode_les_caracteres_reserves_du_mot_de_passe() -> None:
+    s = Settings(postgres_password="a@b/c:d", postgres_host="hote")
+    assert make_url(s.database_url).password == "a@b/c:d"
+    assert make_url(s.database_url).host == "hote"
 
 
 def test_meta_url_retombe_sur_le_couple_principal_sans_identifiants_dedies() -> None:

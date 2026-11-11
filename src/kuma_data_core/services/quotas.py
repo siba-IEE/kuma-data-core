@@ -31,6 +31,7 @@ if TYPE_CHECKING:
 # Expiration des compteurs : 48 h, purement du nettoyage (la fenêtre
 # de comptage est le jour calendaire UTC porté par le nom de la clé).
 _EXPIRATION_COMPTEUR_SECONDES = 48 * 3600
+_EXPIRATION_DEBIT_SECONDES = 120
 
 
 @lru_cache(maxsize=4)
@@ -65,14 +66,30 @@ def consommer_quota(empreinte: str, quota_journalier: int) -> bool:
     d'avertissement - jamais une 5xx pour un compteur.
     """
     jour = datetime.now(tz=UTC).strftime("%Y-%m-%d")
-    cle_compteur = f"quota:{empreinte}:{jour}"
+    return _incrementer_sous_plafond(
+        f"quota:{empreinte}:{jour}", quota_journalier, _EXPIRATION_COMPTEUR_SECONDES
+    )
+
+
+def consommer_debit_ip(identite_reseau: str, plafond_par_minute: int) -> bool:
+    """Consomme une requête du débit de la minute ; vraie si sous le plafond.
+
+    Fenêtre fixe d'une minute UTC, même fail-open que ``consommer_quota``.
+    """
+    minute = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H:%M")
+    return _incrementer_sous_plafond(
+        f"debit:{identite_reseau}:{minute}", plafond_par_minute, _EXPIRATION_DEBIT_SECONDES
+    )
+
+
+def _incrementer_sous_plafond(cle_compteur: str, plafond: int, expiration_secondes: int) -> bool:
     try:
         client = obtenir_client()
         # Le client sync renvoie int ; le type redis-py unit sync/async.
         compte = cast(int, client.incr(cle_compteur))
         if compte == 1:
-            client.expire(cle_compteur, _EXPIRATION_COMPTEUR_SECONDES)
-        return compte <= quota_journalier
+            client.expire(cle_compteur, expiration_secondes)
+        return compte <= plafond
     except Exception:
         obtenir_logger("kuma.api.quotas").warning(
             "quota_redis_injoignable_fail_open", compteur=cle_compteur

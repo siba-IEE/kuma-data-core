@@ -33,9 +33,9 @@ def couper_nom(valeur: str) -> str:
 
 
 class _Strict(BaseModel):
-    """Refuse tout champ que le contrat ne nomme pas."""
+    """Refuse tout champ que le contrat ne nomme pas, ainsi que NaN et infinis."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="forbid", allow_inf_nan=False)
 
 
 class Logiciel(_Strict):

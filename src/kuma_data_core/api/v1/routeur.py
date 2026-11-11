@@ -8,8 +8,9 @@ fois ; l'ajout d'un nouveau domaine se fait par un nouvel
 
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
+from kuma_data_core.api.dependencies import limiter_debit_par_ip
 from kuma_data_core.api.v1 import (
     calage,
     cles,
@@ -24,7 +25,7 @@ from kuma_data_core.api.v1 import (
     series,
 )
 
-routeur_v1 = APIRouter(prefix="/v1")
+routeur_v1 = APIRouter(prefix="/v1", dependencies=[Depends(limiter_debit_par_ip)])
 routeur_v1.include_router(health.routeur)
 routeur_v1.include_router(edition.routeur)
 routeur_v1.include_router(cles.routeur)

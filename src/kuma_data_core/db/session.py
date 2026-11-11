@@ -17,6 +17,10 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from kuma_data_core.core.config import get_settings
 
+# Fuseau de session fixé : les regroupements par jour (``instant.date()``)
+# ne doivent pas dépendre du réglage du serveur PostgreSQL.
+_ARGUMENTS_CONNEXION = {"options": "-c timezone=UTC"}
+
 
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
@@ -32,13 +36,16 @@ def get_engine() -> Engine:
         echo=False,
         future=True,
         pool_pre_ping=True,
+        connect_args=_ARGUMENTS_CONNEXION,
     )
 
 
 @lru_cache(maxsize=4)
 def _engine_pour_url(url: str) -> Engine:
     """Moteur memoizé par DSN (base de service, tests)."""
-    return create_engine(url, echo=False, future=True, pool_pre_ping=True)
+    return create_engine(
+        url, echo=False, future=True, pool_pre_ping=True, connect_args=_ARGUMENTS_CONNEXION
+    )
 
 
 def get_engine_meta() -> Engine:

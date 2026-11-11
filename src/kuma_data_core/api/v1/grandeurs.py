@@ -300,6 +300,7 @@ def _chercher_serie_compagne(
               AND periode_debut = :periode_debut_source
               AND granularite IS NOT DISTINCT FROM :granularite_source
               AND actif = TRUE
+            ORDER BY id
             LIMIT 1
             """
         ),
@@ -1490,6 +1491,7 @@ def _resoudre_serie_ghi_mensuelle_1991_2020(
               AND s.code = 'nasa_power'
               AND EXTRACT(YEAR FROM sm.periode_debut) = :annee_debut
               AND sm.actif = TRUE
+            ORDER BY sm.id
             LIMIT 1
             """
         ),

@@ -50,7 +50,8 @@ if config.config_file_name is not None:
 # versionné). On la calcule à partir des Settings.
 # -----------------------------------------------------------------------------
 settings = get_settings()
-config.set_main_option("sqlalchemy.url", settings.database_url)
+# ConfigParser interprète ``%`` : on double ceux de l'encodage URL du mot de passe.
+config.set_main_option("sqlalchemy.url", settings.database_url.replace("%", "%%"))
 
 # -----------------------------------------------------------------------------
 # Cible des comparaisons d'autogénération.

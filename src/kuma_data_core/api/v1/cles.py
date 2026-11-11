@@ -17,7 +17,11 @@ from fastapi import APIRouter, Request, status
 from sqlalchemy.orm import Session
 
 from kuma_data_core.api.codes_erreur import CodeErreur
-from kuma_data_core.api.dependencies import CleAdminValidee
+from kuma_data_core.api.dependencies import (
+    CleAdminValidee,
+    adresse_ip_cliente,
+    identite_reseau,
+)
 from kuma_data_core.api.erreurs import ExceptionKuma
 from kuma_data_core.api.v1.schemas.cles import (
     DemandeCle,
@@ -49,24 +53,8 @@ def _session_meta() -> Session:
 
 
 def _adresse_ip(request: Request) -> str:
-    """Adresse du client pour la limite d'émission par IP (ADR-0003 D2).
-
-    Derrière un reverse proxy de confiance (Caddy, WP8), l'adresse réelle
-    du client vit dans ``X-Forwarded-For`` ; ``request.client.host`` est
-    alors l'IP du proxy (une seule, la limite s'effondrerait). On lit donc
-    la **dernière** entrée de la chaîne - celle ajoutée par notre proxy,
-    la seule non falsifiable (un client peut préfixer des IP fictives,
-    jamais en ajouter après le proxy). Sans proxy de confiance déclaré,
-    l'en-tête est ignoré : un client le forgerait pour contourner la
-    limite.
-    """
-    if get_settings().derriere_proxy_confiance:
-        transmis = request.headers.get("x-forwarded-for")
-        if transmis:
-            maillons = [m.strip() for m in transmis.split(",") if m.strip()]
-            if maillons:
-                return maillons[-1]
-    return request.client.host if request.client is not None else "inconnue"
+    """Unité de comptage du client pour la limite d'émission (IPv6 : le /64)."""
+    return identite_reseau(adresse_ip_cliente(request))
 
 
 @routeur.post(
