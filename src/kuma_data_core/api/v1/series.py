@@ -107,7 +107,10 @@ def _valider_format(format_demande: str) -> str:
 def lister_series(
     _cle: CleApiValidee,
     session: Annotated[Session, Depends(obtenir_session)],
-    localite: Annotated[str | None, Query(description="Code localite (ex. gin_kindia)")] = None,
+    localite: Annotated[
+        str | None,
+        Query(description="Code de la localité, tel que listé par /v1/localites."),
+    ] = None,
     grandeur: Annotated[str | None, Query(description="Code grandeur (ex. ghi, hep)")] = None,
     source: Annotated[
         str | None, Query(description="Code source (ex. nasa_power, kuma_calculs)")

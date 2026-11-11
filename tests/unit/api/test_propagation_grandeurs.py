@@ -57,7 +57,7 @@ def test_plafond_de_la_grandeur() -> None:
 
 
 def test_jour_sans_entree_rangee_prend_le_niveau_de_toutes_les_entrees() -> None:
-    """Jour sans entrée rangée (calcul groupé hors UTC) : repli prudent sur toutes les entrées."""
+    """Jour sans entrée rangée : repli prudent sur toutes les entrées."""
     niveaux = NiveauxEntrees()
     niveaux.ajouter(date(2024, 7, 1), "A")
     niveaux.ajouter(date(2024, 7, 2), "C")

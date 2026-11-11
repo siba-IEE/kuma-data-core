@@ -6,8 +6,9 @@ une seule fois, ci-dessous, et chaque lecteur nomme celle qu'il applique.
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, time, timedelta
 from typing import Literal, NamedTuple
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -270,13 +271,16 @@ def lire_valeurs_horaires(
     periode_debut: date,
     periode_fin: date,
     *,
+    fuseau: str,
     niveaux: NiveauxEntrees,
 ) -> dict[datetime, float]:
-    """Valeurs horaires validées et courantes d'une série, indexées par instant.
+    """Valeurs horaires validées et courantes d'une série, indexées par instant local.
 
     Les lignes rejetées par le contrôle qualité (statut ``brut``) sont exclues.
-    La fenêtre porte sur la date UTC. Range le niveau effectif de chaque valeur
-    lue sous son jour UTC dans ``niveaux``.
+    ``fuseau`` est le nom IANA du fuseau de la localité de la série : la fenêtre
+    porte sur la date locale, les instants sont rendus dans ce fuseau, et le
+    niveau effectif de chaque valeur lue est rangé sous son jour local dans
+    ``niveaux``.
     """
     rows = session.execute(
         text(
@@ -286,16 +290,31 @@ def lire_valeurs_horaires(
             FROM mesures_ressource_horaires
             WHERE serie_id = :serie_id
               AND {_LIGNES_COURANTES_VALIDEES}
-              AND (instant_mesure AT TIME ZONE 'UTC')::date >= :debut
-              AND (instant_mesure AT TIME ZONE 'UTC')::date <= :fin
+              AND instant_mesure >= :borne_debut
+              AND instant_mesure < :borne_fin
+              AND (instant_mesure AT TIME ZONE :fuseau)::date >= :debut
+              AND (instant_mesure AT TIME ZONE :fuseau)::date <= :fin
             ORDER BY instant_mesure
             """
         ),
-        {"serie_id": serie_id, "debut": periode_debut, "fin": periode_fin},
+        {
+            "serie_id": serie_id,
+            "fuseau": fuseau,
+            "debut": periode_debut,
+            "fin": periode_fin,
+            # Bornes larges en UTC, pour que l'index serve : aucun fuseau n'est
+            # décalé de plus de 14 h, le filtre sur la date locale fait le tri exact.
+            "borne_debut": datetime.combine(periode_debut, time.min, UTC) - timedelta(days=1),
+            "borne_fin": datetime.combine(periode_fin, time.min, UTC) + timedelta(days=2),
+        },
     ).all()
+    zone = ZoneInfo(fuseau)
+    valeurs: dict[datetime, float] = {}
     for r in rows:
-        niveaux.ajouter(r.instant_mesure.astimezone(UTC).date(), r.niveau)
-    return {r.instant_mesure: float(r.valeur) for r in rows}
+        instant = r.instant_mesure.astimezone(zone)
+        niveaux.ajouter(instant.date(), r.niveau)
+        valeurs[instant] = float(r.valeur)
+    return valeurs
 
 
 def lire_points_horaires(
@@ -384,3 +403,51 @@ def lire_serie_mensuelle_entiere(
     for r in rows:
         niveaux.ajouter((int(r.annee), int(r.mois)), r.niveau)
     return [(int(r.annee), int(r.mois), float(r.valeur)) for r in rows]
+
+
+def lister_localites_de_meme_serie_mensuelle(session: Session, serie_id: int) -> list[str]:
+    """Codes, triés, des autres localités dont une série mensuelle égale cette série.
+
+    Sont comparées les séries actives de même source, même grandeur et même
+    ``periode_debut``. Deux séries sont égales quand leurs valeurs courantes,
+    ordonnées par année puis mois, sont identiques : PostgreSQL compare les
+    tableaux, aucune valeur n'est rapatriée. C'est le cas de deux localités
+    d'une même cellule, quand la grille de la source est plus large que leur
+    écart.
+    """
+    rows = session.execute(
+        text(
+            f"""
+            WITH reference AS (
+                SELECT id, localite_id, source_id, grandeur_code, periode_debut
+                FROM series_metadonnees
+                WHERE id = :serie_id
+            ),
+            vecteurs AS (
+                SELECT serie_id, array_agg(valeur ORDER BY annee, mois) AS valeurs
+                FROM mesures_ressource_mensuelles
+                WHERE {_LIGNES_COURANTES}
+                  AND serie_id IN (
+                      SELECT sm.id
+                      FROM series_metadonnees sm
+                      JOIN reference r
+                        ON sm.source_id = r.source_id
+                       AND sm.grandeur_code = r.grandeur_code
+                       AND sm.periode_debut = r.periode_debut
+                      WHERE sm.actif = TRUE
+                  )
+                GROUP BY serie_id
+            )
+            SELECT DISTINCT l.code
+            FROM reference r
+            JOIN vecteurs v_ref ON v_ref.serie_id = r.id
+            JOIN vecteurs v ON v.valeurs = v_ref.valeurs
+            JOIN series_metadonnees sm ON sm.id = v.serie_id
+            JOIN localites l ON l.id = sm.localite_id
+            WHERE sm.localite_id <> r.localite_id
+            ORDER BY l.code
+            """
+        ),
+        {"serie_id": serie_id},
+    ).all()
+    return [str(r.code) for r in rows]

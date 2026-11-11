@@ -45,7 +45,10 @@ from kuma_data_core.exceptions import (
     NasaPowerTimeoutError,
 )
 from kuma_data_core.external.nasa_power import fetch_hourly
-from kuma_data_core.lecture.localites import localite_active_existe
+from kuma_data_core.lecture.localites import (
+    lister_localites_de_code_court,
+    localite_active_existe,
+)
 from kuma_data_core.lecture.mesures import lire_points_horaires
 from kuma_data_core.lecture.series import chercher_serie_horaire_stockee
 from kuma_data_core.services.horaire import (
@@ -60,21 +63,27 @@ from kuma_data_core.services.localites import coordonnees_localite
 routeur = APIRouter(prefix="/horaire", tags=["horaire-passe-plat"])
 
 
-_PREFIXE_ALIAS_HISTORIQUE: str = "gin_"
-"""Préfixe ajouté à un code court (``kankan``, ``kindia``...) pour retrouver le
-code complet de la table ``localites``. Compatibilité seulement : l'usage
-normal est le code complet."""
-
-
 def _resoudre_localite(session: Session, localite: str) -> str:
     """Code complet de la localité du chemin.
 
-    Le code est pris tel quel s'il existe, sinon préfixé de ``gin_``. Lève 404
-    ``RESSOURCE_LOCALITE_INCONNUE`` si aucun des deux n'existe.
+    Le code est pris tel quel s'il désigne une localité active. Sinon il est lu
+    comme un code court, auquel manque le préfixe du pays : ce préfixe est le
+    code d'un pays du référentiel. Lève 404 ``RESSOURCE_LOCALITE_INCONNUE`` si
+    aucune localité ne correspond, ou si le code court en désigne plusieurs
+    (``details`` liste alors les candidats).
     """
-    for candidat in (localite, f"{_PREFIXE_ALIAS_HISTORIQUE}{localite}"):
-        if localite_active_existe(session, candidat):
-            return candidat
+    if localite_active_existe(session, localite):
+        return localite
+    candidats = lister_localites_de_code_court(session, localite)
+    if len(candidats) == 1:
+        return candidats[0]
+    if candidats:
+        raise ExceptionKuma(
+            code=CodeErreur.RESSOURCE_LOCALITE_INCONNUE,
+            message=f"Code court '{localite}' ambigu : utiliser le code complet de la localité.",
+            statut_http=status.HTTP_404_NOT_FOUND,
+            details={"candidats": candidats},
+        )
     raise ExceptionKuma(
         code=CodeErreur.RESSOURCE_LOCALITE_INCONNUE,
         message=f"Localite '{localite}' introuvable dans le referentiel.",
@@ -191,7 +200,8 @@ def grandeur_horaire(
     - 422 ``VALIDATION_VALEUR_INVALIDE`` (paramètre invalide) ;
     - 400 ``PLAGE_TEMPORELLE_NON_DISPONIBLE`` (plage hors disponibilité ou,
       sur une édition figée, non couverte par les données stockées) ;
-    - 404 ``RESSOURCE_LOCALITE_INCONNUE`` (localité absente du référentiel) ;
+    - 404 ``RESSOURCE_LOCALITE_INCONNUE`` (localité absente du référentiel, ou
+      code sans préfixe de pays porté par des localités de plusieurs pays) ;
     - 503 ``PASSE_PLAT_INDISPONIBLE`` (service amont indisponible).
     """
     plage_disponible = _calculer_plage_disponible()

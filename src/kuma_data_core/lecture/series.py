@@ -55,6 +55,8 @@ class SerieSourceResolue(NamedTuple):
     ``source_code`` et ``granularite`` déterminent la table de mesures à lire.
     ``granularite`` sert aussi à choisir les séries compagnes : séries horaires
     et journalières peuvent partager le même ``periode_debut``.
+    ``fuseau_horaire`` est le nom IANA du fuseau de la localité, ``'UTC'`` si
+    elle n'en a pas : il fixe le jour local des mesures horaires.
     """
 
     serie_id: int
@@ -66,6 +68,7 @@ class SerieSourceResolue(NamedTuple):
     source_code: str
     granularite: str | None
     periode_fin: date | None
+    fuseau_horaire: str
 
 
 class SerieIdentifiee(NamedTuple):
@@ -258,7 +261,8 @@ def chercher_serie_active(session: Session, code_serie: str) -> SerieSourceResol
             """
             SELECT sm.id, sm.localite_id, sm.source_id, sm.grandeur_code,
                    l.code AS localite_code, sm.periode_debut,
-                   s.code AS source_code, sm.granularite, sm.periode_fin
+                   s.code AS source_code, sm.granularite, sm.periode_fin,
+                   COALESCE(l.fuseau_horaire, 'UTC') AS fuseau_horaire
             FROM series_metadonnees sm
             JOIN localites l ON l.id = sm.localite_id
             JOIN sources s ON s.id = sm.source_id
@@ -280,6 +284,7 @@ def chercher_serie_active(session: Session, code_serie: str) -> SerieSourceResol
         source_code=row.source_code,
         granularite=row.granularite,
         periode_fin=row.periode_fin,
+        fuseau_horaire=row.fuseau_horaire,
     )
 
 

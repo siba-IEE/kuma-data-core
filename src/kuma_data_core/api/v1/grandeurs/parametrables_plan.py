@@ -107,13 +107,28 @@ def grandeur_poa_parametrable(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_h = lire_valeurs_horaires(
-            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+            session,
+            serie.serie_id,
+            params.periode_debut,
+            params.periode_fin,
+            fuseau=serie.fuseau_horaire,
+            niveaux=niveaux,
         )
         dni_h = lire_valeurs_horaires(
-            session, dni_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+            session,
+            dni_serie_id,
+            params.periode_debut,
+            params.periode_fin,
+            fuseau=serie.fuseau_horaire,
+            niveaux=niveaux,
         )
         dhi_h = lire_valeurs_horaires(
-            session, dhi_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+            session,
+            dhi_serie_id,
+            params.periode_debut,
+            params.periode_fin,
+            fuseau=serie.fuseau_horaire,
+            niveaux=niveaux,
         )
         mesures_horaires: list[MesureHeurePOA] = [
             {"instant_mesure": instant, "ghi": ghi, "dni": dni_h[instant], "dhi": dhi_h[instant]}
@@ -244,13 +259,28 @@ def grandeur_poa_bifacial(
                 statut_http=status.HTTP_400_BAD_REQUEST,
             )
         ghi_h = lire_valeurs_horaires(
-            session, serie.serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+            session,
+            serie.serie_id,
+            params.periode_debut,
+            params.periode_fin,
+            fuseau=serie.fuseau_horaire,
+            niveaux=niveaux,
         )
         dni_h = lire_valeurs_horaires(
-            session, dni_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+            session,
+            dni_serie_id,
+            params.periode_debut,
+            params.periode_fin,
+            fuseau=serie.fuseau_horaire,
+            niveaux=niveaux,
         )
         dhi_h = lire_valeurs_horaires(
-            session, dhi_serie_id, params.periode_debut, params.periode_fin, niveaux=niveaux
+            session,
+            dhi_serie_id,
+            params.periode_debut,
+            params.periode_fin,
+            fuseau=serie.fuseau_horaire,
+            niveaux=niveaux,
         )
         mesures_horaires: list[MesureHeureBifacial] = [
             {

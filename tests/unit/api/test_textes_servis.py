@@ -1,4 +1,4 @@
-"""Les textes servis par l'API ne portent pas de vocabulaire de chantier interne.
+"""Les textes servis par l'API ne portent ni vocabulaire de chantier interne ni pays pilote.
 
 Sont couverts, sans base de données : le document OpenAPI, les mises en garde
 renvoyées dans le champ ``limite`` et les messages d'erreur des routes ``/v1``.
@@ -10,6 +10,7 @@ import ast
 import importlib
 import inspect
 import pkgutil
+import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import get_args
@@ -21,7 +22,6 @@ from kuma_data_core.api.main import app
 from kuma_data_core.api.v1 import grandeurs as routes_grandeurs
 from kuma_data_core.api.v1.grandeurs import exceedance, incertitude
 from kuma_data_core.services.grandeurs import pr_realiste, soiling_hsu
-from kuma_data_core.services.grandeurs.ghi_exceedance import PAIRES_COLOCALISEES_D29
 from kuma_data_core.services.grandeurs.types import ModeCorrectionPR
 from tests.jargon import A_ADMETTRE, A_DETECTER, correspondances
 
@@ -65,6 +65,46 @@ def test_openapi_sans_vocabulaire_interne() -> None:
     assert _fautifs(textes) == {}
 
 
+# Le moteur sert tout pays du référentiel : ses textes renvoient aux routes qui
+# listent les codes, pas à un exemple pris dans le pays pilote.
+_PAYS_PILOTE = re.compile(
+    r"\bgin_|\bGIN\b|[Gg]uin[ée]e|guin[ée]en|Conakry|Kaloum|Kankan|Kindia|Mamou|Lab[ée]\b"
+    r"|Nz[ée]r[ée]kor[ée]|Bok[ée]\b|Boffa|Tokounou"
+)
+
+
+@pytest.mark.parametrize(
+    "texte",
+    [
+        "Code localite (ex. gin_kindia)",
+        "Filtre pays ISO 3166-1 alpha-3 (ex. GIN, SEN)",
+        "ex. gin pour villes guineennes",
+        "Tokounou est plus proche de Kankan",
+        "ressource solaire en Guinée",
+    ],
+)
+def test_motif_detecte_le_pays_pilote(texte: str) -> None:
+    assert _PAYS_PILOTE.search(texte), f"non détecté : {texte!r}"
+
+
+@pytest.mark.parametrize(
+    "texte",
+    [
+        "Code de la localité, tel que listé par /v1/localites.",
+        "Série d'origine, marginale ou imaginée.",
+        "Table des seuils du label.",
+    ],
+)
+def test_motif_admet_un_texte_sans_pays(texte: str) -> None:
+    assert _PAYS_PILOTE.search(texte) is None
+
+
+def test_openapi_sans_exemple_du_pays_pilote() -> None:
+    textes = dict(_chaines(app.openapi()))
+    assert any(chemin.startswith("/paths//v1/localites") for chemin in textes)
+    assert {chemin: t for chemin, t in textes.items() if _PAYS_PILOTE.search(t)} == {}
+
+
 def test_mises_en_garde_des_services_sans_vocabulaire_interne() -> None:
     textes: dict[str, str] = {}
     for module in (pr_realiste, soiling_hsu):
@@ -82,11 +122,10 @@ def test_mises_en_garde_des_services_sans_vocabulaire_interne() -> None:
 
 
 def test_limites_des_routes_grandeurs_sans_vocabulaire_interne() -> None:
-    jumelee = next(iter(PAIRES_COLOCALISEES_D29))
     appels: dict[str, list[Callable[[], str]]] = {
         "_construire_limite_ghi_exceedance": [
-            lambda: exceedance._construire_limite_ghi_exceedance(jumelee),
-            lambda: exceedance._construire_limite_ghi_exceedance("gin_conakry_kaloum"),
+            lambda: exceedance._construire_limite_ghi_exceedance(["zzf_b", "zzf_c"]),
+            lambda: exceedance._construire_limite_ghi_exceedance([]),
         ],
         "_construire_limite_incertitude_inter_source": [
             incertitude._construire_limite_incertitude_inter_source,
@@ -108,7 +147,7 @@ def test_limites_des_routes_grandeurs_sans_vocabulaire_interne() -> None:
         for nom, liste in appels.items()
         for indice, appel in enumerate(liste)
     }
-    assert PAIRES_COLOCALISEES_D29[jumelee] in textes["_construire_limite_ghi_exceedance#0"]
+    assert "zzf_c" in textes["_construire_limite_ghi_exceedance#0"]
     assert _fautifs(textes) == {}
 
 

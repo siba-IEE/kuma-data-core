@@ -315,13 +315,13 @@ class ReponseGhiExceedance(BaseModel):
     code_grandeur: Literal["ghi_exceedance"] = "ghi_exceedance"
     code_localite: str = Field(
         ...,
-        description="Code de la localite cible (ex. gin_kankan, gin_conakry_kaloum).",
+        description="Code de la localité cible, tel que listé par /v1/localites.",
     )
     code_serie_source: str = Field(
         ...,
         description=(
-            "Code de la série GHI mensuelle 1991-2020 utilisée pour le calcul "
-            "(ex. gin_kankan_ghi_power_1991_2020)."
+            "Code de la série GHI mensuelle 1991-2020 utilisée pour le calcul, "
+            "tel que listé par /v1/series."
         ),
     )
     periode: str = Field(
@@ -366,9 +366,9 @@ class ReponseGhiExceedance(BaseModel):
         ...,
         description=(
             "Mise en garde sur la portée du résultat : variabilité d'une année à "
-            "l'autre uniquement, pas un P90 bancable complet. Quand deux localités "
-            "tombent dans la même cellule de la source et reçoivent donc des valeurs "
-            "identiques, le texte nomme la localité jumelle."
+            "l'autre uniquement, pas un P90 bancable complet. Quand d'autres "
+            "localités tombent dans la même cellule de la source et reçoivent donc "
+            "des valeurs identiques, le texte les nomme."
         ),
     )
 
@@ -563,7 +563,9 @@ class ReponseIncertitudeInterSource(BaseModel):
     """
 
     code_grandeur: Literal["incertitude_inter_source"] = "incertitude_inter_source"
-    code_localite: str = Field(..., description="Code de la localite (ex. gin_boffa).")
+    code_localite: str = Field(
+        ..., description="Code de la localité, tel que listé par /v1/localites."
+    )
     fenetre: str = Field(
         ..., description="Fenêtre commune aux sources comparées (fixe, ex. '2021-2023')."
     )

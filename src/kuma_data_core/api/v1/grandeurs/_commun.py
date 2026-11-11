@@ -161,10 +161,10 @@ def _propager(
 ) -> list[ResultatJournalier | ResultatMensuel]:
     """Règle P : chaque résultat prend le niveau des entrées de son jour ou de son mois.
 
-    Le niveau ne dépasse pas le plafond de la grandeur. Un résultat dont le
-    jour n'a pas d'entrée rangée (calcul horaire groupé dans un autre fuseau
-    que l'UTC des lecteurs) prend, par prudence, le niveau de toutes les
-    entrées.
+    Le niveau ne dépasse pas le plafond de la grandeur. Lecteurs et calculs
+    comptent le même jour, celui du fuseau de la localité pour une entrée
+    horaire ; un résultat dont le jour n'aurait malgré tout aucune entrée
+    rangée prend, par prudence, le niveau de toutes les entrées.
     """
     propages: list[ResultatJournalier | ResultatMensuel] = []
     for r in resultats:

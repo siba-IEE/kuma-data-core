@@ -99,7 +99,12 @@ def lister_localites(
     session: Annotated[Session, Depends(obtenir_session)],
     pays_iso3: Annotated[
         str | None,
-        Query(description="Filtre pays ISO 3166-1 alpha-3 (ex. GIN, SEN)"),
+        Query(
+            description=(
+                "Filtre sur le pays : code ISO 3166-1 alpha-3 en majuscules, tel que "
+                "rendu dans le champ pays_iso3 des localités."
+            ),
+        ),
     ] = None,
     type_localite: Annotated[
         str | None,
@@ -112,7 +117,12 @@ def lister_localites(
     ] = None,
     parent_code: Annotated[
         str | None,
-        Query(description="Filtre code de la localite parente (ex. gin pour villes guineennes)"),
+        Query(
+            description=(
+                "Filtre sur le code de la localité parente directe, tel que rendu dans "
+                "le champ parent_code des localités."
+            ),
+        ),
     ] = None,
     actif: Annotated[
         bool | None, Query(description="Filtre actif (TRUE/FALSE), defaut TRUE")
@@ -152,12 +162,11 @@ def lister_localites(
     status_code=status.HTTP_200_OK,
     summary="Resolution d'un point quelconque vers la localite qui l'echantillonne",
     description=(
-        "Pour un point (lat, lon), retourne la localite du referentiel "
-        "dont la climatologie mensuelle echantillonne la cellule de "
-        "grille contenant le point. Le plus-proche-voisin naif est "
-        "faux : la localite la plus proche peut appartenir a une autre "
-        "cellule (cas demontre : Tokounou est plus proche de Kankan "
-        "mais dans la cellule de Kerouane)."
+        "Pour un point (lat, lon), retourne la localité du référentiel "
+        "dont la climatologie mensuelle échantillonne la cellule de "
+        "grille contenant le point. Ce n'est pas toujours la localité "
+        "la plus proche : celle-ci peut appartenir à une autre cellule, "
+        "dont la climatologie n'est pas celle du point."
     ),
 )
 def resoudre_point(

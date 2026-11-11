@@ -26,6 +26,12 @@ le projet suit le versionnement sémantique.
 
 ### Corrigé
 
+- `/v1/grandeurs/ghi_exceedance` : la mise en garde de cellule partagée du
+  champ `limite` ne connaissait que Kindia et Mamou. Les localités de même
+  cellule sont reconnues à l'identité de leur série GHI mensuelle : la mise
+  en garde vaut pour les 20 localités concernées et nomme toutes leurs
+  jumelles (Dalaba s'ajoute à Kindia et Mamou).
+
 - `/v1/series/{code_serie}` répondait `500` pour une série mensuelle remontant
   avant 1991 : le schéma de réponse exigeait `annee >= 1991` alors que la base
   admet les mois depuis 1981.
@@ -39,6 +45,25 @@ le projet suit le versionnement sémantique.
 
 ### Modifié
 
+- Le pays est une donnée lue dans la base, et non plus une constante du
+  moteur ; un test de bout en bout sur un pays fictif le vérifie
+  (`tests/integration/api/test_pays_fictif.py`). Pour la Guinée, les points
+  ci-dessous ne changent aucune réponse.
+  - `/v1/horaire/{localite}/{grandeur}` : le préfixe qui complète un code
+    court de localité est cherché parmi les codes des pays du référentiel, et
+    non plus fixé à `gin_`. Un code court porté par des localités de
+    plusieurs pays reçoit `404 RESSOURCE_LOCALITE_INCONNUE`, avec la liste des
+    codes complets.
+  - Les grandeurs calculées par intégration horaire comptent en heure
+    locale : fenêtre demandée, regroupement par jour et propagation de la
+    confiance suivent le fuseau de la localité (`fuseau_horaire`, UTC à
+    défaut). La capsule exprime les mois et les heures de sa séquence horaire
+    dans ce fuseau. `/v1/horaire` reste en UTC.
+  - Les descriptions servies ne citent plus d'exemple pris en Guinée : elles
+    renvoient à la route qui liste les valeurs (`/v1/localites`,
+    `/v1/series`). Un test refuse ces exemples dans le document OpenAPI.
+  - Nouvelle dépendance `tzdata` : la base des fuseaux est fournie avec le
+    moteur, quelle que soit l'image qui l'exécute.
 - Couches du moteur et sens des dépendances (ADR-0009), sans changement des
   réponses de l'API : les calculs n'importent plus les schémas de l'API, le
   SQL de lecture quitte les routes pour le paquet `lecture`, `/v1/grandeurs`
