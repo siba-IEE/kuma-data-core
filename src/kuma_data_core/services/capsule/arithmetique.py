@@ -75,7 +75,7 @@ def caler_climatologie(climatologie_hep: list[float], saisons: list[dict[str, An
 
 
 def hep_annuelle(climatologie_hep: list[float]) -> float:
-    """HEP annuelle, moyenne des 12 mois **pondérée par les jours du mois**."""
+    """HEP annuelle, moyenne des 12 mois pondérée par les jours du mois."""
     numerateur = sum(hep * JOURS_PAR_MOIS[i] for i, hep in enumerate(climatologie_hep))
     return numerateur / sum(JOURS_PAR_MOIS)
 
@@ -86,7 +86,7 @@ def hep_annuelle_reconstituee(
     """HEP annuelle reconstituée : la HEP pondérée-jours de la climatologie calée.
 
     Sans calage (capsule brute), la climatologie brute fait foi. Le moteur ne
-    l'utilise pas au dimensionnement ; il la **vérifie** (garde d'intégrité,
+    l'utilise pas au dimensionnement ; il la vérifie (garde d'intégrité,
     ``TOLERANCE_HEP_ANNUELLE``).
     """
     calee = caler_climatologie(climatologie_hep, saisons) if saisons else climatologie_hep

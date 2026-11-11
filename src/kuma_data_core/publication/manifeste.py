@@ -1,40 +1,20 @@
-"""Manifeste du filtre de publication (ADR-0003, D5 / WP0).
+"""Manifeste du filtre de publication (ADR-0003).
 
-Classification exhaustive des tables du schéma de référence pour la
-construction d'une édition publique. Trois catégories disjointes :
+Chaque table du schéma de référence appartient à exactement une catégorie :
+publiée telle quelle, assainie (colonnes sensibles neutralisées) ou exclue.
+Les tests de ``tests/unit/publication/`` le vérifient : une table ajoutée
+sans classement casse la CI, rien ne peut fuiter en silence.
 
-1. ``TABLES_PUBLIEES`` : dumpées telles quelles.
-2. ``TABLES_ASSAINIES`` : dumpées après neutralisation de colonnes
-   sensibles (règles dans ``ASSAINISSEMENTS``).
-3. ``TABLES_EXCLUES`` : jamais dumpées.
+L'assainissement s'applique en local, sur la base d'édition intermédiaire,
+avant ``pg_dump`` : le serveur ne reçoit jamais rien à nettoyer.
 
-Invariant (garanti par ``tests/unit/publication/``) : toute table de
-``Base.metadata`` appartient à exactement une catégorie. Une table
-ajoutée au schéma sans classement explicite ici casse la CI : rien ne
-peut fuiter silencieusement.
-
-L'assainissement s'applique en LOCAL, sur la base d'édition
-intermédiaire, avant ``pg_dump`` (ADR-0003, D5). Le VPS ne reçoit
-jamais rien à nettoyer. Les expressions de ``ASSAINISSEMENTS`` sont
-des membres droits d'``UPDATE ... SET <colonne> = <expression>``
-exécutés sur cette base intermédiaire.
-
-Objets hors tables ORM :
-
-- ``FONCTION_AUDIT`` et les triggers ``PREFIXE_TRIGGERS_AUDIT*`` sont
-  supprimés de la base d'édition avant dump (l'écriture n'a pas lieu
-  sur le VPS, et ``audit_log`` est exclue).
-- ``TABLES_HORS_ORM_PUBLIEES`` : tables présentes en base mais absentes
-  de ``Base.metadata`` (Alembic), publiées pour traçabilité.
-
-Statuts éditoriaux : aucun filtrage par ligne au dump (ADR-0003, D6).
-Le versioning non destructif fait partie de la donnée publiée ; c'est
-l'API qui sert le courant ``statut <> 'deprecie'``.
+Aucune ligne n'est filtrée par statut au dump : l'historique versionné fait
+partie de la donnée publiée, et c'est l'API qui ne sert que le courant
+(``statut <> 'deprecie'``).
 """
 
 from __future__ import annotations
 
-# Tables dumpées telles quelles.
 TABLES_PUBLIEES: frozenset[str] = frozenset(
     {
         "unites",
@@ -50,37 +30,34 @@ TABLES_PUBLIEES: frozenset[str] = frozenset(
     }
 )
 
-# Tables dumpées après assainissement (règles ci-dessous).
 TABLES_ASSAINIES: frozenset[str] = frozenset({"contributeurs", "series_metadonnees"})
 
-# Tables jamais dumpées.
 TABLES_EXCLUES: frozenset[str] = frozenset({"audit_log"})
 
-# Règles d'assainissement : table -> {colonne: expression SQL}.
-# Contrainte : une colonne NOT NULL ne peut pas recevoir NULL ; une
-# colonne UNIQUE doit recevoir une valeur distincte par ligne (d'où
-# la dérivation depuis ``id`` pour ``email_principal``, qui est
-# NOT NULL UNIQUE).
+# Règles d'assainissement : table -> {colonne: expression SQL}, membre droit
+# d'un ``UPDATE ... SET colonne = expression``. Une colonne NOT NULL ne peut
+# pas recevoir NULL et une colonne UNIQUE veut une valeur distincte par
+# ligne : d'où ``email_principal`` dérivé de ``id``.
 ASSAINISSEMENTS: dict[str, dict[str, str]] = {
     "contributeurs": {
         "email_principal": "'contributeur-' || id::text || '@retire.invalid'",
         "biographie": "NULL",
         "notes_internes": "NULL",
     },
-    # Le journal de chantier d'une série (références internes : étapes,
-    # cohortes, dettes D-n, PR du dépôt privé) ne sort pas de la base de
-    # référence. Le passeport public vit dans note_publique (migration
-    # 099), servi par l'API sous l'alias notes_fr.
+    # Le commentaire éditorial d'une série est un journal de travail interne :
+    # il ne sort pas de la base de référence. Le texte public vit dans
+    # ``note_publique``, servi par l'API sous l'alias ``notes_fr``.
     "series_metadonnees": {
         "commentaire_editorial": "NULL",
     },
 }
 
-# Fonction et triggers d'audit supprimés de la base d'édition avant dump.
+# Fonction et triggers d'audit, supprimés de la base d'édition avant dump :
+# rien n'est écrit sur le serveur, et ``audit_log`` est exclue.
 FONCTION_AUDIT: str = "kuma_log_audit"
 PREFIXE_TRIGGERS_AUDIT: str = "trg_audit_"
 
-# Tables hors ORM (absentes de Base.metadata) publiées pour traçabilité.
+# Tables absentes de ``Base.metadata``, publiées pour traçabilité.
 TABLES_HORS_ORM_PUBLIEES: frozenset[str] = frozenset({"alembic_version"})
 
 

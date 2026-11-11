@@ -1,14 +1,8 @@
-"""Configuration centrale de Kuma Data Core.
+"""Configuration de Kuma Data Core, lue depuis l'environnement et ``.env``.
 
-Source de vérité unique pour les variables d'environnement. Le fichier
-`.env` à la racine du dépôt est la seule source de configuration locale.
-La classe ``Settings`` est consommée par la couche base de données
-(``db.session``), par Alembic (``migrations/env.py``) et, à terme, par
-l'application FastAPI.
-
-Les valeurs par défaut correspondent à l'environnement Docker local
-(127.0.0.1:5432). Aucun secret n'est codé en dur : les champs sans
-valeur par défaut (mot de passe) doivent être fournis via ``.env``.
+``Settings`` sert la couche base de données, Alembic et l'API. Les valeurs
+par défaut sont celles de l'environnement Docker local ; aucun secret n'a de
+valeur par défaut.
 """
 
 from __future__ import annotations
@@ -21,8 +15,6 @@ from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import URL
 
-# Racine du dépôt : trois niveaux au-dessus de ce fichier
-# (src/kuma_data_core/core/config.py -> racine).
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _ENV_FILE = _REPO_ROOT / ".env"
 
@@ -34,11 +26,7 @@ def _secret_faible(valeur: str) -> bool:
 
 
 class Settings(BaseSettings):
-    """Variables d'environnement consommées par Kuma Data Core.
-
-    Seule la configuration PostgreSQL est requise à ce stade. D'autres
-    sections (Redis, API) sont ajoutées au fil des besoins.
-    """
+    """Variables d'environnement de Kuma Data Core (base, API, licences, édition, Redis, logs)."""
 
     model_config = SettingsConfigDict(
         env_file=_ENV_FILE,
@@ -47,26 +35,21 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # === PostgreSQL ===
     postgres_user: str = Field(default="kuma_admin")
     postgres_password: SecretStr = Field(...)
     postgres_db: str = Field(default="kuma_data_core")
     postgres_host: str = Field(default="127.0.0.1")
     postgres_port: int = Field(default=5432)
 
-    # === Seeds initiaux ===
-    # Email du contributeur principal inséré par la migration 001.
+    # Email du contributeur principal, inséré à la création de ``contributeurs``.
     kuma_initial_editor_email: str = Field(default="editeur.principal@kuma-science.org")
 
-    # === Settings API ===
-    # Configuration de l'application FastAPI privée.
     api_titre: str = Field(default="Kuma Data Core API")
     api_version: str = Field(default="0.1.0")
     api_environnement: Literal["dev", "integration", "prod"] = Field(default="dev")
     api_docs_actives: bool = Field(default=True)
-    # Origines navigateur admises (CORS), propres à chaque déploiement :
-    # l'application de bureau (Vite en dev, bundle Tauri signé en production)
-    # et la console web. Variable d'environnement : liste JSON.
+    # Origines CORS, propres à chaque déploiement : l'application de bureau
+    # (Vite en dev, Tauri en production) et la console web. Liste JSON.
     cors_origines: list[str] = Field(
         default=[
             "http://localhost:1420",
@@ -78,86 +61,65 @@ class Settings(BaseSettings):
             "https://www.kumascience.com",
         ]
     )
-    # Clés API valides (stockage en variables d'environnement).
-    # Migration vers une table ``cles_api`` prévue ultérieurement.
+    # Clés d'environnement (Bridge, administration). Les clés self-service
+    # vivent dans ``cles_api``, sur la base de service (``meta_db``).
     api_cle_solar_bridge: SecretStr | None = Field(default=None)
     api_cle_admin: SecretStr | None = Field(default=None)
     kuma_calage_base: str | None = Field(default=None)
     kuma_calage_jeton: SecretStr | None = Field(default=None)
 
-    # === Licences SolClim-3 (bail signé) ===
-    # ``licence_cle_signature`` : graine Ed25519 (32 octets, base64) qui
-    # signe les baux. Elle ne quitte jamais le serveur ; la clé publique,
-    # elle, est embarquée dans le logiciel et le service de calage.
-    # ``None`` = pas d'émission de bail sur ce déploiement.
+    # Graine Ed25519 (32 octets, base64) qui signe les baux SolClim-3. Elle
+    # ne quitte jamais le serveur ; la clé publique est embarquée dans le
+    # logiciel et le service de calage. ``None`` = pas d'émission de bail.
     licence_cle_signature: SecretStr | None = Field(default=None)
-    # Durée nominale d'un bail : ce que le logiciel tient hors ligne avant
-    # de passer en lecture seule.
+    # Durée d'un bail : ce que le logiciel tient hors ligne avant de passer
+    # en lecture seule.
     licence_duree_jours: int = Field(default=30, ge=1, le=365)
     # Version minimale du logiciel inscrite au bail : en dessous, il passe
     # en lecture seule et invite à se mettre à jour.
     licence_version_minimale: str = Field(default="1.1.0")
 
-    # === Édition publique (ADR-0003) ===
-    # ``edition_db`` : nom de la base d'édition active côté serveur, écrit
-    # par ``publier-edition.sh`` dans le fichier pointeur (bascule par
-    # repointage, D1). Prime sur ``postgres_db`` quand défini. En local,
-    # rester à ``None`` : la base de référence est servie directement.
+    # Base d'édition publique active (ADR-0003), repointée par
+    # ``publier-edition.sh`` à chaque publication. Prime sur ``postgres_db`` ;
+    # ``None`` en local, où la base de référence est servie directement.
     edition_db: str | None = Field(default=None)
-    # ``edition_figee`` : profil public sans relais temps réel (D6). Le
-    # repli passe-plat horaire renvoie PLAGE_TEMPORELLE_NON_DISPONIBLE au
-    # lieu d'appeler la source amont ; seul le stocké est servi.
+    # Profil public sans relais temps réel : l'horaire non stocké renvoie
+    # PLAGE_TEMPORELLE_NON_DISPONIBLE au lieu d'appeler la source amont.
     edition_figee: bool = Field(default=False)
-    # ``meta_db`` : nom de la base de service (``kuma_api_meta`` sur le
-    # serveur public, D3) qui porte ``cles_api``. ``None`` = pas de base
-    # de service : l'émission self-service de clés est désactivée et
-    # l'authentification reste env-only (régime local historique).
+    # Base de service, qui porte ``cles_api``. ``None`` = pas d'émission
+    # self-service : seules les clés d'environnement authentifient.
     meta_db: str | None = Field(default=None)
-    # Identifiants dédiés de la base de service (ADR-0003 D2, revue de
-    # sécurité 2026-07-02). Sur le VPS, le moteur d'édition tourne en
-    # ``kuma_api_ro`` (lecture seule) et le moteur méta en
-    # ``kuma_api_service`` (écriture) : ces deux rôles sont mutuellement
-    # exclusifs, un seul couple d'identifiants ne peut pas servir les
-    # deux. À ``None``, on retombe sur ``postgres_user``/``postgres_password``
-    # (régime local, mono-rôle) - la garantie de moindre privilège n'est
-    # tenue que si ces deux valeurs sont fournies en production.
+    # Identifiants dédiés de la base de service. Sur le serveur, l'édition
+    # est lue par un rôle en lecture seule et la base de service écrite par
+    # un autre : un seul couple ne peut pas tenir les deux. À ``None``, on
+    # retombe sur ``postgres_user``/``postgres_password`` ; le moindre
+    # privilège n'est donc tenu que si ces valeurs sont fournies en production.
     meta_user: str | None = Field(default=None)
     meta_password: SecretStr | None = Field(default=None)
-    # ``rate_limiting_actif`` : applique le quota journalier des clés
-    # self-service via Redis (D3/WP7). Profil serveur public uniquement ;
-    # les clés d'environnement (admin, Bridge) ne sont jamais limitées.
+    # Quota journalier des clés self-service, via Redis. Serveur public
+    # uniquement ; les clés d'environnement ne sont jamais limitées.
     rate_limiting_actif: bool = Field(default=False)
     # Plafond de requêtes par minute et par adresse (IPv6 : par /64),
     # appliqué avant l'authentification quand ``rate_limiting_actif``.
-    # Les clés d'environnement en sont exemptées.
     debit_ip_par_minute: int = Field(default=300, ge=1)
-    # ``derriere_proxy_confiance`` : quand vrai, l'adresse cliente pour la
-    # limite d'émission par IP est lue depuis ``X-Forwarded-For`` posé par
-    # le reverse proxy (Caddy, WP8). À laisser FAUX si l'API est exposée
-    # en direct : sinon un client forgerait cet en-tête pour contourner la
-    # limite. C'est le reverse proxy, et lui seul, qui doit écraser un
-    # éventuel en-tête client - garanti par la config Caddy de WP8.
+    # Quand vrai, l'adresse cliente (limite d'émission de clés, plafond de
+    # débit) est lue dans ``X-Forwarded-For``, posé par le reverse proxy. À
+    # laisser faux si l'API est exposée en direct : un client forgerait cet
+    # en-tête pour contourner les limites.
     derriere_proxy_confiance: bool = Field(default=False)
 
-    # === Redis (compteurs de rate limiting, WP7) ===
+    # Redis : compteurs de quota et de débit.
     redis_host: str = Field(default="127.0.0.1")
     redis_port: int = Field(default=6379)
     redis_password: SecretStr | None = Field(default=None)
 
-    # === Settings Logging ===
-    # ``texte`` en dev (lisible humainement, couleurs), ``json`` en prod
-    # (parsable par les agrégateurs). Le format est validé contre
-    # l'environnement par ``valider_coherence_environnement`` ci-dessous.
+    # ``json`` est exigé en production par ``valider_coherence_environnement``.
     log_format: Literal["texte", "json"] = Field(default="texte")
     log_niveau: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = Field(default="INFO")
 
     @property
     def database_url(self) -> str:
-        """DSN SQLAlchemy pour psycopg3 (driver synchrone moderne).
-
-        La base d'édition (``edition_db``, serveur public) prime sur la
-        base de référence (``postgres_db``, locale) quand elle est définie.
-        """
+        """DSN SQLAlchemy (psycopg 3) ; la base d'édition prime sur la base de référence."""
         base = self.edition_db if self.edition_db is not None else self.postgres_db
         return self._dsn(self.postgres_user, self.postgres_password, base)
 
@@ -165,11 +127,8 @@ class Settings(BaseSettings):
     def database_url_meta(self) -> str | None:
         """DSN de la base de service (``cles_api``), ``None`` si désactivée.
 
-        Utilise les identifiants dédiés ``meta_user``/``meta_password``
-        (rôle ``kuma_api_service``) quand ils sont fournis, sinon le
-        couple principal (régime local mono-rôle). Cette séparation est
-        ce qui permet au moteur d'édition de tourner en lecture seule
-        (ADR-0003 D2).
+        Utilise ``meta_user``/``meta_password`` quand ils sont fournis, sinon le
+        couple principal : c'est ce qui laisse l'édition en lecture seule.
         """
         if self.meta_db is None:
             return None
@@ -190,12 +149,10 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def valider_coherence_environnement(self) -> Settings:
-        """Bloque le démarrage si la configuration est incohérente en prod.
+        """Refuse de démarrer sur une configuration de production incohérente.
 
-        En production, la documentation OpenAPI doit être désactivée, les
-        logs au format JSON, et la clé d'administration obligatoire. Toute
-        violation lève une ``ValueError`` au moment de l'instanciation des
-        ``Settings`` - l'application ne démarre pas.
+        En production : pas de ``*`` dans les origines CORS, pas de documentation
+        OpenAPI, logs en JSON, clé d'administration présente et robuste.
         """
         if self.api_environnement == "prod":
             if "*" in self.cors_origines:
@@ -218,10 +175,5 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    """Retourne l'instance unique de configuration (memoizée).
-
-    Préférer cette fonction à l'instanciation directe : elle évite de
-    relire ``.env`` à chaque accès et garantit qu'une seule instance
-    circule dans le processus.
-    """
+    """Instance unique de configuration : ``.env`` n'est lu qu'une fois par processus."""
     return Settings()  # type: ignore[call-arg]

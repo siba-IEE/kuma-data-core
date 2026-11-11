@@ -1,7 +1,7 @@
 """Bail d'usage de SolClim-3 : charge, signature Ed25519, vérification.
 
 Le bail est ce que le logiciel garde sur le poste pour travailler hors
-ligne : il dit à qui il est accordé et jusqu'à quand. Il est **signé** par
+ligne : il dit à qui il est accordé et jusqu'à quand. Il est signé par
 le serveur avec une clé privée Ed25519 que seul le serveur détient ; le
 logiciel et le service de calage le vérifient avec la clé publique, sans
 appeler le serveur. Un bail modifié sur le poste ne se vérifie plus.
@@ -10,7 +10,7 @@ Forme transportée (JSON) :
 
 - ``charge`` : la charge utile, JSON canonique (clés triées, séparateurs
   compacts) encodé en base64url sans remplissage ;
-- ``signature`` : la signature Ed25519 des **octets** de la charge, en
+- ``signature`` : la signature Ed25519 des octets de la charge, en
   base64url sans remplissage.
 
 On signe les octets transportés, pas un objet re-sérialisé : le

@@ -1,29 +1,19 @@
-"""Catalogue des codes d'erreur stables exposés par l'API Kuma.
+"""Codes d'erreur stables de l'API.
 
-Ces codes sont des identifiants techniques destinés aux outils
-consommateurs de l'API (Kuma Solar Data Bridge, futurs outils Excel /
-Streamlit, etc.). Ils sont **stables** : un code publié ne change plus,
-ne disparaît plus. Pour faire évoluer la sémantique, on crée un nouveau
-code et on déprécie l'ancien.
+Identifiants destinés aux outils qui consomment l'API. Un code publié ne
+change plus et ne disparaît plus : pour faire évoluer un sens, on crée un
+nouveau code et on déprécie l'ancien.
 
-Convention de nommage
----------------------
-``UPPER_SNAKE_CASE`` français, regroupé par préfixe métier :
+Préfixes : ``AUTH_*`` (authentification), ``VALIDATION_*`` (entrées),
+``RESSOURCE_*`` (existence d'une ressource), ``GRANDEUR_F2_*`` (grandeurs
+paramétrables), ``PASSE_PLAT_*`` et ``PLAGE_*`` (relais horaire et plages
+non servies), ``CLES_*``, ``LICENCE_*``, ``CONTRIBUTION*`` (clés
+self-service, licences et contributions SolClim-3), ``INFRASTRUCTURE_*``
+(base, cache), ``SERVEUR_*`` (erreurs internes).
 
-* ``AUTH_*``           - authentification, autorisation
-* ``VALIDATION_*``     - validation des entrées (Pydantic, contraintes)
-* ``RESSOURCE_*``      - état des ressources (existence, conflits)
-* ``GRANDEUR_F2_*``    - grandeurs F2 paramétrables
-* ``PASSE_PLAT_*``     - passe-plat horaire
-* ``PLAGE_*``          - plages temporelles non disponibles
-* ``INFRASTRUCTURE_*`` - dépendances externes (base, cache)
-* ``SERVEUR_*``        - erreurs internes non classifiées
-
-Périmètre
----------
-Seuls ``AUTH_*``, ``INFRASTRUCTURE_*`` et ``SERVEUR_ERREUR_INTERNE``
-sont effectivement utilisés. Les autres sont déclarés en avance pour
-préfigurer l'usage à venir et stabiliser le contrat dès maintenant.
+``GRANDEUR_F2_INCONNUE``, ``VALIDATION_LIMIT_HORS_BORNES`` et
+``INFRASTRUCTURE_CACHE_INDISPONIBLE`` sont réservés : aucun endpoint ne les
+renvoie.
 """
 
 from __future__ import annotations
@@ -52,7 +42,7 @@ class CodeErreur(StrEnum):
     RESSOURCE_SERIE_INCONNUE = "RESSOURCE_SERIE_INCONNUE"
     RESSOURCE_LOCALITE_INCONNUE = "RESSOURCE_LOCALITE_INCONNUE"
 
-    # Grandeurs F2 paramétrables (4xx)
+    # Grandeurs paramétrables (4xx)
     GRANDEUR_F2_INCONNUE = "GRANDEUR_F2_INCONNUE"
     INCOMPATIBILITE_SOURCE_GRANDEUR = "INCOMPATIBILITE_SOURCE_GRANDEUR"
 

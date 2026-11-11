@@ -2,7 +2,7 @@
 
 Seconde vue conforme au format, côté Python, du même document que la vue TS
 (``packages/moteur-minireseau/src/fichier-kuma.ts``). L'aller-retour se prouve
-sur les **valeurs**, jamais sur les octets : deux implémentations conformes
+sur les valeurs, jamais sur les octets : deux implémentations conformes
 formatent le même double différemment, sans conséquence puisque le parsing
 normalise vers le même flottant.
 
