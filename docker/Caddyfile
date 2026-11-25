@@ -56,3 +56,24 @@ forum.kumascience.com {
                 format json
         }
 }
+
+# ONDE, plateforme de données de l'AME (dépôt ame-plateforme). Le conteneur
+# onde-web pose ses propres en-têtes de sécurité et lit la dernière entrée
+# de X-Forwarded-For, celle ajoutée ici.
+onde.kumascience.com {
+	tls admin@kumascience.com
+
+	encode gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		-Server
+	}
+
+	reverse_proxy onde-web:8080
+
+	log {
+		output stdout
+		format json
+	}
+}
